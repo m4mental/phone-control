@@ -1,10 +1,11 @@
-name: Android Debug Build
+name: Android Release Build
 
 on:
   push:
     branches: [ "main", "master" ]
-  pull_request:
-    branches: [ "main", "master" ]
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -23,11 +24,24 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    - name: Build Debug APK
-      run: ./gradlew assembleDebug
+    - name: Build Release APK
+      run: ./gradlew assembleRelease
 
-    - name: Upload APK
-      uses: actions/upload-artifact@v4
+    - name: Get Version
+      id: get_version
+      run: echo "VERSION=v1.0.${{ github.run_number }}" >> $GITHUB_OUTPUT
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
       with:
-        name: Phone-Control-App
-        path: app/build/outputs/apk/debug/app-debug.apk
+        tag_name: ${{ steps.get_version.outputs.VERSION }}
+        name: Release ${{ steps.get_version.outputs.VERSION }}
+        files: app/build/outputs/apk/release/app-release.apk
+        body: |
+          Automatic build of Phone Control.
+          Built with AI assistance.
+          Target: Nothing Phone 2a (Android 16)
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
