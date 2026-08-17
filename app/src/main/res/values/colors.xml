@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="purple_200">#FFBB86FC</color>
+    <color name="purple_500">#FF6200EE</color>
+    <color name="purple_700">#FF3700B3</color>
+    <color name="teal_200">#FF03DAC5</color>
+    <color name="teal_700">#FF018786</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <!-- Feature Specific Colors -->
+    <color name="color_mode">#00E5FF</color>
+    <color name="color_per_app">#00E676</color>
+    <color name="color_freezer">#2979FF</color>
+    <color name="color_battery">#FFD600</color>
+    <color name="color_opt">#D500F9</color>
+    <color name="color_thermal">#FF1744</color>
+    <color name="color_root">#76FF03</color>
+
+    <!-- New Feature Colors -->
+    <color name="color_ram">#448AFF</color>
+    <color name="color_network">#00B8D4</color>
+    <color name="color_touch">#64DD17</color>
+    <color name="color_cleaner">#AA00FF</color>
+    <color name="color_res">#FF6D00</color>
+    <color name="color_bloat">#37474F</color>
+
+</resources>

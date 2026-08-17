@@ -1,0 +1,242 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@android:color/black"
+    android:fitsSystemWindows="true">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbarModeControl"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        app:title="Mode Control"
+        app:titleTextColor="@color/color_mode"
+        app:navigationIcon="@android:drawable/ic_menu_revert"
+        app:navigationIconTint="@color/color_mode" />
+
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <!-- Global Mode Selection -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Global System Mode"
+                android:textColor="@android:color/white"
+                android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+                android:layout_marginBottom="8dp" />
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="24dp"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="0dp"
+                app:cardBackgroundColor="#121212"
+                app:strokeWidth="1dp"
+                app:strokeColor="#333333">
+
+                <RadioGroup
+                    android:id="@+id/rgModes"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:padding="8dp">
+
+                    <RadioButton
+                        android:id="@+id/rbPowerSaver"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:padding="12dp"
+                        android:text="Manual: Power Saver\nLowest frequencies for maximum battery."
+                        android:textColor="@android:color/white"
+                        android:buttonTint="@color/color_mode"
+                        android:textSize="14sp" />
+
+                    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#333333" />
+
+                    <RadioButton
+                        android:id="@+id/rbBalance"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:padding="12dp"
+                        android:text="Manual: Balanced\nDynamic frequencies for smooth daily use."
+                        android:textColor="@android:color/white"
+                        android:buttonTint="@color/color_mode"
+                        android:textSize="14sp" />
+
+                    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#333333" />
+
+                    <RadioButton
+                        android:id="@+id/rbPerformance"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:padding="12dp"
+                        android:text="Manual: Performance\nHighest frequencies for gaming and speed."
+                        android:textColor="@android:color/white"
+                        android:buttonTint="@color/color_mode"
+                        android:textSize="14sp" />
+
+                    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#333333" />
+
+                    <RadioButton
+                        android:id="@+id/rbAutomatic"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:padding="12dp"
+                        android:text="Automatic (AI)\nAI manages speed based on current load."
+                        android:textColor="@android:color/white"
+                        android:buttonTint="@color/color_mode"
+                        android:textSize="14sp" />
+
+                    <!-- AI Sub-settings -->
+                    <LinearLayout
+                        android:id="@+id/layoutFocusSettings"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingStart="32dp"
+                        android:paddingEnd="16dp"
+                        android:paddingBottom="16dp"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Automatic Focus Selection:"
+                            android:textColor="#AAAAAA"
+                            android:textSize="12sp"
+                            android:layout_marginBottom="8dp" />
+
+                        <RadioGroup
+                            android:id="@+id/rgFocus"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content">
+
+                            <RadioButton
+                                android:id="@+id/rbFocusBattery"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:text="Battery Saver Focus\nPrioritize efficiency, boost only if needed."
+                                android:textColor="@android:color/white"
+                                android:buttonTint="@color/color_mode"
+                                android:textSize="13sp" />
+
+                            <RadioButton
+                                android:id="@+id/rbFocusDaily"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:text="Daily Usage Focus\nSmart balance between speed and battery."
+                                android:textColor="@android:color/white"
+                                android:buttonTint="@color/color_mode"
+                                android:textSize="13sp" />
+                        </RadioGroup>
+                    </LinearLayout>
+                </RadioGroup>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Global Refresh Rate Selection -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Global Refresh Rate"
+                android:textColor="@android:color/white"
+                android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+                android:layout_marginBottom="8dp" />
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="24dp"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="0dp"
+                app:cardBackgroundColor="#121212"
+                app:strokeWidth="1dp"
+                app:strokeColor="#333333">
+
+                <RadioGroup
+                    android:id="@+id/rgGlobalFps"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:padding="8dp">
+
+                    <RadioButton
+                        android:id="@+id/rbGlobalFpsAuto"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:padding="12dp"
+                        android:text="Smart Auto Switch\nSwitch between 30Hz - 120Hz based on usage."
+                        android:textColor="@android:color/white"
+                        android:buttonTint="@color/color_mode"
+                        android:textSize="14sp" />
+
+                    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#333333" />
+
+                    <RadioButton
+                        android:id="@+id/rbGlobalFps30"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:padding="12dp"
+                        android:text="Fixed 30Hz\nMinimum power consumption, stuttering possible."
+                        android:textColor="@android:color/white"
+                        android:buttonTint="@color/color_mode"
+                        android:textSize="14sp" />
+
+                    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#333333" />
+
+                    <RadioButton
+                        android:id="@+id/rbGlobalFps60"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:padding="12dp"
+                        android:text="Fixed 60Hz\nStandard smoothness and balanced power."
+                        android:textColor="@android:color/white"
+                        android:buttonTint="@color/color_mode"
+                        android:textSize="14sp" />
+
+                    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#333333" />
+
+                    <RadioButton
+                        android:id="@+id/rbGlobalFps90"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:padding="12dp"
+                        android:text="Fixed 90Hz\nSmooth experience with moderate power use."
+                        android:textColor="@android:color/white"
+                        android:buttonTint="@color/color_mode"
+                        android:textSize="14sp" />
+
+                    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#333333" />
+
+                    <RadioButton
+                        android:id="@+id/rbGlobalFps120"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:padding="12dp"
+                        android:text="Fixed 120Hz\nMaximum smoothness, highest power use."
+                        android:textColor="@android:color/white"
+                        android:buttonTint="@color/color_mode"
+                        android:textSize="14sp" />
+
+                </RadioGroup>
+            </com.google.android.material.card.MaterialCardView>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Global system mode affects the entire device unless an app-specific override is active."
+                android:textColor="#666666"
+                android:textSize="12sp"
+                android:gravity="center" />
+
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+</LinearLayout>

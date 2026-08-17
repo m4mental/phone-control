@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#121212"
+    android:padding="8dp">
+
+    <EditText
+        android:id="@+id/etSearchApp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Search app name..."
+        android:textColor="@android:color/white"
+        android:textColorHint="#666666"
+        android:background="#1A1A1A"
+        android:padding="12dp"
+        android:layout_margin="8dp" />
+
+    <Spinner
+        android:id="@+id/spinnerFilter"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="8dp"
+        android:layout_marginBottom="8dp"
+        android:background="#1A1A1A"
+        android:padding="8dp"
+        android:theme="@style/ThemeOverlay.AppCompat.Dark" />
+
+    <CheckBox
+        android:id="@+id/cbSelectAll"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Select All Visible"
+        android:textColor="@android:color/white"
+        android:buttonTint="@android:color/white"
+        android:layout_marginHorizontal="8dp"
+        android:layout_marginBottom="8dp" />
+
+    <ListView
+        android:id="@+id/lvApps"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:divider="#333333"
+        android:dividerHeight="1dp" />
+
+</LinearLayout>

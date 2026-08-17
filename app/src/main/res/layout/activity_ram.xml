@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@android:color/black"
+    android:fitsSystemWindows="true">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbarRam"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        app:title="RAM Manager"
+        app:titleTextColor="@color/color_ram"
+        app:navigationIcon="@android:drawable/ic_menu_revert"
+        app:navigationIconTint="@color/color_ram" />
+
+    <ScrollView android:layout_width="match_parent" android:layout_height="match_parent">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
+
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="Adjust ZRAM size to improve multitasking. A larger ZRAM allows more apps to stay in memory but uses more CPU for compression."
+                android:textColor="#AAAAAA" android:textSize="13sp" android:layout_marginBottom="24dp" />
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                app:cardCornerRadius="16dp" app:cardBackgroundColor="#121212" app:strokeWidth="1dp" app:strokeColor="#333333">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="ZRAM Size" android:textColor="#FFFFFF" android:textStyle="bold" />
+                    <RadioGroup android:id="@+id/rgZramSize" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp">
+                        <RadioButton android:id="@+id/rbZramOff" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Disabled (Pure RAM)" android:textColor="#FFFFFF" android:buttonTint="@color/color_ram" />
+                        <RadioButton android:id="@+id/rbZram2G" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="2GB (Light)" android:textColor="#FFFFFF" android:buttonTint="@color/color_ram" />
+                        <RadioButton android:id="@+id/rbZram4G" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="4GB (Recommended)" android:textColor="#FFFFFF" android:buttonTint="@color/color_ram" />
+                        <RadioButton android:id="@+id/rbZram8G" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="8GB (Aggressive)" android:textColor="#FFFFFF" android:buttonTint="@color/color_ram" />
+                    </RadioGroup>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnApplyRam"
+                android:layout_width="match_parent" android:layout_height="64dp"
+                android:layout_marginTop="24dp" android:text="APPLY RAM SETTINGS"
+                android:textColor="@android:color/black" android:textStyle="bold"
+                app:backgroundTint="@color/color_ram" app:cornerRadius="8dp" />
+
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

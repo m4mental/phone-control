@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="8dp"
+    app:cardCornerRadius="12dp"
+    app:cardElevation="0dp"
+    app:cardBackgroundColor="#121212"
+    app:strokeWidth="1dp"
+    app:strokeColor="#333333">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <!-- Header Part (Visible) -->
+        <LinearLayout
+            android:id="@+id/layoutHeader"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="12dp"
+            android:gravity="center_vertical"
+            android:background="?attr/selectableItemBackground">
+
+            <ImageView
+                android:id="@+id/ivAppIcon"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:scaleType="fitCenter" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="16dp"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tvAppName"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@android:color/white"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvSummary"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/color_per_app"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <ImageView
+                android:id="@+id/ivExpandArrow"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@android:drawable/arrow_down_float"
+                app:tint="#666666" />
+        </LinearLayout>
+
+        <!-- Config Part (Expandable) -->
+        <LinearLayout
+            android:id="@+id/layoutConfig"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingHorizontal="16dp"
+            android:paddingBottom="16dp"
+            android:visibility="gone">
+
+            <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#222222" android:layout_marginBottom="12dp" />
+
+            <!-- Mode -->
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Performance Mode" android:textColor="#888888" android:textSize="10sp" />
+            <RadioGroup android:id="@+id/rgMode" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginBottom="12dp">
+                <RadioButton android:id="@+id/rbModeAuto" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Auto" android:textColor="#FFFFFF" android:textSize="11sp" android:buttonTint="@color/color_per_app" />
+                <RadioButton android:id="@+id/rbModeSaver" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Saver" android:textColor="#FFFFFF" android:textSize="11sp" android:buttonTint="@color/color_per_app" />
+                <RadioButton android:id="@+id/rbModeBalance" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Bal" android:textColor="#FFFFFF" android:textSize="11sp" android:buttonTint="@color/color_per_app" />
+                <RadioButton android:id="@+id/rbModePerf" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Perf" android:textColor="#FFFFFF" android:textSize="11sp" android:buttonTint="@color/color_per_app" />
+            </RadioGroup>
+
+            <!-- FPS -->
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Refresh Rate" android:textColor="#888888" android:textSize="10sp" />
+            <RadioGroup android:id="@+id/rgFps" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginBottom="12dp">
+                <RadioButton android:id="@+id/rbFpsAuto" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Auto" android:textColor="#FFFFFF" android:textSize="10sp" android:buttonTint="@color/color_per_app" />
+                <RadioButton android:id="@+id/rbFps30" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="30" android:textColor="#FFFFFF" android:textSize="10sp" android:buttonTint="@color/color_per_app" />
+                <RadioButton android:id="@+id/rbFps60" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="60" android:textColor="#FFFFFF" android:textSize="10sp" android:buttonTint="@color/color_per_app" />
+                <RadioButton android:id="@+id/rbFps90" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="90" android:textColor="#FFFFFF" android:textSize="10sp" android:buttonTint="@color/color_per_app" />
+                <RadioButton android:id="@+id/rbFps120" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="120" android:textColor="#FFFFFF" android:textSize="10sp" android:buttonTint="@color/color_per_app" />
+            </RadioGroup>
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                <!-- Thermal -->
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Throttling" android:textColor="#888888" android:textSize="10sp" />
+                    <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchThermal" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Disable" android:textColor="#FFFFFF" android:textSize="11sp" app:thumbTint="@color/color_per_app" />
+                </LinearLayout>
+                <!-- Touch -->
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Touch Boost" android:textColor="#888888" android:textSize="10sp" />
+                    <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchTouch" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Enable" android:textColor="#FFFFFF" android:textSize="11sp" app:thumbTint="@color/color_per_app" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnRemove"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="end"
+                android:text="Remove Override"
+                android:textColor="#FF4444"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>

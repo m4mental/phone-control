@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@android:color/black"
+    android:fitsSystemWindows="true">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbarNetwork"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        app:title="Network Booster"
+        app:titleTextColor="@color/color_network"
+        app:navigationIcon="@android:drawable/ic_menu_revert"
+        app:navigationIconTint="@color/color_network" />
+
+    <ScrollView android:layout_width="match_parent" android:layout_height="match_parent">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
+
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="Optimize network latency and DNS settings. Recommended for online gaming to reduce ping and jitter."
+                android:textColor="#AAAAAA" android:textSize="13sp" android:layout_marginBottom="24dp" />
+
+            <!-- DNS Settings -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="16dp"
+                app:cardCornerRadius="16dp" app:cardBackgroundColor="#121212" app:strokeWidth="1dp" app:strokeColor="#333333">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Gaming DNS" android:textColor="#FFFFFF" android:textStyle="bold" />
+                    <RadioGroup android:id="@+id/rgDns" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp">
+                        <RadioButton android:id="@+id/rbDnsDefault" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="System Default" android:textColor="#FFFFFF" android:buttonTint="@color/color_network" />
+                        <RadioButton android:id="@+id/rbDnsGoogle" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Google DNS (8.8.8.8)" android:textColor="#FFFFFF" android:buttonTint="@color/color_network" />
+                        <RadioButton android:id="@+id/rbDnsCloudflare" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Cloudflare (1.1.1.1)" android:textColor="#FFFFFF" android:buttonTint="@color/color_network" />
+                    </RadioGroup>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- TCP Tweaks -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                app:cardCornerRadius="16dp" app:cardBackgroundColor="#121212" app:strokeWidth="1dp" app:strokeColor="#333333">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:padding="16dp" android:gravity="center_vertical">
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="TCP Buffer Tweaks" android:textColor="#FFFFFF" android:textStyle="bold" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Optimize packet handling for games." android:textColor="#888888" android:textSize="11sp" />
+                    </LinearLayout>
+                    <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchTcp" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnApplyNetwork"
+                android:layout_width="match_parent" android:layout_height="64dp"
+                android:layout_marginTop="24dp" android:text="OPTIMIZE NETWORK"
+                android:textColor="@android:color/black" android:textStyle="bold"
+                app:backgroundTint="@color/color_network" app:cornerRadius="8dp" />
+
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

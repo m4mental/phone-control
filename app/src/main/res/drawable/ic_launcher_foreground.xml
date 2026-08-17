@@ -1,0 +1,17 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Outer Gear/Circuit Shape -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,20L58.5,25.5H65.5L68,32L74.5,33.5L76,40.5L82,44L80,51L82,58L76,61.5L74.5,68.5L68,70L65.5,76.5H58.5L54,82L49.5,76.5H42.5L40,70L33.5,68.5L32,61.5L26,58L28,51L26,44L32,40.5L33.5,33.5L40,32L42.5,25.5H49.5L54,20Z" />
+    <!-- Inner Power Symbol -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M54,38C47.37,38 42,43.37 42,50C42,54.42 44.39,58.28 48,60.35L48,64L60,64L60,60.35C63.61,58.28 66,54.42 66,50C66,43.37 60.63,38 54,38ZM54,58C49.58,58 46,54.42 46,50C46,45.58 49.58,42 54,42C58.42,42 62,45.58 62,50C62,54.42 58.42,58 54,58Z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M52,32h4v12h-4z" />
+</vector>
