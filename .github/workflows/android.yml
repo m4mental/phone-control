@@ -1,4 +1,4 @@
-name: Android Release Build
+name: Android Debug Build
 
 on:
   push:
@@ -23,20 +23,11 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    # Build se pehle keystore file banana zaroori hai
-    - name: Decode Keystore
-      run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > app/keystore.jks
-
-    - name: Build Release APK
-      run: ./gradlew assembleRelease
-      env:
-        KEYSTORE_PATH: keystore.jks
-        KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-        KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-        KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+    - name: Build Debug APK
+      run: ./gradlew assembleDebug
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: phone-control-release-signed
-        path: app/build/outputs/apk/release/app-release.apk
+        name: Phone-Control-App
+        path: app/build/outputs/apk/debug/app-debug.apk
