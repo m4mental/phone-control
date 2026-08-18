@@ -16,15 +16,20 @@ object BatteryManager {
     )
 
     fun getBatteryStats(): BatteryInfo {
-        val voltRaw = ShellUtils.runAsRoot("cat ${BATT_PATH}voltage_now").output
-        val tempRaw = ShellUtils.runAsRoot("cat ${BATT_PATH}temp").output
-        val currRaw = ShellUtils.runAsRoot("cat ${BATT_PATH}current_now").output
-        val cycles = ShellUtils.runAsRoot("cat ${BATT_PATH}cycle_count").output
-        val health = ShellUtils.runAsRoot("cat ${BATT_PATH}health").output
+        // Read multiple files at once to reduce shell overhead
+        val files = listOf("voltage_now", "temp", "current_now", "cycle_count", "health", "charge_full", "charge_full_design")
+        val cmd = files.joinToString(" && ") { "cat ${BATT_PATH}$it" }
+        val result = ShellUtils.runAsRoot(cmd)
+        val lines = result.output.split("\n")
+
+        val voltRaw = lines.getOrNull(0) ?: "0"
+        val tempRaw = lines.getOrNull(1) ?: "0"
+        val currRaw = lines.getOrNull(2) ?: "0"
+        val cycles = lines.getOrNull(3) ?: "0"
+        val health = lines.getOrNull(4) ?: "Good"
+        val full = lines.getOrNull(5)?.toDoubleOrNull() ?: 5000000.0
+        val design = lines.getOrNull(6)?.toDoubleOrNull() ?: 5000000.0
         
-        // Health/Wear estimation (many MTK devices have charge_full and charge_full_design)
-        val full = ShellUtils.runAsRoot("cat ${BATT_PATH}charge_full").output.toDoubleOrNull() ?: 5000000.0
-        val design = ShellUtils.runAsRoot("cat ${BATT_PATH}charge_full_design").output.toDoubleOrNull() ?: 5000000.0
         val wearLevel = (full / design * 100).toInt().coerceIn(0, 100)
 
         val vV = voltRaw.toDoubleOrNull() ?: 0.0
@@ -43,21 +48,24 @@ object BatteryManager {
 
     fun setChargingEnabled(enabled: Boolean) {
         val value = if (enabled) "1" else "0"
-        ShellUtils.runAsRoot("echo $value > ${BATT_PATH}charging_enabled")
-        ShellUtils.runAsRoot("echo $value > ${BATT_PATH}battery_charging_enabled")
-        ShellUtils.runAsRoot("echo ${if (enabled) "0" else "1"} > ${BATT_PATH}input_suspend")
+        val commands = listOf(
+            "echo $value > ${BATT_PATH}charging_enabled",
+            "echo $value > ${BATT_PATH}battery_charging_enabled",
+            "echo ${if (enabled) "0" else "1"} > ${BATT_PATH}input_suspend"
+        )
+        ShellUtils.runCommandsAsRoot(commands)
     }
 
     fun setBypassEnabled(enabled: Boolean) {
         val value = if (enabled) "1" else "0"
-        ShellUtils.runAsRoot("echo $value > ${BATT_PATH}bypass_charging")
+        ShellUtils.fastCmd("echo $value > ${BATT_PATH}bypass_charging")
     }
 
     fun setForceDoze(enabled: Boolean) {
         if (enabled) {
-            ShellUtils.runAsRoot("dumpsys deviceidle force-idle deep")
+            ShellUtils.fastCmd("dumpsys deviceidle force-idle deep")
         } else {
-            ShellUtils.runAsRoot("dumpsys deviceidle unforce")
+            ShellUtils.fastCmd("dumpsys deviceidle unforce")
         }
     }
 }

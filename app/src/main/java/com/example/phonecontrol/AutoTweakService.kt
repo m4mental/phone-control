@@ -7,52 +7,71 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.pm.PackageManager
+import android.os.*
 import android.os.BatteryManager as AndroidBatteryManager
-import android.os.Build
-import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import java.text.SimpleDateFormat
 import java.util.*
 
+/**
+ * Modernized AutoTweakService: Now an Event-Driven Listener.
+ * No infinite loops here. It only reacts to system broadcasts and Native Daemon intents.
+ */
 class AutoTweakService : Service() {
 
-    private var timer: Timer? = null
     private var launcherPackage: String = ""
-    
     private var lastTopApp = ""
     private var lastGlobalMode = ""
-    private var lastFocus = ""
-    private var lastGlobalFps = ""
     private var lastConfigHash = ""
-    private var hasShownActivation = false
-    private var isScreenOff = false
     
-    private val CHANNEL_ID = "phone_control_activation"
+    private val CHANNEL_STATUS_ID = "phone_control_status"
+    private val CHANNEL_BOOT_ID = "phone_control_boot"
+    private val CHANNEL_ALERTS_ID = "phone_control_alerts"
+    
+    private val GUARD_NOTIF_ID = 100
+    private val BOOT_NOTIF_ID = 101
+    private val COOLDOWN_NOTIF_ID = 200
 
-    private val screenReceiver = object : BroadcastReceiver() {
+    private var cooldownRemaining = 0
+    private val cooldownHandler = Handler(Looper.getMainLooper())
+    private val cooldownRunnable = object : Runnable {
+        override fun run() {
+            if (cooldownRemaining > 0) {
+                updateCooldownNotification(cooldownRemaining)
+                cooldownRemaining--
+                cooldownHandler.postDelayed(this, 1000)
+            } else {
+                removeCooldownNotification()
+            }
+        }
+    }
+
+    // Receives events from the Native Daemon or System
+    private val eventReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
-            if (intent.action == Intent.ACTION_SCREEN_OFF) {
-                isScreenOff = true
-                restartMonitoring(10000) // Slow down to 10s when screen is OFF
-                
-                val isLow = isLowBattery(prefs)
-                if (isLow || prefs.getBoolean("batt_power_save_screen_off", false)) TweakManager.applyBatterySaver()
-                if (isLow || prefs.getBoolean("batt_data_saver_screen_off", false)) ShellUtils.fastCmd("settings put global data_saver_mode 1")
-                
-                // --- FIX 2: Only Force Doze when screen is OFF ---
-                if (isLow || prefs.getBoolean("batt_force_doze_enabled", false)) {
-                    BatteryManager.setForceDoze(true)
+            
+            when (intent.action) {
+                "com.example.phonecontrol.ACTION_STATE_CHANGED" -> {
+                    val event = intent.getStringExtra("event")
+                    when (event) {
+                        "app_change" -> {
+                            val pkg = intent.getStringExtra("pkg") ?: ""
+                            onForegroundAppChanged(pkg)
+                        }
+                        "screen_off" -> onScreenOff()
+                        "screen_on" -> onScreenOn()
+                    }
                 }
-            } else if (intent.action == Intent.ACTION_SCREEN_ON) {
-                isScreenOff = false
-                restartMonitoring(2000) // Speed up to 2s when screen is ON
-                
-                // Disable aggressive doze immediately on wake
-                BatteryManager.setForceDoze(false)
-                ShellUtils.fastCmd("settings put global data_saver_mode 0")
-                lastTopApp = "" 
+                "com.example.phonecontrol.ACTION_COOLDOWN_START" -> {
+                    startCooldownTimer()
+                }
+                "com.example.phonecontrol.ACTION_COOLDOWN_END" -> {
+                    stopCooldownTimer()
+                }
+                Intent.ACTION_BATTERY_CHANGED -> {
+                    handleBatteryLogic(prefs)
+                }
             }
         }
     }
@@ -60,193 +79,231 @@ class AutoTweakService : Service() {
     override fun onCreate() {
         super.onCreate()
         launcherPackage = getLauncherPackageName()
+        
         val filter = IntentFilter().apply {
-            addAction(Intent.ACTION_SCREEN_OFF)
-            addAction(Intent.ACTION_SCREEN_ON)
+            addAction("com.example.phonecontrol.ACTION_STATE_CHANGED")
+            addAction("com.example.phonecontrol.ACTION_COOLDOWN_START")
+            addAction("com.example.phonecontrol.ACTION_COOLDOWN_END")
+            addAction(Intent.ACTION_BATTERY_CHANGED)
         }
-        registerReceiver(screenReceiver, filter)
-        createNotificationChannel()
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(eventReceiver, filter, Context.RECEIVER_EXPORTED)
+        } else {
+            @Suppress("UnspecifiedRegisterReceiverFlag")
+            registerReceiver(eventReceiver, filter)
+        }
+        createNotificationChannels()
+        
+        val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+        if (prefs.getBoolean("silent_system_enabled", false)) {
+            TweakManager.setSilentSystem(true)
+        }
+        
+        showGuardNotification()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val isDelayed = intent?.getBooleanExtra("delayed_start", false) ?: false
-        startMonitoring(if (isDelayed) 60000L else 0L, 2000)
+        
+        if (isDelayed) {
+            // 60 Seconds Delay after Boot to let system settle
+            Handler(Looper.getMainLooper()).postDelayed({
+                DaemonManager.startDaemon(this)
+                showBootNotification()
+            }, 60000)
+        } else {
+            // Instant start if app is opened manually
+            DaemonManager.startDaemon(this)
+        }
+        
         return START_STICKY
     }
 
-    private fun restartMonitoring(interval: Long) {
-        timer?.cancel()
-        startMonitoring(0, interval)
+    private fun startCooldownTimer() {
+        cooldownRemaining = 120 // 2 Minutes
+        cooldownHandler.removeCallbacks(cooldownRunnable)
+        cooldownHandler.post(cooldownRunnable)
     }
 
-    private fun startMonitoring(delay: Long, interval: Long) {
-        timer = Timer()
-        timer?.scheduleAtFixedRate(object : TimerTask() {
-            override fun run() {
-                // Boot activation notification
-                if (delay > 0 && !hasShownActivation && System.currentTimeMillis() > 0) {
-                    showActivationNotification(); hasShownActivation = true
-                }
+    private fun stopCooldownTimer() {
+        cooldownRemaining = 0
+        cooldownHandler.removeCallbacks(cooldownRunnable)
+        removeCooldownNotification()
+        
+        // Re-apply tweaks after cooldown
+        val topApp = lastTopApp
+        val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+        applyTweakProfile(topApp, prefs)
+    }
 
-                val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
-                val topApp = getForegroundApp()
-                
-                // --- FIX 4: Only unfreeze if app is in foreground or recently used (max 3) ---
-                val frozenApps = FreezerManager.getFrozenApps(this@AutoTweakService)
-                if (frozenApps.isNotEmpty()) {
-                    val recentApps = getRecentPackages().take(3) // Only keep last 3 apps unfrozen
-                    val lastLaunched = FreezerManager.lastLaunchedPackage
-                    val lastLaunchTime = FreezerManager.lastLaunchTime
-                    val isGracePeriod = (System.currentTimeMillis() - lastLaunchTime) < 10000
+    private fun updateCooldownNotification(seconds: Int) {
+        val minutes = seconds / 60
+        val remainingSecs = seconds % 60
+        val timeStr = String.format(Locale.US, "%02d:%02d", minutes, remainingSecs)
 
-                    for (pkg in frozenApps) {
-                        // Don't freeze if in foreground, recent apps, OR in 10s grace period after launch
-                        if (pkg == topApp || recentApps.contains(pkg) || (pkg == lastLaunched && isGracePeriod)) {
-                            FreezerManager.unfreezeApp(pkg)
-                        } else {
-                            FreezerManager.freezeApp(pkg)
-                        }
-                    }
-                }
+        val builder = NotificationCompat.Builder(this, CHANNEL_ALERTS_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setContentTitle("Emergency Cooldown Active")
+            .setContentText("System cooling down... Reverting in $timeStr")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setColor(0xFFFF1744.toInt()) 
 
-                // Battery Logic
-                handleBatteryLimit(prefs)
-                
-                // --- Re-apply Force Doze every tick IF screen is off ---
-                if (isScreenOff && (isLowBattery(prefs) || prefs.getBoolean("batt_force_doze_enabled", false))) {
-                    BatteryManager.setForceDoze(true)
-                }
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(COOLDOWN_NOTIF_ID, builder.build())
+    }
 
-                // Tweak Logic (Optimized)
-                val config = PerAppManager.getConfig(this@AutoTweakService, topApp)
-                var gMode = prefs.getString("selected_mode", "rbBalance") ?: "rbBalance"
-                var gFps = prefs.getString("selected_global_fps", "rbGlobalFpsAuto") ?: "rbGlobalFpsAuto"
-                var gFocus = prefs.getString("selected_focus", "rbFocusDaily") ?: "rbFocusDaily"
-                
-                if (isLowBattery(prefs)) {
-                    gMode = "rbPowerSaver"; gFps = "rbGlobalFps30"; gFocus = "rbFocusBattery"
-                }
-                
-                val configHash = "${config?.mode}|${config?.fps}|${config?.thermal}|${config?.touch}"
-                if (topApp != lastTopApp || gMode != lastGlobalMode || gFocus != lastFocus || gFps != lastGlobalFps || configHash != lastConfigHash) {
-                    applyTweaks(config, gMode, gFocus, gFps)
-                    lastTopApp = topApp; lastGlobalMode = gMode; lastFocus = gFocus; lastGlobalFps = gFps; lastConfigHash = configHash
-                }
+    private fun removeCooldownNotification() {
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.cancel(COOLDOWN_NOTIF_ID)
+    }
 
-                if (!ThermalManager.isCooldownActive) handleThermalSafety(prefs, ThermalManager.getTemperature())
-                if (System.currentTimeMillis() % 120000 < 2000) checkDailyOptimization(prefs)
+    private fun showBootNotification() {
+        val builder = NotificationCompat.Builder(this, CHANNEL_BOOT_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("Phone Control")
+            .setContentText("Optimization Activated on Boot")
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(BOOT_NOTIF_ID, builder.build())
+    }
+
+    private fun showGuardNotification() {
+        val builder = NotificationCompat.Builder(this, CHANNEL_STATUS_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("Phone Control")
+            .setContentText("System Guard Active (Native)")
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+        
+        // This makes it a proper foreground service notification
+        startForeground(GUARD_NOTIF_ID, builder.build())
+    }
+
+    private fun onForegroundAppChanged(topApp: String) {
+        val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+        
+        val frozenApps = FreezerManager.getFrozenApps(this)
+        if (frozenApps.isNotEmpty()) {
+            val lastLaunched = FreezerManager.lastLaunchedPackage
+            val isGracePeriod = (System.currentTimeMillis() - FreezerManager.lastLaunchTime) < 10000
+
+            if (frozenApps.contains(topApp) || (topApp == lastLaunched && isGracePeriod)) {
+                FreezerManager.unfreezeApp(topApp)
             }
-        }, delay, interval)
+        }
+
+        applyTweakProfile(topApp, prefs)
     }
 
-    private fun isLowBattery(prefs: android.content.SharedPreferences): Boolean {
+    private fun onScreenOff() {
+        val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+        if (prefs.getBoolean("sensor_firewall_enabled", false)) {
+            SensorManager.setSensorsEnabled(false)
+        }
+        
+        val level = getBatteryLevel()
+        val isLow = prefs.getBoolean("batt_low_trigger_enabled", false) && level <= prefs.getInt("batt_low_trigger_value", 20)
+        
+        if (isLow || prefs.getBoolean("batt_power_save_screen_off", false)) TweakManager.applyBatterySaver()
+        if (isLow || prefs.getBoolean("batt_data_saver_screen_off", false)) ShellUtils.fastCmd("settings put global data_saver_mode 1")
+        if (isLow || prefs.getBoolean("batt_force_doze_enabled", false)) BatteryManager.setForceDoze(true)
+    }
+
+    private fun onScreenOn() {
+        SensorManager.setSensorsEnabled(true)
+        BatteryManager.setForceDoze(false)
+        ShellUtils.fastCmd("settings put global data_saver_mode 0")
+        lastTopApp = ""
+    }
+
+    private fun handleBatteryLogic(prefs: android.content.SharedPreferences) {
         val bm = getSystemService(BATTERY_SERVICE) as AndroidBatteryManager
-        return prefs.getBoolean("batt_low_trigger_enabled", false) && 
-               bm.getIntProperty(AndroidBatteryManager.BATTERY_PROPERTY_CAPACITY) <= prefs.getInt("batt_low_trigger_value", 20)
-    }
-
-    private fun handleBatteryLimit(prefs: android.content.SharedPreferences) {
+        val level = bm.getIntProperty(AndroidBatteryManager.BATTERY_PROPERTY_CAPACITY)
+        
         if (prefs.getBoolean("batt_limit_enabled", false)) {
-            val bm = getSystemService(BATTERY_SERVICE) as AndroidBatteryManager
-            val level = bm.getIntProperty(AndroidBatteryManager.BATTERY_PROPERTY_CAPACITY)
             val limit = prefs.getInt("batt_limit_value", 80)
             if (level >= limit) BatteryManager.setChargingEnabled(false)
             else if (level < (limit - 5)) BatteryManager.setChargingEnabled(true)
         }
-    }
 
-    private fun handleThermalSafety(prefs: android.content.SharedPreferences, currentTemp: Int) {
-        val autoCooldownEnabled = prefs.getBoolean("auto_cooldown_enabled", false)
-        if (autoCooldownEnabled && currentTemp >= prefs.getInt("auto_cooldown_threshold", 50)) {
-            ThermalManager.startEmergencyCooldown(this@AutoTweakService) {}
-        } else {
-            val isThrottlingDisabled = prefs.getBoolean("disable_throttling", false)
-            if (isThrottlingDisabled && currentTemp >= prefs.getInt("temp_fuse", 45)) {
-                ThermalManager.setThrottlingEnabled(true)
-                prefs.edit().putBoolean("disable_throttling", false).apply()
+        val temp = ThermalManager.getTemperature()
+        if (!ThermalManager.isCooldownActive) {
+            val autoCooldownEnabled = prefs.getBoolean("auto_cooldown_enabled", false)
+            if (autoCooldownEnabled && temp >= prefs.getInt("auto_cooldown_threshold", 50)) {
+                ThermalManager.startEmergencyCooldown(this) {}
             }
         }
+        
+        checkDailyOptimization(prefs)
     }
 
-    private fun applyTweaks(config: PerAppManager.AppConfig?, gMode: String, gFocus: String, gFps: String) {
-        if (ThermalManager.isCooldownActive) return
-        if (config != null && config.mode != "Auto") applyMode(config.mode)
-        else if (gMode == "rbAutomatic") applyAi(getCpuUsage(), gFocus)
-        else applyManual(gMode)
+    private fun applyTweakProfile(topApp: String, prefs: android.content.SharedPreferences) {
+        if (ThermalManager.isCooldownActive) return 
 
-        if (config != null) {
-            TweakManager.setRefreshRate(config.fps)
-            ThermalManager.setThrottlingEnabled(config.thermal != "Disabled")
-            TweakManager.setTouchBoost(config.touch == "On")
-        } else {
-            TweakManager.setRefreshRate(when (gFps) {
-                "rbGlobalFps30" -> "30Hz"; "rbGlobalFps60" -> "60Hz"
-                "rbGlobalFps90" -> "90Hz"; "rbGlobalFps120" -> "120Hz"
-                else -> "Auto Switch"
-            })
-            TweakManager.setTouchBoost(false)
-            val isThrottlingDisabled = getSharedPreferences("prefs", MODE_PRIVATE).getBoolean("disable_throttling", false)
-            ThermalManager.setThrottlingEnabled(!isThrottlingDisabled)
+        val config = PerAppManager.getConfig(this, topApp)
+        var gMode = prefs.getString("selected_mode", "rbBalance") ?: "rbBalance"
+        var gFps = prefs.getString("selected_global_fps", "rbGlobalFpsAuto") ?: "rbGlobalFpsAuto"
+
+        val level = getBatteryLevel()
+        if (prefs.getBoolean("batt_low_trigger_enabled", false) && level <= prefs.getInt("batt_low_trigger_value", 20)) {
+            gMode = "rbPowerSaver"; gFps = "rbGlobalFps30"
+        }
+
+        val configHash = "${config?.mode}|${config?.fps}|${config?.thermal}|${config?.touch}"
+        if (topApp != lastTopApp || gMode != lastGlobalMode || configHash != lastConfigHash) {
+            
+            if (config != null && config.mode != "Auto") {
+                when (config.mode) {
+                    "Power Saver" -> TweakManager.applyBatterySaver()
+                    "Balance" -> TweakManager.applyBalance()
+                    "Performance" -> TweakManager.applyPerformance()
+                }
+            } else if (gMode == "rbAutomatic") {
+                TweakManager.applyBalance()
+            } else {
+                when (gMode) {
+                    "rbPowerSaver" -> TweakManager.applyBatterySaver()
+                    "rbBalance" -> TweakManager.applyBalance()
+                    "rbPerformance" -> TweakManager.applyPerformance()
+                }
+            }
+
+            if (config != null) {
+                TweakManager.setRefreshRate(config.fps)
+                ThermalManager.setThrottlingEnabled(config.thermal != "Disabled")
+                TweakManager.setTouchBoost(config.touch == "On")
+            } else {
+                TweakManager.setRefreshRate(when (gFps) {
+                    "rbGlobalFps30" -> "30Hz"; "rbGlobalFps60" -> "60Hz"
+                    "rbGlobalFps90" -> "90Hz"; "rbGlobalFps120" -> "120Hz"
+                    else -> "Auto Switch"
+                })
+                TweakManager.setTouchBoost(false)
+            }
+
+            lastTopApp = topApp; lastGlobalMode = gMode; lastConfigHash = configHash
         }
     }
 
-    private fun getForegroundApp(): String {
-        val result = ShellUtils.runAsRoot("dumpsys activity activities | grep mResumedActivity")
-        return try {
-            val output = result.output
-            if (output.contains(" ")) {
-                val parts = output.split(" ")
-                val pkgPart = parts.find { it.contains("/") }
-                pkgPart?.split("/")?.get(0) ?: ""
-            } else ""
-        } catch (e: Exception) { "" }
+    private fun getBatteryLevel(): Int {
+        val bm = getSystemService(BATTERY_SERVICE) as AndroidBatteryManager
+        return bm.getIntProperty(AndroidBatteryManager.BATTERY_PROPERTY_CAPACITY)
     }
 
     private fun getLauncherPackageName(): String {
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-        val resolveInfo = packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)
+        val resolveInfo = packageManager.resolveActivity(intent, 0)
         return resolveInfo?.activityInfo?.packageName ?: "com.nothing.launcher"
-    }
-
-    private fun getCpuUsage(): Int {
-        val result = ShellUtils.runAsRoot("top -n 1 -b | head -n 20 | grep 'CPU' | awk '{print $2}' | head -n 1")
-        return try { result.output.replace("%", "").split(".")[0].toInt() } catch (e: Exception) { 50 }
-    }
-
-    private fun getRecentPackages(): List<String> {
-        val result = ShellUtils.runAsRoot("dumpsys activity recents | grep 'cmp=' | head -n 8 | cut -d '=' -f3 | cut -d '/' -f1")
-        return result.output.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
-    }
-
-    private fun applyMode(mode: String) {
-        when (mode) {
-            "Power Saver" -> TweakManager.applyBatterySaver()
-            "Balance" -> TweakManager.applyBalance()
-            "Performance" -> TweakManager.applyPerformance()
-        }
-    }
-
-    private fun applyManual(key: String) {
-        when (key) {
-            "rbPowerSaver" -> TweakManager.applyBatterySaver()
-            "rbBalance" -> TweakManager.applyBalance()
-            "rbPerformance" -> TweakManager.applyPerformance()
-        }
-    }
-
-    private fun applyAi(usage: Int, focus: String) {
-        if (focus == "rbFocusBattery") {
-            if (usage > 80) TweakManager.applyBalance() else TweakManager.applyBatterySaver()
-        } else {
-            if (usage > 60) TweakManager.applyPerformance()
-            else if (usage < 15) TweakManager.applyBatterySaver()
-            else TweakManager.applyBalance()
-        }
     }
 
     private fun checkDailyOptimization(prefs: android.content.SharedPreferences) {
         if (!prefs.getBoolean("daily_deep_opt_enabled", false)) return
-        if (Calendar.getInstance().get(Calendar.HOUR_OF_DAY) == 3) {
+        val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        if (hour == 3) {
             val today = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
             if (prefs.getString("last_auto_opt_date", "") != today) {
                 DeepOptManager.runFullOptimization(this)
@@ -255,20 +312,31 @@ class AutoTweakService : Service() {
         }
     }
 
-    private fun showActivationNotification() {
-        val builder = NotificationCompat.Builder(this, CHANNEL_ID).setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle("Phone Control").setContentText("System Optimization Activated").setPriority(NotificationCompat.PRIORITY_DEFAULT).setAutoCancel(true)
-        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(100, builder.build())
-    }
-
-    private fun createNotificationChannel() {
+    private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(CHANNEL_ID, "Activation Status", NotificationManager.IMPORTANCE_DEFAULT)
             val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
+            
+            // 1. System Guard Channel (Ongoing)
+            val statusChannel = NotificationChannel(CHANNEL_STATUS_ID, "System Guard", NotificationManager.IMPORTANCE_LOW)
+            statusChannel.description = "Ongoing system optimization status"
+            manager.createNotificationChannel(statusChannel)
+            
+            // 2. Boot Activation Channel (One-time)
+            val bootChannel = NotificationChannel(CHANNEL_BOOT_ID, "Boot Activation", NotificationManager.IMPORTANCE_DEFAULT)
+            bootChannel.description = "Notifications when optimization starts after reboot"
+            manager.createNotificationChannel(bootChannel)
+            
+            // 3. Emergency Alerts Channel (Cooldown)
+            val alertsChannel = NotificationChannel(CHANNEL_ALERTS_ID, "Emergency Alerts", NotificationManager.IMPORTANCE_HIGH)
+            alertsChannel.description = "Critical alerts like thermal cooldown timer"
+            manager.createNotificationChannel(alertsChannel)
         }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
-    override fun onDestroy() { unregisterReceiver(screenReceiver); timer?.cancel(); ShellUtils.closePersistentShell(); super.onDestroy() }
+    override fun onDestroy() { 
+        unregisterReceiver(eventReceiver)
+        ShellUtils.closePersistentShell()
+        super.onDestroy() 
+    }
 }

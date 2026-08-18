@@ -19,6 +19,7 @@ class RamActivity : AppCompatActivity() {
 
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
         val rgZram = findViewById<RadioGroup>(R.id.rgZramSize)
+        val rgProfile = findViewById<RadioGroup>(R.id.rgRamProfile)
         
         val savedZram = prefs.getString("zram_size", "rbZram4G")
         when (savedZram) {
@@ -28,40 +29,37 @@ class RamActivity : AppCompatActivity() {
             "rbZram8G" -> findViewById<RadioButton>(R.id.rbZram8G).isChecked = true
         }
 
+        val savedProfile = prefs.getString("ram_profile", "rbProfileBalance")
+        when (savedProfile) {
+            "rbProfileBalance" -> findViewById<RadioButton>(R.id.rbProfileBalance).isChecked = true
+            "rbProfileMultitasking" -> findViewById<RadioButton>(R.id.rbProfileMultitasking).isChecked = true
+            "rbProfilePerformance" -> findViewById<RadioButton>(R.id.rbProfilePerformance).isChecked = true
+        }
+
         findViewById<Button>(R.id.btnApplyRam).setOnClickListener {
-            val checkedId = rgZram.checkedRadioButtonId
-            val key = when (checkedId) {
+            val zramKey = when (rgZram.checkedRadioButtonId) {
                 R.id.rbZramOff -> "rbZramOff"
                 R.id.rbZram2G -> "rbZram2G"
                 R.id.rbZram4G -> "rbZram4G"
                 R.id.rbZram8G -> "rbZram8G"
                 else -> "rbZram4G"
             }
-            prefs.edit().putString("zram_size", key).apply()
-            applyZram(key)
-        }
-    }
 
-    private fun applyZram(key: String) {
-        val size = when (key) {
-            "rbZramOff" -> "0"
-            "rbZram2G" -> "2147483648"
-            "rbZram4G" -> "4294967296"
-            "rbZram8G" -> "8589934592"
-            else -> "4294967296"
-        }
-
-        Toast.makeText(this, "Applying ZRAM... Please wait", Toast.LENGTH_SHORT).show()
-        thread {
-            ShellUtils.runAsRoot("swapoff /dev/block/zram0")
-            if (size != "0") {
-                ShellUtils.runAsRoot("echo 1 > /sys/block/zram0/reset")
-                ShellUtils.runAsRoot("echo $size > /sys/block/zram0/disksize")
-                ShellUtils.runAsRoot("mkswap /dev/block/zram0")
-                ShellUtils.runAsRoot("swapon /dev/block/zram0")
+            val profileKey = when (rgProfile.checkedRadioButtonId) {
+                R.id.rbProfileBalance -> "rbProfileBalance"
+                R.id.rbProfileMultitasking -> "rbProfileMultitasking"
+                R.id.rbProfilePerformance -> "rbProfilePerformance"
+                else -> "rbProfileBalance"
             }
-            runOnUiThread {
-                Toast.makeText(this, "ZRAM Settings Applied!", Toast.LENGTH_SHORT).show()
+
+            prefs.edit().putString("zram_size", zramKey).putString("ram_profile", profileKey).apply()
+            
+            Toast.makeText(this, "Applying RAM Optimization... Please wait", Toast.LENGTH_SHORT).show()
+            thread {
+                TweakManager.applyRamSettings(zramKey, profileKey)
+                runOnUiThread {
+                    Toast.makeText(this, "RAM Settings Applied!", Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }

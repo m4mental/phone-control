@@ -22,8 +22,10 @@ class OptimizationActivity : AppCompatActivity() {
 
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
         val switchDaily = findViewById<SwitchMaterial>(R.id.switchDaily)
+        val switchSilent = findViewById<SwitchMaterial>(R.id.switchSilent)
         
         switchDaily.isChecked = prefs.getBoolean("daily_deep_opt_enabled", false)
+        switchSilent.isChecked = prefs.getBoolean("silent_system_enabled", false)
         tvStatus.text = "Last run: ${prefs.getString("last_deep_opt", "Never")}"
 
         findViewById<Button>(R.id.btnRunNow).setOnClickListener {
@@ -35,6 +37,13 @@ class OptimizationActivity : AppCompatActivity() {
             if (isChecked) {
                 Toast.makeText(this, "Daily optimization scheduled for 3 AM", Toast.LENGTH_SHORT).show()
             }
+        }
+
+        switchSilent.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean("silent_system_enabled", isChecked).apply()
+            TweakManager.setSilentSystem(isChecked)
+            val msg = if (isChecked) "Silent Mode ON (Logcat Stopped)" else "Silent Mode OFF (Logcat Started)"
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         }
     }
 

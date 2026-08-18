@@ -1,6 +1,7 @@
 package com.example.phonecontrol
 
 import android.content.Context
+import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 
@@ -32,11 +33,22 @@ object ThermalManager {
         if (isCooldownActive) return
         isCooldownActive = true
 
+        // 1. Force Maximum Throttling and Battery Saver
         setThrottlingEnabled(true)
-        ShellUtils.fastCmd("am kill-all")
-        ShellUtils.fastCmd("settings put global airplane_mode_on 1")
-        ShellUtils.fastCmd("am broadcast -a android.intent.action.AIRPLANE_MODE")
         TweakManager.applyBatterySaver()
+        
+        // 2. Kill Heavy Background Apps
+        ShellUtils.fastCmd("am kill-all")
+
+        // 3. Kill Networks Brutally (Root)
+        ShellUtils.fastCmd("settings put global airplane_mode_on 1")
+        ShellUtils.fastCmd("am broadcast -a android.intent.action.AIRPLANE_MODE --ez state true")
+        ShellUtils.fastCmd("svc wifi disable")
+        ShellUtils.fastCmd("svc data disable")
+
+        // 4. Notify Service to start 2-minute timer notification
+        val intent = Intent("com.example.phonecontrol.ACTION_COOLDOWN_START")
+        context.sendBroadcast(intent)
 
         Handler(Looper.getMainLooper()).postDelayed({
             revertCooldown(context)
@@ -46,10 +58,18 @@ object ThermalManager {
     }
 
     private fun revertCooldown(context: Context) {
+        // Restore Networks
         ShellUtils.fastCmd("settings put global airplane_mode_on 0")
-        ShellUtils.fastCmd("am broadcast -a android.intent.action.AIRPLANE_MODE")
+        ShellUtils.fastCmd("am broadcast -a android.intent.action.AIRPLANE_MODE --ez state false")
+        ShellUtils.fastCmd("svc wifi enable")
+        ShellUtils.fastCmd("svc data enable")
+        
         val prefs = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
         val isThrottlingDisabled = prefs.getBoolean("disable_throttling", false)
         setThrottlingEnabled(!isThrottlingDisabled)
+        
+        // Re-apply current mode
+        val intent = Intent("com.example.phonecontrol.ACTION_COOLDOWN_END")
+        context.sendBroadcast(intent)
     }
 }

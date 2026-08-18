@@ -40,6 +40,7 @@ class BatteryActivity : AppCompatActivity() {
         val swLimit = findViewById<SwitchMaterial>(R.id.switchLimitCharge)
         val swBypass = findViewById<SwitchMaterial>(R.id.switchBypass)
         val swLowBatt = findViewById<SwitchMaterial>(R.id.switchAutoLowBatt)
+        val swSensorFirewall = findViewById<SwitchMaterial>(R.id.switchSensorFirewall)
         
         val layoutLimit = findViewById<View>(R.id.layoutLimitSeek)
         val seekbarLimit = findViewById<SeekBar>(R.id.seekbarLimit)
@@ -55,6 +56,7 @@ class BatteryActivity : AppCompatActivity() {
         swLimit.isChecked = prefs.getBoolean("batt_limit_enabled", false)
         swBypass.isChecked = prefs.getBoolean("batt_bypass_enabled", false)
         swLowBatt.isChecked = prefs.getBoolean("batt_low_trigger_enabled", false)
+        swSensorFirewall.isChecked = prefs.getBoolean("sensor_firewall_enabled", false)
         
         val savedLimit = prefs.getInt("batt_limit_value", 80)
         seekbarLimit.progress = savedLimit - 70
@@ -87,6 +89,11 @@ class BatteryActivity : AppCompatActivity() {
         swLowBatt.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean("batt_low_trigger_enabled", isChecked).apply()
             layoutLowBatt.visibility = if (isChecked) View.VISIBLE else View.GONE
+        }
+
+        swSensorFirewall.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean("sensor_firewall_enabled", isChecked).apply()
+            if (!isChecked) SensorManager.setSensorsEnabled(true) // Ensure on if disabled
         }
 
         seekbarLimit.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {

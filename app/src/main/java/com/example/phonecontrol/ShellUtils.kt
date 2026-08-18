@@ -8,57 +8,87 @@ import android.util.Log
 object ShellUtils {
     private var persistentProcess: Process? = null
     private var os: DataOutputStream? = null
+    private var reader: BufferedReader? = null
     
-    // Simple way to run a command and get output without persistent overhead for one-offs
+    private const val DONE_TOKEN = "---CMD_DONE---"
+
+    /**
+     * Runs a command as root and returns the output.
+     * Reuses the persistent shell session to avoid spawning new processes.
+     */
     @Synchronized
     fun runAsRoot(command: String): ShellResult {
-        var process: Process? = null
-        var reader: BufferedReader? = null
-        val output = StringBuilder()
-
         try {
-            process = Runtime.getRuntime().exec(arrayOf("su", "-c", command))
-            reader = BufferedReader(InputStreamReader(process.inputStream))
+            ensureShell()
+            
+            // Send the command followed by a unique token
+            os?.writeBytes("$command\n")
+            os?.writeBytes("echo $DONE_TOKEN\n")
+            os?.flush()
+
+            val output = StringBuilder()
             var line: String?
-            while (reader.readLine().also { line = it } != null) {
+            while (true) {
+                line = reader?.readLine()
+                if (line == null || line == DONE_TOKEN) break
                 output.append(line).append("\n")
             }
-            process.waitFor()
-            return ShellResult(process.exitValue(), output.toString().trim())
+            
+            return ShellResult(0, output.toString().trim())
         } catch (e: Exception) {
-            Log.e("ShellUtils", "Error: $command", e)
+            Log.e("ShellUtils", "Error running command: $command", e)
+            closePersistentShell()
             return ShellResult(-1, e.message ?: "Error")
-        } finally {
-            try {
-                reader?.close()
-                process?.destroy()
-            } catch (e: Exception) {}
         }
     }
 
-    // Fast command execution for background service (no output reading to save battery)
+    /**
+     * Fast command execution (no output). Reuses the same shell.
+     */
     @Synchronized
     fun fastCmd(command: String) {
         try {
-            if (persistentProcess == null) {
-                persistentProcess = Runtime.getRuntime().exec("su")
-                os = DataOutputStream(persistentProcess!!.outputStream)
-            }
+            ensureShell()
             os?.writeBytes("$command\n")
             os?.flush()
         } catch (e: Exception) {
+            Log.e("ShellUtils", "Error in fastCmd", e)
             closePersistentShell()
         }
     }
 
+    @Synchronized
+    private fun ensureShell() {
+        if (persistentProcess == null || !isProcessAlive(persistentProcess)) {
+            closePersistentShell()
+            persistentProcess = Runtime.getRuntime().exec("su")
+            os = DataOutputStream(persistentProcess!!.outputStream)
+            reader = BufferedReader(InputStreamReader(persistentProcess!!.inputStream))
+        }
+    }
+
+    private fun isProcessAlive(p: Process?): Boolean {
+        return try {
+            p?.exitValue()
+            false
+        } catch (e: IllegalThreadStateException) {
+            true
+        }
+    }
+
+    @Synchronized
     fun closePersistentShell() {
         try {
             os?.writeBytes("exit\n")
             os?.flush()
-            os?.close()
-            persistentProcess?.destroy()
         } catch (e: Exception) {}
+        
+        try { os?.close() } catch (e: Exception) {}
+        try { reader?.close() } catch (e: Exception) {}
+        try { persistentProcess?.destroy() } catch (e: Exception) {}
+        
         os = null
+        reader = null
         persistentProcess = null
     }
 
