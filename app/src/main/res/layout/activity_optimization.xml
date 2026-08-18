@@ -83,6 +83,16 @@
                 app:backgroundTint="@android:color/white"
                 app:cornerRadius="8dp" />
 
+            <TextView
+                android:id="@+id/tvLiveLog"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:textColor="@color/color_root"
+                android:textSize="12sp"
+                android:fontFamily="monospace"
+                android:visibility="gone" />
+
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"

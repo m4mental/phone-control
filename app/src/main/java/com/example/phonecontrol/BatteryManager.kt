@@ -63,9 +63,48 @@ object BatteryManager {
 
     fun setForceDoze(enabled: Boolean) {
         if (enabled) {
+            // App-level doze
             ShellUtils.fastCmd("dumpsys deviceidle force-idle deep")
+            // Kernel-level deep idle/sleep (Device specific nodes)
+            ShellUtils.fastCmd("echo 1 > /sys/module/lpm_levels/parameters/sleep_disabled 2>/dev/null")
+            ShellUtils.fastCmd("echo N > /sys/module/printk/parameters/enabled 2>/dev/null") // Stop logs to sleep better
         } else {
             ShellUtils.fastCmd("dumpsys deviceidle unforce")
+            ShellUtils.fastCmd("echo 0 > /sys/module/lpm_levels/parameters/sleep_disabled 2>/dev/null")
+            ShellUtils.fastCmd("echo Y > /sys/module/printk/parameters/enabled 2>/dev/null")
+        }
+    }
+
+    /**
+     * Force fast charging on USB ports (PC/Car).
+     */
+    fun setUsbFastCharge(enabled: Boolean) {
+        val value = if (enabled) "1" else "0"
+        val paths = listOf(
+            "/sys/kernel/fast_charge/force_fast_charge",
+            "/sys/module/msm_otg/parameters/fast_chg",
+            "/sys/class/power_supply/battery/allow_fast_chg",
+            "/sys/module/qpnp_smbcharger/parameters/fast_charge_force"
+        )
+        for (path in paths) {
+            ShellUtils.fastCmd("echo $value > $path 2>/dev/null")
+        }
+    }
+
+    /**
+     * Limits the charging current to reduce heat and prolong battery health.
+     * @param mA Current in milliAmperes (e.g., 500, 1500, 3000)
+     */
+    fun setChargeCurrent(mA: Int) {
+        val uA = mA * 1000 // Kernel usually takes microAmperes
+        val paths = listOf(
+            "/sys/class/power_supply/battery/constant_charge_current_max",
+            "/sys/class/power_supply/battery/input_current_limit",
+            "/sys/class/power_supply/battery/charge_control_limit",
+            "/sys/class/power_supply/main/constant_charge_current_max"
+        )
+        for (path in paths) {
+            ShellUtils.fastCmd("echo $uA > $path 2>/dev/null")
         }
     }
 }

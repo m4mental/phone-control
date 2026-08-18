@@ -64,6 +64,7 @@ class PerAppActivity : AppCompatActivity() {
             val tvName = view.findViewById<TextView>(R.id.tvAppName)
             val tvSummary = view.findViewById<TextView>(R.id.tvSummary)
             val ivArrow = view.findViewById<ImageView>(R.id.ivExpandArrow)
+            val tvLiveBadge = view.findViewById<TextView>(R.id.tvLiveBadge)
             val layoutHeader = view.findViewById<View>(R.id.layoutHeader)
             val layoutConfig = view.findViewById<View>(R.id.layoutConfig)
 
@@ -74,6 +75,14 @@ class PerAppActivity : AppCompatActivity() {
                 ivIcon.setImageDrawable(pm.getApplicationIcon(appInfo))
             } catch (e: Exception) {
                 tvName.text = "Unknown App"
+            }
+            
+            // Phase 6: Show LIVE badge if running
+            thread {
+                val topApp = ShellUtils.runAsRoot("dumpsys window | grep mCurrentFocus").output
+                if (topApp.contains(packageName)) {
+                    runOnUiThread { tvLiveBadge.visibility = View.VISIBLE }
+                }
             }
             
             fun updateSummaryLabel(c: PerAppManager.AppConfig) {
@@ -137,6 +146,16 @@ class PerAppActivity : AppCompatActivity() {
                 val newConfig = PerAppManager.AppConfig(mode, fps, thermal, touch)
                 PerAppManager.saveConfig(this, packageName, mode, fps, thermal, touch)
                 updateSummaryLabel(newConfig)
+                
+                // Phase 6: Live Tuning - Apply if app is currently in foreground
+                thread {
+                    val topApp = ShellUtils.runAsRoot("dumpsys window | grep mCurrentFocus").output
+                    if (topApp.contains(packageName)) {
+                        TweakManager.applyGlobalMode(mode)
+                        TweakManager.setRefreshRate(fps)
+                        if (mode == "Performance") TweakManager.applyProcessPriority(packageName, true)
+                    }
+                }
             }
 
             rgMode.setOnCheckedChangeListener { _, _ -> onConfigChange() }

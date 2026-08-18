@@ -1,6 +1,7 @@
 package com.example.phonecontrol
 
 import android.os.Bundle
+import android.view.View
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
@@ -12,12 +13,14 @@ import kotlin.concurrent.thread
 class OptimizationActivity : AppCompatActivity() {
 
     private lateinit var tvStatus: TextView
+    private lateinit var tvLiveLog: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_optimization)
 
         tvStatus = findViewById(R.id.tvOptStatus)
+        tvLiveLog = findViewById(R.id.tvLiveLog)
         findViewById<MaterialToolbar>(R.id.toolbarOpt).setNavigationOnClickListener { finish() }
 
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
@@ -52,17 +55,29 @@ class OptimizationActivity : AppCompatActivity() {
         btn.isEnabled = false
         btn.text = "OPTIMIZING..."
         
+        tvLiveLog.text = ""
+        tvLiveLog.visibility = View.VISIBLE
+        
         Toast.makeText(this, "Deep optimization started... Please do not close the app.", Toast.LENGTH_LONG).show()
         
         thread {
-            DeepOptManager.runFullOptimization(this) { time ->
-                runOnUiThread {
-                    tvStatus.text = "Last run: $time"
-                    btn.isEnabled = true
-                    btn.text = "RUN DEEP OPTIMIZATION"
-                    Toast.makeText(this, "Optimization Complete!", Toast.LENGTH_SHORT).show()
+            DeepOptManager.runFullOptimization(
+                context = this,
+                onProgress = { task ->
+                    runOnUiThread {
+                        tvLiveLog.append("> $task\n")
+                    }
+                },
+                onComplete = { time ->
+                    runOnUiThread {
+                        tvStatus.text = "Last run: $time"
+                        btn.isEnabled = true
+                        btn.text = "RUN DEEP OPTIMIZATION"
+                        tvLiveLog.append("\n[SUCCESS] Optimization Complete!")
+                        Toast.makeText(this, "Optimization Complete!", Toast.LENGTH_SHORT).show()
+                    }
                 }
-            }
+            )
         }
     }
 }

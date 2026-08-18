@@ -23,11 +23,12 @@ object DaemonManager {
             
             last_app=""
             last_screen="on"
+            last_load=0
             
             echo "Daemon started at ${'$'}(date)" > "${'$'}LOG_FILE"
             
             while true; do
-                # 1. Check Screen State (faster than dumpsys)
+                # 1. Check Screen State
                 screen_state=${'$'}(dumpsys display | grep "mScreenState" | head -n 1 | cut -d "=" -f2)
                 
                 if [ "${'$'}screen_state" = "OFF" ]; then
@@ -48,9 +49,19 @@ object DaemonManager {
                 top_app=${'$'}(dumpsys window | grep mCurrentFocus | cut -d '/' -f1 | rev | cut -d ' ' -f1 | rev)
                 
                 if [ "${'$'}top_app" != "${'$'}last_app" ]; then
-                    # Notify Kotlin app about app change
                     am broadcast -a com.example.phonecontrol.ACTION_STATE_CHANGED --es "event" "app_change" --es "pkg" "${'$'}top_app"
                     last_app="${'$'}top_app"
+                fi
+
+                # 3. Dynamic CPU Load (Every 4 seconds to save battery)
+                if [ $(( $(date +%s) % 4 )) -eq 0 ]; then
+                    # Get CPU Load from /proc/stat
+                    load=${'$'}(top -n 1 -b -m 1 | grep "CPU" | head -n 1 | awk '{print ${'$'}2}' | cut -d '%' -f1 | cut -d '.' -f1)
+                    
+                    # Only broadcast if load changes significantly (> 20%) or if it crosses thresholds
+                    if [ "${'$'}load" -gt 70 ] || [ "${'$'}load" -lt 20 ]; then
+                         am broadcast -a com.example.phonecontrol.ACTION_STATE_CHANGED --es "event" "load_change" --ei "load" "${'$'}load"
+                    fi
                 fi
                 
                 sleep 2

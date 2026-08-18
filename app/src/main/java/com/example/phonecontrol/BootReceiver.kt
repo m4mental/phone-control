@@ -14,8 +14,17 @@ class BootReceiver : BroadcastReceiver() {
                 // Aggressive root-level activation
                 ShellUtils.runAsRoot("dumpsys deviceidle whitelist +com.example.phonecontrol")
                 
-                // Re-apply RAM and Multitasking settings (Immediate for better boot performance)
+                // Re-apply Kernel Mode Settings
                 val prefs = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
+                val savedModeKey = prefs.getString("selected_mode", "rbBalance") ?: "rbBalance"
+                val activeMode = when(savedModeKey) {
+                    "rbPowerSaver" -> "Power Saver"
+                    "rbPerformance" -> "Performance"
+                    else -> "Balance"
+                }
+                TweakManager.applyGlobalMode(activeMode)
+                
+                // Re-apply RAM and Multitasking settings
                 val zram = prefs.getString("zram_size", "rbZram4G") ?: "rbZram4G"
                 val profile = prefs.getString("ram_profile", "rbProfileBalance") ?: "rbProfileBalance"
                 TweakManager.applyRamSettings(zram, profile)
@@ -25,6 +34,28 @@ class BootReceiver : BroadcastReceiver() {
                 val tcp = prefs.getBoolean("network_tcp_tweaks", false)
                 val lowLat = prefs.getBoolean("network_low_latency", false)
                 TweakManager.applyNetworkSettings(dns, tcp, lowLat)
+
+                // Re-apply Battery Engine settings
+                if (prefs.getBoolean("batt_usb_fast_charge", false)) {
+                    BatteryManager.setUsbFastCharge(true)
+                }
+                if (prefs.getBoolean("batt_bypass_enabled", false)) {
+                    BatteryManager.setBypassEnabled(true)
+                }
+                if (prefs.getBoolean("batt_charge_speed_enabled", false)) {
+                    val chargeMode = prefs.getString("batt_charge_speed_mode", "rbChargeDefault") ?: "rbChargeDefault"
+                    val mA = when (chargeMode) {
+                        "rbChargeSlow" -> 500
+                        "rbChargeBalanced" -> 1500
+                        else -> 3000
+                    }
+                    BatteryManager.setChargeCurrent(mA)
+                }
+
+                // Apply Global Resolution
+                val resKey = prefs.getString("screen_res", "rbRes1080") ?: "rbRes1080"
+                val sizeCmd = if (resKey == "rbRes720") "wm size 720x1600" else "wm size reset"
+                ShellUtils.fastCmd(sizeCmd)
                 
                 val serviceIntent = Intent(context, AutoTweakService::class.java).apply {
                     putExtra("delayed_start", true)

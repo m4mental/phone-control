@@ -2,6 +2,7 @@ package com.example.phonecontrol
 
 import android.os.Bundle
 import android.widget.Button
+import android.widget.EditText
 import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.Toast
@@ -25,19 +26,21 @@ class ResolutionActivity : AppCompatActivity() {
 
         findViewById<Button>(R.id.btnApplyRes).setOnClickListener {
             val checkedId = rgRes.checkedRadioButtonId
-            val key = if (checkedId == R.id.rbRes720) "rbRes720" else "rbRes1080"
-            prefs.edit().putString("screen_res", key).apply()
-            applyResolution(key)
+            val resKey = if (checkedId == R.id.rbRes720) "rbRes720" else "rbRes1080"
+
+            prefs.edit()
+                .putString("screen_res", resKey)
+                .apply()
+            
+            applySettings(resKey)
         }
     }
 
-    private fun applyResolution(key: String) {
-        val sizeCmd = if (key == "rbRes720") "wm size 720x1600" else "wm size reset"
-        val densityCmd = if (key == "rbRes720") "wm density 280" else "wm density reset"
+    private fun applySettings(resKey: String) {
+        val sizeCmd = if (resKey == "rbRes720") "wm size 720x1600" else "wm size reset"
         
-        Toast.makeText(this, "Applying Resolution...", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Applying Settings...", Toast.LENGTH_SHORT).show()
         ShellUtils.runAsRoot(sizeCmd)
-        ShellUtils.runAsRoot(densityCmd)
         Toast.makeText(this, "Done!", Toast.LENGTH_SHORT).show()
     }
 }

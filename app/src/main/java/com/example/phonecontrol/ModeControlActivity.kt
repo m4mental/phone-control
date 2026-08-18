@@ -62,6 +62,19 @@ class ModeControlActivity : AppCompatActivity() {
             }
             layoutFocusSettings.visibility = if (modeKey == "rbAutomatic") View.VISIBLE else View.GONE
             prefs.edit().putString("selected_mode", modeKey).apply()
+            
+            // Immediate Application
+            val displayMode = when(modeKey) {
+                "rbPowerSaver" -> "Power Saver"
+                "rbPerformance" -> "Performance"
+                else -> "Balance"
+            }
+            
+            if (modeKey != "rbAutomatic") {
+                kotlin.concurrent.thread {
+                    TweakManager.applyGlobalMode(displayMode)
+                }
+            }
         }
 
         rgFocus.setOnCheckedChangeListener { _, checkedId ->

@@ -21,8 +21,6 @@ class FreezerActivity : AppCompatActivity() {
     
     private var isEditMode = false
     private val selectedToRemove = mutableSetOf<String>()
-    
-    // Cache for app picker to make it instant
     private var cachedAppsList: List<ApplicationInfo>? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -49,13 +47,15 @@ class FreezerActivity : AppCompatActivity() {
             exitEditMode()
         }
 
-        // Start pre-fetching apps in background for instant picker
         thread {
             cachedAppsList = pm.getInstalledApplications(0)
                 .filter { pm.getLaunchIntentForPackage(it.packageName) != null }
                 .sortedBy { pm.getApplicationLabel(it).toString().lowercase() }
         }
+    }
 
+    override fun onResume() {
+        super.onResume()
         refreshList()
     }
 
@@ -65,7 +65,7 @@ class FreezerActivity : AppCompatActivity() {
         
         if (frozenApps.isEmpty()) {
             val tv = TextView(this).apply {
-                text = "No apps frozen yet."
+                text = "No apps in hibernation list."
                 setTextColor(android.graphics.Color.GRAY)
                 gravity = android.view.Gravity.CENTER
                 setPadding(0, 50, 0, 0)
@@ -74,51 +74,63 @@ class FreezerActivity : AppCompatActivity() {
             return
         }
 
-        for (pkg in frozenApps) {
-            val view = layoutInflater.inflate(R.layout.item_app_picker, layoutFrozenAppsList, false)
-            val ivIcon = view.findViewById<ImageView>(R.id.ivAppIcon)
-            val tvName = view.findViewById<TextView>(R.id.tvAppName)
-            val tvPkg = view.findViewById<TextView>(R.id.tvPackageName)
-            val cbSelect = view.findViewById<CheckBox>(R.id.cbSelect)
-            
-            if (isEditMode) {
-                cbSelect.visibility = View.VISIBLE
-                cbSelect.isChecked = selectedToRemove.contains(pkg)
-            } else {
-                cbSelect.visibility = View.GONE
+        thread {
+            val statusMap = mutableMapOf<String, Boolean>()
+            for (pkg in frozenApps) {
+                statusMap[pkg] = FreezerManager.isAppTrulyActive(pkg)
             }
 
-            try {
-                val flags = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-                    PackageManager.MATCH_DISABLED_COMPONENTS
-                } else {
-                    PackageManager.GET_DISABLED_COMPONENTS
-                }
-                val appInfo = pm.getApplicationInfo(pkg, flags)
-                ivIcon.setImageDrawable(pm.getApplicationIcon(appInfo))
-                tvName.text = pm.getApplicationLabel(appInfo)
-            } catch (e: Exception) {
-                tvName.text = "Unknown App"
-            }
-            tvPkg.text = pkg
-
-            view.setOnClickListener {
-                if (isEditMode) {
-                    toggleSelection(pkg, cbSelect)
-                } else {
-                    FreezerManager.launchApp(this, pkg)
-                    Toast.makeText(this, "Launching...", Toast.LENGTH_SHORT).show()
+            runOnUiThread {
+                for (pkg in frozenApps) {
+                    addAppView(pkg, statusMap[pkg] ?: false)
                 }
             }
-            
-            view.setOnLongClickListener {
-                if (!isEditMode) {
-                    enterEditMode(pkg)
-                }
-                true
-            }
-            layoutFrozenAppsList.addView(view)
         }
+    }
+
+    private fun addAppView(pkg: String, isActive: Boolean) {
+        val view = layoutInflater.inflate(R.layout.item_app_picker, layoutFrozenAppsList, false)
+        val ivIcon = view.findViewById<ImageView>(R.id.ivAppIcon)
+        val tvName = view.findViewById<TextView>(R.id.tvAppName)
+        val tvPkg = view.findViewById<TextView>(R.id.tvPackageName)
+        val tvStatus = view.findViewById<TextView>(R.id.tvAppStatus)
+        val cbSelect = view.findViewById<CheckBox>(R.id.cbSelect)
+        
+        cbSelect.visibility = if (isEditMode) View.VISIBLE else View.GONE
+        cbSelect.isChecked = selectedToRemove.contains(pkg)
+
+        try {
+            val appInfo = pm.getApplicationInfo(pkg, PackageManager.MATCH_UNINSTALLED_PACKAGES)
+            ivIcon.setImageDrawable(pm.getApplicationIcon(appInfo))
+            tvName.text = pm.getApplicationLabel(appInfo)
+        } catch (e: Exception) {
+            tvName.text = "Unknown App"
+        }
+        
+        tvPkg.text = pkg
+        
+        if (isActive) {
+            tvStatus.text = "ACTIVE"
+            tvStatus.setTextColor(android.graphics.Color.GREEN)
+        } else {
+            tvStatus.text = "HIBERNATING"
+            tvStatus.setTextColor(android.graphics.Color.CYAN)
+        }
+
+        view.setOnClickListener {
+            if (isEditMode) {
+                toggleSelection(pkg, cbSelect)
+            } else {
+                FreezerManager.launchApp(this, pkg)
+                Toast.makeText(this, "Resuming...", Toast.LENGTH_SHORT).show()
+            }
+        }
+        
+        view.setOnLongClickListener {
+            if (!isEditMode) enterEditMode(pkg)
+            true
+        }
+        layoutFrozenAppsList.addView(view)
     }
 
     private fun toggleSelection(pkg: String, cb: CheckBox) {
@@ -151,7 +163,7 @@ class FreezerActivity : AppCompatActivity() {
         
         AlertDialog.Builder(this)
             .setTitle("Unfreeze Selected?")
-            .setMessage("Remove ${selectedToRemove.size} apps from Freezer?")
+            .setMessage("Stop hibernation for ${selectedToRemove.size} apps?")
             .setPositiveButton("Yes") { _, _ ->
                 val current = FreezerManager.getFrozenApps(this).toMutableSet()
                 for (pkg in selectedToRemove) {
@@ -173,7 +185,6 @@ class FreezerActivity : AppCompatActivity() {
         val cbSelectAll = dialogView.findViewById<CheckBox>(R.id.cbSelectAll)
         val listView = dialogView.findViewById<ListView>(R.id.lvApps)
 
-        // Use cached list or fetch if not ready
         val allApps = cachedAppsList ?: pm.getInstalledApplications(0)
             .filter { pm.getLaunchIntentForPackage(it.packageName) != null }
             .sortedBy { pm.getApplicationLabel(it).toString().lowercase() }
@@ -197,6 +208,7 @@ class FreezerActivity : AppCompatActivity() {
                     visibility = View.VISIBLE
                     isChecked = selectedPackages.contains(app.packageName)
                 }
+                view.findViewById<TextView>(R.id.tvAppStatus).visibility = View.GONE
                 return view
             }
         }
@@ -243,7 +255,7 @@ class FreezerActivity : AppCompatActivity() {
 
         val dialog = AlertDialog.Builder(this)
             .setView(dialogView)
-            .setPositiveButton("Freeze Selected") { _, _ ->
+            .setPositiveButton("Add to Hibernation") { _, _ ->
                 val current = FreezerManager.getFrozenApps(this).toMutableSet()
                 selectedPackages.forEach { current.add(it); FreezerManager.freezeApp(it) }
                 FreezerManager.saveFrozenApps(this, current)

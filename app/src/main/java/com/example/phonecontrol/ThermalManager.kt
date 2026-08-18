@@ -29,6 +29,22 @@ object ThermalManager {
         }
     }
 
+    /**
+     * Preventive Thermal Guard: Slower throttling before emergency.
+     */
+    fun applyPreventiveThrottling(temp: Int) {
+        if (isCooldownActive) return
+        
+        if (temp >= 42) {
+            // Apply light throttling
+            ShellUtils.fastCmd("echo 1 > /sys/devices/virtual/thermal/thermal_message/sconfig 2>/dev/null")
+            ShellUtils.fastCmd("echo 50 > /proc/sys/kernel/sched_upmigrate 2>/dev/null")
+        } else if (temp < 40) {
+            // Revert light throttling if temp is safe
+            ShellUtils.fastCmd("echo 0 > /sys/devices/virtual/thermal/thermal_message/sconfig 2>/dev/null")
+        }
+    }
+
     fun startEmergencyCooldown(context: Context, onComplete: () -> Unit) {
         if (isCooldownActive) return
         isCooldownActive = true

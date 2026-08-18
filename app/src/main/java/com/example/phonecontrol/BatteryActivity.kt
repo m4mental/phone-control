@@ -5,6 +5,8 @@ import android.os.Bundle
 import android.view.View
 import android.widget.SeekBar
 import android.widget.TextView
+import android.widget.RadioGroup
+import android.widget.RadioButton
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.switchmaterial.SwitchMaterial
@@ -41,8 +43,12 @@ class BatteryActivity : AppCompatActivity() {
         val swBypass = findViewById<SwitchMaterial>(R.id.switchBypass)
         val swLowBatt = findViewById<SwitchMaterial>(R.id.switchAutoLowBatt)
         val swSensorFirewall = findViewById<SwitchMaterial>(R.id.switchSensorFirewall)
+        val swUsbFastCharge = findViewById<SwitchMaterial>(R.id.switchUsbFastCharge)
+        val swChargeSpeed = findViewById<SwitchMaterial>(R.id.switchChargeSpeed)
         
         val layoutLimit = findViewById<View>(R.id.layoutLimitSeek)
+        val layoutChargeSpeed = findViewById<View>(R.id.layoutChargeSpeedOptions)
+        val rgChargeSpeed = findViewById<RadioGroup>(R.id.rgChargeSpeed)
         val seekbarLimit = findViewById<SeekBar>(R.id.seekbarLimit)
         val tvLimitValue = findViewById<TextView>(R.id.tvLimitValue)
         
@@ -57,7 +63,17 @@ class BatteryActivity : AppCompatActivity() {
         swBypass.isChecked = prefs.getBoolean("batt_bypass_enabled", false)
         swLowBatt.isChecked = prefs.getBoolean("batt_low_trigger_enabled", false)
         swSensorFirewall.isChecked = prefs.getBoolean("sensor_firewall_enabled", false)
+        swUsbFastCharge.isChecked = prefs.getBoolean("batt_usb_fast_charge", false)
+        swChargeSpeed.isChecked = prefs.getBoolean("batt_charge_speed_enabled", false)
         
+        layoutChargeSpeed.visibility = if (swChargeSpeed.isChecked) View.VISIBLE else View.GONE
+        val savedChargeMode = prefs.getString("batt_charge_speed_mode", "rbChargeDefault")
+        when (savedChargeMode) {
+            "rbChargeSlow" -> findViewById<RadioButton>(R.id.rbChargeSlow).isChecked = true
+            "rbChargeBalanced" -> findViewById<RadioButton>(R.id.rbChargeBalanced).isChecked = true
+            else -> findViewById<RadioButton>(R.id.rbChargeDefault).isChecked = true
+        }
+
         val savedLimit = prefs.getInt("batt_limit_value", 80)
         seekbarLimit.progress = savedLimit - 70
         tvLimitValue.text = "$savedLimit%"
@@ -96,6 +112,38 @@ class BatteryActivity : AppCompatActivity() {
             if (!isChecked) SensorManager.setSensorsEnabled(true) // Ensure on if disabled
         }
 
+        swUsbFastCharge.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean("batt_usb_fast_charge", isChecked).apply()
+            BatteryManager.setUsbFastCharge(isChecked)
+        }
+
+        swChargeSpeed.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean("batt_charge_speed_enabled", isChecked).apply()
+            layoutChargeSpeed.visibility = if (isChecked) View.VISIBLE else View.GONE
+            if (!isChecked) {
+                // Restore default if turned off
+                BatteryManager.setChargeCurrent(3000) // Usually 3A is safe default
+            } else {
+                // Re-apply selected
+                val mode = when (rgChargeSpeed.checkedRadioButtonId) {
+                    R.id.rbChargeSlow -> "rbChargeSlow"
+                    R.id.rbChargeBalanced -> "rbChargeBalanced"
+                    else -> "rbChargeDefault"
+                }
+                applyChargeSpeed(mode)
+            }
+        }
+
+        rgChargeSpeed.setOnCheckedChangeListener { _, checkedId ->
+            val mode = when (checkedId) {
+                R.id.rbChargeSlow -> "rbChargeSlow"
+                R.id.rbChargeBalanced -> "rbChargeBalanced"
+                else -> "rbChargeDefault"
+            }
+            prefs.edit().putString("batt_charge_speed_mode", mode).apply()
+            applyChargeSpeed(mode)
+        }
+
         seekbarLimit.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(s: SeekBar?, p: Int, f: Boolean) {
                 val v = 70 + p
@@ -117,6 +165,15 @@ class BatteryActivity : AppCompatActivity() {
         })
 
         startStatsUpdate()
+    }
+
+    private fun applyChargeSpeed(modeKey: String) {
+        val mA = when (modeKey) {
+            "rbChargeSlow" -> 500
+            "rbChargeBalanced" -> 1500
+            else -> 3000
+        }
+        BatteryManager.setChargeCurrent(mA)
     }
 
     private fun startStatsUpdate() {

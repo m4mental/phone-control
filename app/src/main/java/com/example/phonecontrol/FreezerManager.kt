@@ -2,23 +2,52 @@ package com.example.phonecontrol
 
 import android.content.Context
 import android.content.Intent
+import android.content.ComponentName
+import android.os.Build
 
 object FreezerManager {
 
-    // Track the last launched app to prevent immediate re-freezing by the service
+    // Track the last launched app to prevent immediate re-freezing
     var lastLaunchedPackage: String? = null
     var lastLaunchTime: Long = 0
 
+    /**
+     * Hibernates an app using Kernel-level pausing (am freeze).
+     */
     fun freezeApp(packageName: String) {
-        // Don't freeze if it was just launched (give it 10 seconds grace period)
         if (packageName == lastLaunchedPackage && (System.currentTimeMillis() - lastLaunchTime) < 10000) {
             return
         }
-        ShellUtils.fastCmd("pm disable-user --user 0 $packageName")
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            ShellUtils.fastCmd("am freeze $packageName")
+        } else {
+            val pids = getPids(packageName)
+            for (pid in pids) {
+                ShellUtils.fastCmd("kill -STOP $pid")
+            }
+        }
+
+        setOomScore(packageName, 900)
+        ShellUtils.fastCmd("am set-standby-bucket $packageName restricted")
     }
 
+    /**
+     * Resumes an app instantly.
+     */
     fun unfreezeApp(packageName: String) {
         ShellUtils.fastCmd("pm enable $packageName")
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            ShellUtils.fastCmd("am unfreeze $packageName")
+        } else {
+            val pids = getPids(packageName)
+            for (pid in pids) {
+                ShellUtils.fastCmd("kill -CONT $pid")
+            }
+        }
+        
+        setOomScore(packageName, 0)
         ShellUtils.fastCmd("am set-standby-bucket $packageName active")
     }
 
@@ -26,25 +55,41 @@ object FreezerManager {
         lastLaunchedPackage = packageName
         lastLaunchTime = System.currentTimeMillis()
 
-        // Synchronous enable to ensure package manager sees it before we request intent
-        ShellUtils.runAsRoot("pm enable $packageName")
-        ShellUtils.runAsRoot("am set-standby-bucket $packageName active")
-        
-        // Give system a moment to register the change
-        Thread.sleep(500)
+        // Reverting to the previous launch logic as requested
+        unfreezeApp(packageName)
+        Thread.sleep(300)
         
         val intent = context.packageManager.getLaunchIntentForPackage(packageName)
-        if (intent != null) {
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
-        } else {
-            // Fallback: try to find any activity if main launcher intent is missing
-            val altIntent = context.packageManager.getLaunchIntentForPackage(packageName)
-            altIntent?.let {
-                it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                context.startActivity(it)
-            }
+        intent?.let {
+            it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(it)
         }
+    }
+
+    private fun setOomScore(packageName: String, score: Int) {
+        val pids = getPids(packageName)
+        for (pid in pids) {
+            ShellUtils.fastCmd("echo $score > /proc/$pid/oom_score_adj 2>/dev/null")
+        }
+    }
+
+    private fun getPids(packageName: String): List<String> {
+        val result = ShellUtils.runAsRoot("pidof $packageName")
+        return result.output.split(" ").filter { it.isNotBlank() }
+    }
+
+    /**
+     * Corrected status logic:
+     * If no process -> HIBERNATING (Safe)
+     * If process + frozen -> HIBERNATING
+     * If process + NOT frozen -> ACTIVE
+     */
+    fun isAppTrulyActive(packageName: String): Boolean {
+        val pids = getPids(packageName)
+        if (pids.isEmpty()) return false
+        
+        val result = ShellUtils.runAsRoot("dumpsys activity process $packageName | grep 'frozen='")
+        return !result.output.contains("true")
     }
 
     fun getFrozenApps(context: Context): Set<String> {

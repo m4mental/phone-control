@@ -55,6 +55,12 @@
             android:theme="@style/Theme.PhoneControl" />
 
         <activity
+            android:name=".AdbShellActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PhoneControl" />
+
+
+        <activity
             android:name=".DozeWhitelistActivity"
             android:exported="false"
             android:theme="@style/Theme.PhoneControl" />

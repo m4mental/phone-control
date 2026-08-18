@@ -13,32 +13,44 @@ object ShellUtils {
     private const val DONE_TOKEN = "---CMD_DONE---"
 
     /**
-     * Runs a command as root and returns the output.
-     * Reuses the persistent shell session to avoid spawning new processes.
+     * Check if the shell is currently busy with a long-running task.
      */
-    @Synchronized
-    fun runAsRoot(command: String): ShellResult {
-        try {
-            ensureShell()
-            
-            // Send the command followed by a unique token
-            os?.writeBytes("$command\n")
-            os?.writeBytes("echo $DONE_TOKEN\n")
-            os?.flush()
+    var isBusy = false
+        private set
 
-            val output = StringBuilder()
-            var line: String?
-            while (true) {
-                line = reader?.readLine()
-                if (line == null || line == DONE_TOKEN) break
-                output.append(line).append("\n")
+    /**
+     * Runs a command as root and returns the output.
+     */
+    fun runAsRoot(command: String): ShellResult {
+        if (isBusy && android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            return ShellResult(-1, "Shell Busy")
+        }
+        
+        synchronized(this) {
+            try {
+                isBusy = true
+                ensureShell()
+                
+                os?.writeBytes("$command\n")
+                os?.writeBytes("echo $DONE_TOKEN\n")
+                os?.flush()
+
+                val output = StringBuilder()
+                var line: String?
+                while (true) {
+                    line = reader?.readLine()
+                    if (line == null || line == DONE_TOKEN) break
+                    output.append(line).append("\n")
+                }
+                
+                return ShellResult(0, output.toString().trim())
+            } catch (e: Exception) {
+                Log.e("ShellUtils", "Error running command: $command", e)
+                closePersistentShell()
+                return ShellResult(-1, e.message ?: "Error")
+            } finally {
+                isBusy = false
             }
-            
-            return ShellResult(0, output.toString().trim())
-        } catch (e: Exception) {
-            Log.e("ShellUtils", "Error running command: $command", e)
-            closePersistentShell()
-            return ShellResult(-1, e.message ?: "Error")
         }
     }
 

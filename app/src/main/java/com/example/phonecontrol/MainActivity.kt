@@ -13,10 +13,12 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var tvStatus: TextView
     private lateinit var tvRootStatus: TextView
+    private lateinit var tvKernelStatus: TextView
     
     private lateinit var tvLiveTemp: TextView
     private lateinit var tvLiveWatts: TextView
     private lateinit var tvLiveRam: TextView
+    private lateinit var tvLiveGpu: TextView
     
     private val statsHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val statsRunnable = object : Runnable {
@@ -32,10 +34,12 @@ class MainActivity : AppCompatActivity() {
 
         tvStatus = findViewById(R.id.tvStatus)
         tvRootStatus = findViewById(R.id.tvRootStatus)
+        tvKernelStatus = findViewById(R.id.tvKernelStatus)
         
         tvLiveTemp = findViewById(R.id.tvLiveTemp)
         tvLiveWatts = findViewById(R.id.tvLiveWatts)
         tvLiveRam = findViewById(R.id.tvLiveRam)
+        tvLiveGpu = findViewById(R.id.tvLiveGpu)
 
         // Navigation Hub
         findViewById<View>(R.id.cardModeControl).setOnClickListener { startActivity(Intent(this, ModeControlActivity::class.java)) }
@@ -50,6 +54,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.cardRam).setOnClickListener { startActivity(Intent(this, RamActivity::class.java)) }
         findViewById<View>(R.id.cardNetwork).setOnClickListener { startActivity(Intent(this, NetworkActivity::class.java)) }
         findViewById<View>(R.id.cardOptimization).setOnClickListener { startActivity(Intent(this, OptimizationActivity::class.java)) }
+        findViewById<View>(R.id.cardAdb).setOnClickListener { startActivity(Intent(this, AdbShellActivity::class.java)) }
 
         requestNotificationPermission()
         
@@ -65,8 +70,10 @@ class MainActivity : AppCompatActivity() {
                     if (isFinishing) return@runOnUiThread
                     if (result.exitCode == 0) {
                         tvRootStatus.text = "Root: Granted"; tvRootStatus.setTextColor(Color.GREEN)
+                        tvKernelStatus.text = "Kernel Engine: Active (BBR+EAS)"; tvKernelStatus.setTextColor(Color.GREEN)
                     } else {
                         tvRootStatus.text = "Root: Denied"; tvRootStatus.setTextColor(Color.RED)
+                        tvKernelStatus.text = "Kernel Engine: Restricted"; tvKernelStatus.setTextColor(Color.GRAY)
                     }
                 }
             } catch (e: Exception) {
@@ -89,6 +96,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateLiveStats() {
+        if (ShellUtils.isBusy) return // Skip update if a heavy task is running
+
         kotlin.concurrent.thread {
             val batteryInfo = BatteryManager.getBatteryStats()
             
@@ -102,6 +111,15 @@ class MainActivity : AppCompatActivity() {
                 tvLiveTemp.text = batteryInfo.temp
                 tvLiveWatts.text = batteryInfo.wattage
                 tvLiveRam.text = freeGb
+                
+                // Fetch Active Kernel Mode from engine state
+                val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+                val activeMode = prefs.getString("active_kernel_mode", "Balance")
+                tvLiveGpu.text = when(activeMode) {
+                    "Performance" -> "Gaming"
+                    "Power Saver" -> "PowerSave"
+                    else -> "Balanced"
+                }
             }
         }
     }

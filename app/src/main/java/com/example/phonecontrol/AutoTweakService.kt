@@ -23,6 +23,7 @@ class AutoTweakService : Service() {
     private var lastTopApp = ""
     private var lastGlobalMode = ""
     private var lastConfigHash = ""
+    private var isScreenOff = false
     
     private val CHANNEL_STATUS_ID = "phone_control_status"
     private val CHANNEL_BOOT_ID = "phone_control_boot"
@@ -46,6 +47,15 @@ class AutoTweakService : Service() {
         }
     }
 
+    // Periodic task for background maintenance (Hibernation, Optimization check)
+    private val maintenanceHandler = Handler(Looper.getMainLooper())
+    private val maintenanceRunnable = object : Runnable {
+        override fun run() {
+            performBackgroundMaintenance()
+            maintenanceHandler.postDelayed(this, 120000) // Changed to 2 minutes
+        }
+    }
+
     // Receives events from the Native Daemon or System
     private val eventReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -58,6 +68,13 @@ class AutoTweakService : Service() {
                         "app_change" -> {
                             val pkg = intent.getStringExtra("pkg") ?: ""
                             onForegroundAppChanged(pkg)
+                        }
+                        "load_change" -> {
+                            if (prefs.getString("selected_mode", "rbBalance") == "rbAutomatic") {
+                                val load = intent.getIntExtra("load", 50)
+                                val focus = prefs.getString("selected_focus", "rbFocusDaily")
+                                applyAiTweak(load, focus ?: "rbFocusDaily")
+                            }
                         }
                         "screen_off" -> onScreenOff()
                         "screen_on" -> onScreenOn()
@@ -95,29 +112,47 @@ class AutoTweakService : Service() {
         }
         createNotificationChannels()
         
+        // Ensure Native Daemon is running
+        DaemonManager.startDaemon(this)
+        
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
         if (prefs.getBoolean("silent_system_enabled", false)) {
             TweakManager.setSilentSystem(true)
         }
         
         showGuardNotification()
+        maintenanceHandler.postDelayed(maintenanceRunnable, 10000)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val isDelayed = intent?.getBooleanExtra("delayed_start", false) ?: false
+        DaemonManager.startDaemon(this)
         
+        val isDelayed = intent?.getBooleanExtra("delayed_start", false) ?: false
         if (isDelayed) {
-            // 60 Seconds Delay after Boot to let system settle
             Handler(Looper.getMainLooper()).postDelayed({
-                DaemonManager.startDaemon(this)
                 showBootNotification()
             }, 60000)
-        } else {
-            // Instant start if app is opened manually
-            DaemonManager.startDaemon(this)
         }
         
         return START_STICKY
+    }
+
+    private fun performBackgroundMaintenance() {
+        // 1. Force Hibernate all apps in the list except current foreground
+        val frozenApps = FreezerManager.getFrozenApps(this)
+        val currentApp = lastTopApp
+        
+        if (frozenApps.isNotEmpty()) {
+            for (pkg in frozenApps) {
+                if (pkg != currentApp) {
+                    FreezerManager.freezeApp(pkg)
+                }
+            }
+        }
+
+        // 2. Scheduled Optimization check (handled in handleBatteryLogic too, but good to have here)
+        val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+        checkDailyOptimization(prefs)
     }
 
     private fun startCooldownTimer() {
@@ -179,7 +214,6 @@ class AutoTweakService : Service() {
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
         
-        // This makes it a proper foreground service notification
         startForeground(GUARD_NOTIF_ID, builder.build())
     }
 
@@ -197,10 +231,22 @@ class AutoTweakService : Service() {
         }
 
         applyTweakProfile(topApp, prefs)
+        
+        // Phase 6: Apply High Priority if it's a Performance App
+        val config = PerAppManager.getConfig(this, topApp)
+        if (config?.mode == "Performance") {
+            TweakManager.applyProcessPriority(topApp, true)
+        }
+
     }
 
     private fun onScreenOff() {
+        isScreenOff = true
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+        
+        // Phase 2: Block Kernel Wakelocks
+        TweakManager.applyWakelockBlocker(true)
+        
         if (prefs.getBoolean("sensor_firewall_enabled", false)) {
             SensorManager.setSensorsEnabled(false)
         }
@@ -211,13 +257,37 @@ class AutoTweakService : Service() {
         if (isLow || prefs.getBoolean("batt_power_save_screen_off", false)) TweakManager.applyBatterySaver()
         if (isLow || prefs.getBoolean("batt_data_saver_screen_off", false)) ShellUtils.fastCmd("settings put global data_saver_mode 1")
         if (isLow || prefs.getBoolean("batt_force_doze_enabled", false)) BatteryManager.setForceDoze(true)
+        
+        // Immediate Hibernation on Screen Off
+        performBackgroundMaintenance()
     }
 
     private fun onScreenOn() {
+        isScreenOff = false
+        TweakManager.applyWakelockBlocker(false)
         SensorManager.setSensorsEnabled(true)
         BatteryManager.setForceDoze(false)
         ShellUtils.fastCmd("settings put global data_saver_mode 0")
         lastTopApp = ""
+    }
+
+    private fun applyAiTweak(load: Int, focus: String) {
+        if (ThermalManager.isCooldownActive) return
+        
+        val targetMode = if (focus == "rbFocusBattery") {
+            if (load > 85) "Balance" else "Power Saver"
+        } else {
+            if (load > 65) "Performance"
+            else if (load < 20) "Power Saver"
+            else "Balance"
+        }
+        
+        if (targetMode != lastGlobalMode) {
+            TweakManager.applyGlobalMode(targetMode)
+            lastGlobalMode = targetMode
+            // Save active mode for UI dashboard
+            getSharedPreferences("prefs", MODE_PRIVATE).edit().putString("active_kernel_mode", targetMode).apply()
+        }
     }
 
     private fun handleBatteryLogic(prefs: android.content.SharedPreferences) {
@@ -231,14 +301,14 @@ class AutoTweakService : Service() {
         }
 
         val temp = ThermalManager.getTemperature()
+        ThermalManager.applyPreventiveThrottling(temp)
+        
         if (!ThermalManager.isCooldownActive) {
             val autoCooldownEnabled = prefs.getBoolean("auto_cooldown_enabled", false)
             if (autoCooldownEnabled && temp >= prefs.getInt("auto_cooldown_threshold", 50)) {
                 ThermalManager.startEmergencyCooldown(this) {}
             }
         }
-        
-        checkDailyOptimization(prefs)
     }
 
     private fun applyTweakProfile(topApp: String, prefs: android.content.SharedPreferences) {
@@ -256,21 +326,16 @@ class AutoTweakService : Service() {
         val configHash = "${config?.mode}|${config?.fps}|${config?.thermal}|${config?.touch}"
         if (topApp != lastTopApp || gMode != lastGlobalMode || configHash != lastConfigHash) {
             
-            if (config != null && config.mode != "Auto") {
-                when (config.mode) {
-                    "Power Saver" -> TweakManager.applyBatterySaver()
-                    "Balance" -> TweakManager.applyBalance()
-                    "Performance" -> TweakManager.applyPerformance()
-                }
-            } else if (gMode == "rbAutomatic") {
-                TweakManager.applyBalance()
-            } else {
-                when (gMode) {
-                    "rbPowerSaver" -> TweakManager.applyBatterySaver()
-                    "rbBalance" -> TweakManager.applyBalance()
-                    "rbPerformance" -> TweakManager.applyPerformance()
+            val activeMode = if (config != null && config.mode != "Auto") config.mode else {
+                when(gMode) {
+                    "rbPowerSaver" -> "Power Saver"
+                    "rbPerformance" -> "Performance"
+                    else -> "Balance"
                 }
             }
+            TweakManager.applyGlobalMode(activeMode)
+            // Save active mode for UI dashboard
+            prefs.edit().putString("active_kernel_mode", activeMode).apply()
 
             if (config != null) {
                 TweakManager.setRefreshRate(config.fps)
@@ -284,6 +349,8 @@ class AutoTweakService : Service() {
                 })
                 TweakManager.setTouchBoost(false)
             }
+            
+            TweakManager.applyVmGuard(activeMode == "Power Saver" || (isScreenOff && activeMode == "Balance"))
 
             lastTopApp = topApp; lastGlobalMode = gMode; lastConfigHash = configHash
         }
@@ -316,17 +383,14 @@ class AutoTweakService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = getSystemService(NotificationManager::class.java)
             
-            // 1. System Guard Channel (Ongoing)
             val statusChannel = NotificationChannel(CHANNEL_STATUS_ID, "System Guard", NotificationManager.IMPORTANCE_LOW)
             statusChannel.description = "Ongoing system optimization status"
             manager.createNotificationChannel(statusChannel)
             
-            // 2. Boot Activation Channel (One-time)
             val bootChannel = NotificationChannel(CHANNEL_BOOT_ID, "Boot Activation", NotificationManager.IMPORTANCE_DEFAULT)
             bootChannel.description = "Notifications when optimization starts after reboot"
             manager.createNotificationChannel(bootChannel)
             
-            // 3. Emergency Alerts Channel (Cooldown)
             val alertsChannel = NotificationChannel(CHANNEL_ALERTS_ID, "Emergency Alerts", NotificationManager.IMPORTANCE_HIGH)
             alertsChannel.description = "Critical alerts like thermal cooldown timer"
             manager.createNotificationChannel(alertsChannel)
@@ -336,6 +400,7 @@ class AutoTweakService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onDestroy() { 
         unregisterReceiver(eventReceiver)
+        maintenanceHandler.removeCallbacks(maintenanceRunnable)
         ShellUtils.closePersistentShell()
         super.onDestroy() 
     }

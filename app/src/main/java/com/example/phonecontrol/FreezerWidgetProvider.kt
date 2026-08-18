@@ -43,11 +43,13 @@ class FreezerWidgetProvider : AppWidgetProvider() {
         if (intent.action == ACTION_LAUNCH_APP) {
             val packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME)
             packageName?.let {
-                FreezerManager.launchApp(context, it)
-                // Small delay to let the app enable before updating widget
-                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                    updateAllWidgets(context)
-                }, 500)
+                kotlin.concurrent.thread {
+                    FreezerManager.launchApp(context, it)
+                    // Small delay to let the app enable before updating widget
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                        updateAllWidgets(context)
+                    }, 500)
+                }
             }
         }
     }
