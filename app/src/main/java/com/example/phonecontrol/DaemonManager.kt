@@ -58,8 +58,8 @@ object DaemonManager {
                     # Get CPU Load from /proc/stat
                     load=${'$'}(top -n 1 -b -m 1 | grep "CPU" | head -n 1 | awk '{print ${'$'}2}' | cut -d '%' -f1 | cut -d '.' -f1)
                     
-                    # Only broadcast if load changes significantly (> 20%) or if it crosses thresholds
-                    if [ "${'$'}load" -gt 70 ] || [ "${'$'}load" -lt 20 ]; then
+                    # Only broadcast if load changes significantly (> 15%) or if it crosses thresholds
+                    if [ "${'$'}load" -gt 60 ] || [ "${'$'}load" -lt 25 ]; then
                          am broadcast -a com.example.phonecontrol.ACTION_STATE_CHANGED --es "event" "load_change" --ei "load" "${'$'}load"
                     fi
                 fi

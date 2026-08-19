@@ -138,6 +138,15 @@
                                 android:textColor="@android:color/white"
                                 android:buttonTint="@color/color_mode"
                                 android:textSize="13sp" />
+
+                            <RadioButton
+                                android:id="@+id/rbFocusMultitasking"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:text="Multitasking Focus\nDynamic performance for heavy multitasking."
+                                android:textColor="@android:color/white"
+                                android:buttonTint="@color/color_mode"
+                                android:textSize="13sp" />
                         </RadioGroup>
                     </LinearLayout>
                 </RadioGroup>

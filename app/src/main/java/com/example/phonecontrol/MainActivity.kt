@@ -19,14 +19,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvLiveWatts: TextView
     private lateinit var tvLiveRam: TextView
     private lateinit var tvLiveGpu: TextView
-    
-    private val statsHandler = android.os.Handler(android.os.Looper.getMainLooper())
-    private val statsRunnable = object : Runnable {
-        override fun run() {
-            updateLiveStats()
-            statsHandler.postDelayed(this, 3000)
-        }
-    }
+    private lateinit var tvLiveCpuCap: TextView
+    private lateinit var tvLiveCpuUsage: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,6 +34,8 @@ class MainActivity : AppCompatActivity() {
         tvLiveWatts = findViewById(R.id.tvLiveWatts)
         tvLiveRam = findViewById(R.id.tvLiveRam)
         tvLiveGpu = findViewById(R.id.tvLiveGpu)
+        tvLiveCpuCap = findViewById(R.id.tvLiveCpuCap)
+        tvLiveCpuUsage = findViewById(R.id.tvLiveCpuUsage)
 
         // Navigation Hub
         findViewById<View>(R.id.cardModeControl).setOnClickListener { startActivity(Intent(this, ModeControlActivity::class.java)) }
@@ -54,7 +50,14 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.cardRam).setOnClickListener { startActivity(Intent(this, RamActivity::class.java)) }
         findViewById<View>(R.id.cardNetwork).setOnClickListener { startActivity(Intent(this, NetworkActivity::class.java)) }
         findViewById<View>(R.id.cardOptimization).setOnClickListener { startActivity(Intent(this, OptimizationActivity::class.java)) }
+        findViewById<View>(R.id.cardStorage).setOnClickListener { startActivity(Intent(this, StorageActivity::class.java)) }
         findViewById<View>(R.id.cardAdb).setOnClickListener { startActivity(Intent(this, AdbShellActivity::class.java)) }
+
+        // Manual Stats Refresh
+        findViewById<View>(R.id.cardLiveDashboard).setOnClickListener {
+            updateLiveStats()
+            android.widget.Toast.makeText(this, "Stats Refreshed", android.widget.Toast.LENGTH_SHORT).show()
+        }
 
         requestNotificationPermission()
         
@@ -87,12 +90,11 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         updateDisplayStatus()
-        statsHandler.post(statsRunnable)
+        updateLiveStats() // Refresh once on open
     }
     
     override fun onPause() {
         super.onPause()
-        statsHandler.removeCallbacks(statsRunnable)
     }
 
     private fun updateLiveStats() {
@@ -120,7 +122,40 @@ class MainActivity : AppCompatActivity() {
                     "Power Saver" -> "PowerSave"
                     else -> "Balanced"
                 }
+
+                val activeCap = prefs.getInt("active_cpu_cap", 100)
+                tvLiveCpuCap.text = if (activeCap < 100) "${activeCap}%" else "Uncapped"
+                tvLiveCpuCap.setTextColor(if (activeCap < 80) Color.RED else if (activeCap < 100) Color.YELLOW else Color.GREEN)
+
+                // Get CPU Usage
+                val cpuResult = ShellUtils.runAsRoot("top -n 1 -b -m 1 | grep 'CPU' | head -n 1")
+                val cpuUsage = parseCpuUsage(cpuResult.output)
+                tvLiveCpuUsage.text = "$cpuUsage%"
+                tvLiveCpuUsage.setTextColor(if (cpuUsage > 80) Color.RED else if (cpuUsage > 50) Color.YELLOW else Color.WHITE)
             }
+        }
+    }
+
+    private fun parseCpuUsage(output: String): Int {
+        return try {
+            // Typical format: "CPU: 5% usr 2% sys..." or similar
+            // We'll look for numbers followed by %
+            val pattern = "(\\d+)%".toRegex()
+            val matches = pattern.findAll(output)
+            var total = 0
+            for (match in matches) {
+                val value = match.groupValues[1].toInt()
+                // We sum up everything except 'idle' if possible, or just take the first value if it's "Total"
+                // On most Android top: First match is usually User, Second is Sys
+                if (total == 0) total = value
+                else {
+                    total += value
+                    break // Just take User + Sys
+                }
+            }
+            if (total > 100) 100 else total
+        } catch (e: Exception) {
+            0
         }
     }
 

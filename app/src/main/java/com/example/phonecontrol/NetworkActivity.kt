@@ -22,6 +22,7 @@ class NetworkActivity : AppCompatActivity() {
         val rgDns = findViewById<RadioGroup>(R.id.rgDns)
         val switchTcp = findViewById<SwitchMaterial>(R.id.switchTcp)
         val switchLowLatency = findViewById<SwitchMaterial>(R.id.switchLowLatency)
+        val switchPriority = findViewById<SwitchMaterial>(R.id.switchNetworkPriority)
         
         // Load Saved States
         val savedDns = prefs.getString("network_dns", "rbDnsDefault")
@@ -32,6 +33,7 @@ class NetworkActivity : AppCompatActivity() {
         }
         switchTcp.isChecked = prefs.getBoolean("network_tcp_tweaks", false)
         switchLowLatency.isChecked = prefs.getBoolean("network_low_latency", false)
+        switchPriority.isChecked = prefs.getBoolean("network_priority_enabled", false)
 
         findViewById<Button>(R.id.btnApplyNetwork).setOnClickListener {
             val dnsKey = when (rgDns.checkedRadioButtonId) {
@@ -41,11 +43,13 @@ class NetworkActivity : AppCompatActivity() {
             }
             val tcpEnabled = switchTcp.isChecked
             val lowLatencyEnabled = switchLowLatency.isChecked
+            val priorityEnabled = switchPriority.isChecked
 
             prefs.edit()
                 .putString("network_dns", dnsKey)
                 .putBoolean("network_tcp_tweaks", tcpEnabled)
                 .putBoolean("network_low_latency", lowLatencyEnabled)
+                .putBoolean("network_priority_enabled", priorityEnabled)
                 .apply()
                 
             applyNetwork(dnsKey, tcpEnabled, lowLatencyEnabled)

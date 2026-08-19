@@ -271,10 +271,21 @@ object TweakManager {
             ShellUtils.fastCmd("stop logd")
             ShellUtils.fastCmd("stop logd-reinit")
             ShellUtils.fastCmd("setprop ctl.stop logd")
+            // Suppress Kernel Logging
+            ShellUtils.fastCmd("echo 0 > /proc/sys/kernel/printk 2>/dev/null")
         } else {
             ShellUtils.fastCmd("start logd")
             ShellUtils.fastCmd("setprop ctl.start logd")
+            ShellUtils.fastCmd("echo 7 > /proc/sys/kernel/printk 2>/dev/null")
         }
+    }
+
+    /**
+     * 5. Location (GPS) Control
+     */
+    fun setLocationEnabled(enabled: Boolean) {
+        val mode = if (enabled) "3" else "0" // 3 = High Accuracy, 0 = Off
+        ShellUtils.fastCmd("settings put secure location_mode $mode")
     }
 
     fun applyRamSettings(zramKey: String, profileKey: String) {
@@ -358,4 +369,52 @@ object TweakManager {
         }
     }
 
+    /**
+     * 6. Network Prioritization (Packet Guard)
+     */
+    fun setNetworkPriority(context: android.content.Context, packageName: String, enabled: Boolean) {
+        val prefs = context.getSharedPreferences("prefs", android.content.Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("network_priority_enabled", false)) return
+
+        try {
+            val uid = context.packageManager.getApplicationInfo(packageName, 0).uid
+            if (enabled) {
+                // Mark packets from this UID for high priority
+                ShellUtils.fastCmd("iptables -t mangle -A OUTPUT -m owner --uid-owner $uid -j MARK --set-mark 1")
+                ShellUtils.fastCmd("iptables -t mangle -A OUTPUT -m owner --uid-owner $uid -j TOS --set-tos Minimize-Delay")
+            } else {
+                ShellUtils.fastCmd("iptables -t mangle -D OUTPUT -m owner --uid-owner $uid -j MARK --set-mark 1 2>/dev/null")
+                ShellUtils.fastCmd("iptables -t mangle -D OUTPUT -m owner --uid-owner $uid -j TOS --set-tos Minimize-Delay 2>/dev/null")
+            }
+        } catch (e: Exception) {}
+    }
+
+    /**
+     * 7. CPU Frequency Capping (Percentage based)
+     */
+    fun limitCpuFrequency(percentage: Int) {
+        for (i in 0..7) {
+            val maxFreqPath = "/sys/devices/system/cpu/cpu$i/cpufreq/cpuinfo_max_freq"
+            val targetPath = "/sys/devices/system/cpu/cpu$i/cpufreq/scaling_max_freq"
+            
+            val maxFreq = ShellUtils.runAsRoot("cat $maxFreqPath").output.trim().toLongOrNull()
+            if (maxFreq != null) {
+                val targetFreq = (maxFreq * (percentage / 100.0)).toLong()
+                ShellUtils.fastCmd("echo $targetFreq > $targetPath 2>/dev/null")
+            }
+        }
+    }
+
+    /**
+     * 8. System Resolution Toggle
+     */
+    fun setSystemResolution(isLowRes: Boolean) {
+        if (isLowRes) {
+            ShellUtils.runAsRoot("wm size 720x1600")
+            ShellUtils.runAsRoot("wm density 320")
+        } else {
+            ShellUtils.runAsRoot("wm size reset")
+            ShellUtils.runAsRoot("wm density reset")
+        }
+    }
 }

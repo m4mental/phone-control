@@ -12,6 +12,7 @@ import android.os.BatteryManager as AndroidBatteryManager
 import androidx.core.app.NotificationCompat
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.concurrent.thread
 
 /**
  * Modernized AutoTweakService: Now an Event-Driven Listener.
@@ -119,6 +120,10 @@ class AutoTweakService : Service() {
         if (prefs.getBoolean("silent_system_enabled", false)) {
             TweakManager.setSilentSystem(true)
         }
+
+        if (prefs.getBoolean("storage_boost_enabled", false)) {
+            StorageManager.applyStorageBoost(true)
+        }
         
         showGuardNotification()
         maintenanceHandler.postDelayed(maintenanceRunnable, 10000)
@@ -142,10 +147,18 @@ class AutoTweakService : Service() {
         val frozenApps = FreezerManager.getFrozenApps(this)
         val currentApp = lastTopApp
         
+
         if (frozenApps.isNotEmpty()) {
             for (pkg in frozenApps) {
                 if (pkg != currentApp) {
-                    FreezerManager.freezeApp(pkg)
+                    // Safety check: if app is a multitasking app, only freeze if truly inactive
+                    if (MultitaskingManager.isProtected(pkg, this)) {
+                        if (!FreezerManager.isAppTrulyActive(pkg)) {
+                            FreezerManager.freezeApp(pkg)
+                        }
+                    } else {
+                        FreezerManager.freezeApp(pkg)
+                    }
                 }
             }
         }
@@ -219,6 +232,7 @@ class AutoTweakService : Service() {
 
     private fun onForegroundAppChanged(topApp: String) {
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+        val oldApp = lastTopApp // Capture before it gets updated
         
         val frozenApps = FreezerManager.getFrozenApps(this)
         if (frozenApps.isNotEmpty()) {
@@ -232,12 +246,25 @@ class AutoTweakService : Service() {
 
         applyTweakProfile(topApp, prefs)
         
-        // Phase 6: Apply High Priority if it's a Performance App
+        // Phase 6: Apply High Priority if it's a Performance App or Multitasking App
         val config = PerAppManager.getConfig(this, topApp)
-        if (config?.mode == "Performance") {
+        
+        if (config?.mode == "Performance" || MultitaskingManager.isProtected(topApp, this)) {
             TweakManager.applyProcessPriority(topApp, true)
+            TweakManager.setNetworkPriority(this, topApp, true)
+        } else {
+            TweakManager.setNetworkPriority(this, oldApp, false)
         }
 
+        // Dynamic Resolution Scaling
+        if (prefs.getBoolean("dynamic_scaling_enabled", false)) {
+            val scalingWhitelist = prefs.getStringSet("scaling_whitelist", emptySet()) ?: emptySet()
+            if (scalingWhitelist.contains(topApp)) {
+                TweakManager.setSystemResolution(true)
+            } else if (scalingWhitelist.contains(oldApp)) {
+                TweakManager.setSystemResolution(false)
+            }
+        }
     }
 
     private fun onScreenOff() {
@@ -258,28 +285,73 @@ class AutoTweakService : Service() {
         if (isLow || prefs.getBoolean("batt_data_saver_screen_off", false)) ShellUtils.fastCmd("settings put global data_saver_mode 1")
         if (isLow || prefs.getBoolean("batt_force_doze_enabled", false)) BatteryManager.setForceDoze(true)
         
+        // GPS Auto-Saver
+        if (prefs.getBoolean("gps_auto_saver_enabled", false)) {
+            TweakManager.setLocationEnabled(false)
+        }
+
+        // Standby Guard
+        if (prefs.getBoolean("standby_guard_enabled", false)) {
+            thread {
+                val packages = ShellUtils.runAsRoot("pm list packages -3 | cut -d ':' -f2").output.split("\n")
+                for (pkg in packages) {
+                    val p = pkg.trim()
+                    if (p.isNotEmpty() && !MultitaskingManager.isProtected(p, this@AutoTweakService)) {
+                        ShellUtils.fastCmd("am set-standby-bucket $p restricted")
+                    }
+                }
+            }
+        }
+
         // Immediate Hibernation on Screen Off
         performBackgroundMaintenance()
     }
 
     private fun onScreenOn() {
         isScreenOff = false
+        val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+        
         TweakManager.applyWakelockBlocker(false)
         SensorManager.setSensorsEnabled(true)
         BatteryManager.setForceDoze(false)
         ShellUtils.fastCmd("settings put global data_saver_mode 0")
+
+        if (prefs.getBoolean("gps_auto_saver_enabled", false)) {
+            TweakManager.setLocationEnabled(true)
+        }
+
+        if (prefs.getBoolean("standby_guard_enabled", false)) {
+            thread {
+                val packages = ShellUtils.runAsRoot("pm list packages -3 | cut -d ':' -f2").output.split("\n")
+                for (pkg in packages) {
+                    val p = pkg.trim()
+                    if (p.isNotEmpty()) {
+                        ShellUtils.fastCmd("am set-standby-bucket $p active")
+                    }
+                }
+            }
+        }
+
         lastTopApp = ""
     }
 
     private fun applyAiTweak(load: Int, focus: String) {
         if (ThermalManager.isCooldownActive) return
         
-        val targetMode = if (focus == "rbFocusBattery") {
-            if (load > 85) "Balance" else "Power Saver"
-        } else {
-            if (load > 65) "Performance"
-            else if (load < 20) "Power Saver"
-            else "Balance"
+        val targetMode = when (focus) {
+            "rbFocusBattery" -> {
+                if (load > 85) "Balance" else "Power Saver"
+            }
+            "rbFocusMultitasking" -> {
+                if (load > 45) "Performance"
+                else if (load < 15) "Power Saver"
+                else "Balance"
+            }
+            else -> { // rbFocusDaily
+                if (load > 65) "Performance"
+                else if (load < 20) "Power Saver"
+                else "Balance"
+            }
         }
         
         if (targetMode != lastGlobalMode) {
@@ -301,7 +373,7 @@ class AutoTweakService : Service() {
         }
 
         val temp = ThermalManager.getTemperature()
-        ThermalManager.applyPreventiveThrottling(temp)
+        ThermalManager.applyAdaptiveThrottling(this, temp)
         
         if (!ThermalManager.isCooldownActive) {
             val autoCooldownEnabled = prefs.getBoolean("auto_cooldown_enabled", false)

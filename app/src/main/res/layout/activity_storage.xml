@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@android:color/black"
+    android:fitsSystemWindows="true">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbarStorage"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        app:title="Storage Boost"
+        app:titleTextColor="#FFAB40"
+        app:navigationIcon="@android:drawable/ic_menu_revert"
+        app:navigationIconTint="#FFAB40" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Optimize your UFS/EMMC storage and databases for faster app loading and reduced I/O lag."
+                android:textColor="#AAAAAA"
+                android:textSize="13sp"
+                android:layout_marginBottom="24dp" />
+
+            <!-- Permanent Boost Toggle -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="16dp"
+                app:cardBackgroundColor="#121212"
+                app:strokeWidth="1dp"
+                app:strokeColor="#333333">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:padding="16dp"
+                    android:gravity="center_vertical">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Permanent Storage Boost"
+                            android:textColor="#FFFFFF"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Increases Read-Ahead &amp; sets MQ-Deadline scheduler."
+                            android:textColor="#888888"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+
+                    <com.google.android.material.switchmaterial.SwitchMaterial
+                        android:id="@+id/switchStorageBoost"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        app:thumbTint="@android:color/white"
+                        app:trackTint="#FFAB40" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Manual Actions -->
+            <TextView
+                android:id="@+id/tvStorageStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="One-Tap Maintenance"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                android:layout_marginBottom="12dp"
+                android:layout_marginStart="4dp"/>
+
+            <Button
+                android:id="@+id/btnRunFsTrim"
+                android:layout_width="match_parent"
+                android:layout_height="60dp"
+                android:text="RUN FSTRIM (REFRESH STORAGE)"
+                android:layout_marginBottom="12dp"
+                app:cornerRadius="12dp"
+                android:backgroundTint="#1A1A1A"
+                android:textColor="#FFAB40"
+                app:strokeWidth="1dp"
+                app:strokeColor="#FFAB40" />
+
+            <Button
+                android:id="@+id/btnVacuumDbs"
+                android:layout_width="match_parent"
+                android:layout_height="60dp"
+                android:text="OPTIMIZE APP DATABASES"
+                android:layout_marginBottom="24dp"
+                app:cornerRadius="12dp"
+                android:backgroundTint="#1A1A1A"
+                android:textColor="#FFAB40"
+                app:strokeWidth="1dp"
+                app:strokeColor="#FFAB40" />
+
+            <!-- Log Output -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardCornerRadius="12dp"
+                app:cardBackgroundColor="#0A0A0A"
+                app:strokeWidth="1dp"
+                app:strokeColor="#222222">
+
+                <TextView
+                    android:id="@+id/tvStorageLog"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:padding="16dp"
+                    android:text="Logs will appear here..."
+                    android:textColor="#00FF00"
+                    android:fontFamily="monospace"
+                    android:textSize="11sp" />
+            </com.google.android.material.card.MaterialCardView>
+
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

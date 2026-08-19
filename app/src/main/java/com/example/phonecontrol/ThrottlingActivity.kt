@@ -20,6 +20,7 @@ class ThrottlingActivity : AppCompatActivity() {
 
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
         val switchDisable = findViewById<SwitchMaterial>(R.id.switchDisableThrottling)
+        val switchAdaptive = findViewById<SwitchMaterial>(R.id.switchAdaptiveThermal)
         val switchIgnoreCharging = findViewById<SwitchMaterial>(R.id.switchIgnoreCharging)
         val seekbarFuse = findViewById<SeekBar>(R.id.seekbarTempFuse)
         val tvFuseValue = findViewById<TextView>(R.id.tvFuseValue)
@@ -33,6 +34,7 @@ class ThrottlingActivity : AppCompatActivity() {
 
         // Load Throttling Prefs
         switchDisable.isChecked = prefs.getBoolean("disable_throttling", false)
+        switchAdaptive.isChecked = prefs.getBoolean("adaptive_thermal_enabled", false)
         switchIgnoreCharging.isChecked = prefs.getBoolean("ignore_charging", false)
         val savedFuse = prefs.getInt("temp_fuse", 45)
         seekbarFuse.progress = savedFuse - 40
@@ -54,6 +56,18 @@ class ThrottlingActivity : AppCompatActivity() {
             } else {
                 prefs.edit().putBoolean("disable_throttling", false).apply()
                 ThermalManager.setThrottlingEnabled(true)
+            }
+        }
+
+        switchAdaptive.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean("adaptive_thermal_enabled", isChecked).apply()
+            if (isChecked) {
+                switchDisable.isChecked = false // Disable manual override if adaptive is on
+                Toast.makeText(this, "Adaptive Engine Active", Toast.LENGTH_SHORT).show()
+            } else {
+                // Reset cap indicator on dashboard
+                prefs.edit().putInt("active_cpu_cap", 100).apply()
+                TweakManager.limitCpuFrequency(100)
             }
         }
 

@@ -30,16 +30,48 @@ object ThermalManager {
     }
 
     /**
+     * Adaptive Thermal Engine: Stepped throttling based on temperature.
+     */
+    fun applyAdaptiveThrottling(context: Context, temp: Int) {
+        if (isCooldownActive) return
+        
+        val prefs = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("adaptive_thermal_enabled", false)) {
+            // Fallback to old preventive logic
+            applyPreventiveThrottling(temp)
+            return
+        }
+
+        val cap = when {
+            temp <= 44 -> 100
+            temp == 45 -> 95
+            temp == 46 -> 90
+            temp == 47 -> 85
+            temp == 48 -> 80
+            temp == 49 -> 75
+            temp == 50 -> 70
+            temp == 51 -> 65
+            else -> 60 // 52°C and above
+        }
+
+        TweakManager.limitCpuFrequency(cap)
+        val configVal = if (cap == 60) "2" else if (cap == 80) "1" else "0"
+        ShellUtils.fastCmd("echo $configVal > /sys/devices/virtual/thermal/thermal_message/sconfig 2>/dev/null")
+        
+        prefs.edit().putInt("active_cpu_cap", cap).apply()
+    }
+
+    /**
      * Preventive Thermal Guard: Slower throttling before emergency.
      */
     fun applyPreventiveThrottling(temp: Int) {
         if (isCooldownActive) return
         
-        if (temp >= 42) {
+        if (temp >= 48) {
             // Apply light throttling
             ShellUtils.fastCmd("echo 1 > /sys/devices/virtual/thermal/thermal_message/sconfig 2>/dev/null")
             ShellUtils.fastCmd("echo 50 > /proc/sys/kernel/sched_upmigrate 2>/dev/null")
-        } else if (temp < 40) {
+        } else if (temp < 45) {
             // Revert light throttling if temp is safe
             ShellUtils.fastCmd("echo 0 > /sys/devices/virtual/thermal/thermal_message/sconfig 2>/dev/null")
         }

@@ -6,8 +6,10 @@ import android.widget.EditText
 import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.Toast
+import android.content.Intent
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.switchmaterial.SwitchMaterial
 
 class ResolutionActivity : AppCompatActivity() {
 
@@ -19,10 +21,22 @@ class ResolutionActivity : AppCompatActivity() {
 
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
         val rgRes = findViewById<RadioGroup>(R.id.rgResolution)
+        val switchDynamic = findViewById<SwitchMaterial>(R.id.switchDynamicScaling)
+        val btnManage = findViewById<Button>(R.id.btnManageScalingApps)
         
         val savedRes = prefs.getString("screen_res", "rbRes1080")
         if (savedRes == "rbRes720") findViewById<RadioButton>(R.id.rbRes720).isChecked = true
         else findViewById<RadioButton>(R.id.rbRes1080).isChecked = true
+
+        switchDynamic.isChecked = prefs.getBoolean("dynamic_scaling_enabled", false)
+
+        switchDynamic.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean("dynamic_scaling_enabled", isChecked).apply()
+        }
+
+        btnManage.setOnClickListener {
+            startActivity(Intent(this, ScalingWhitelistActivity::class.java))
+        }
 
         findViewById<Button>(R.id.btnApplyRes).setOnClickListener {
             val checkedId = rgRes.checkedRadioButtonId

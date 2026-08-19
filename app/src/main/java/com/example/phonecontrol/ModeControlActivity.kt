@@ -41,7 +41,8 @@ class ModeControlActivity : AppCompatActivity() {
         // Setup Focus
         when (savedFocus) {
             "rbFocusBattery" -> findViewById<RadioButton>(R.id.rbFocusBattery).isChecked = true
-            "rbFocusDaily" -> findViewById<RadioButton>(R.id.rbFocusDaily).isChecked = true
+            "rbFocusMultitasking" -> findViewById<RadioButton>(R.id.rbFocusMultitasking).isChecked = true
+            else -> findViewById<RadioButton>(R.id.rbFocusDaily).isChecked = true
         }
 
         // Setup Global FPS
@@ -78,7 +79,11 @@ class ModeControlActivity : AppCompatActivity() {
         }
 
         rgFocus.setOnCheckedChangeListener { _, checkedId ->
-            val focusKey = if (checkedId == R.id.rbFocusBattery) "rbFocusBattery" else "rbFocusDaily"
+            val focusKey = when (checkedId) {
+                R.id.rbFocusBattery -> "rbFocusBattery"
+                R.id.rbFocusMultitasking -> "rbFocusMultitasking"
+                else -> "rbFocusDaily"
+            }
             prefs.edit().putString("selected_focus", focusKey).apply()
         }
 

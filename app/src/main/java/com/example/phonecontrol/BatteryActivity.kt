@@ -45,6 +45,8 @@ class BatteryActivity : AppCompatActivity() {
         val swSensorFirewall = findViewById<SwitchMaterial>(R.id.switchSensorFirewall)
         val swUsbFastCharge = findViewById<SwitchMaterial>(R.id.switchUsbFastCharge)
         val swChargeSpeed = findViewById<SwitchMaterial>(R.id.switchChargeSpeed)
+        val swGpsSaver = findViewById<SwitchMaterial>(R.id.switchGpsSaver)
+        val swStandbyGuard = findViewById<SwitchMaterial>(R.id.switchStandbyGuard)
         
         val layoutLimit = findViewById<View>(R.id.layoutLimitSeek)
         val layoutChargeSpeed = findViewById<View>(R.id.layoutChargeSpeedOptions)
@@ -65,6 +67,8 @@ class BatteryActivity : AppCompatActivity() {
         swSensorFirewall.isChecked = prefs.getBoolean("sensor_firewall_enabled", false)
         swUsbFastCharge.isChecked = prefs.getBoolean("batt_usb_fast_charge", false)
         swChargeSpeed.isChecked = prefs.getBoolean("batt_charge_speed_enabled", false)
+        swGpsSaver.isChecked = prefs.getBoolean("gps_auto_saver_enabled", false)
+        swStandbyGuard.isChecked = prefs.getBoolean("standby_guard_enabled", false)
         
         layoutChargeSpeed.visibility = if (swChargeSpeed.isChecked) View.VISIBLE else View.GONE
         val savedChargeMode = prefs.getString("batt_charge_speed_mode", "rbChargeDefault")
@@ -92,6 +96,10 @@ class BatteryActivity : AppCompatActivity() {
             startActivity(Intent(this, DozeWhitelistActivity::class.java))
         }
 
+        findViewById<View>(R.id.layoutStandbyWhitelist).setOnClickListener {
+            startActivity(Intent(this, StandbyWhitelistActivity::class.java))
+        }
+
         swLimit.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean("batt_limit_enabled", isChecked).apply()
             layoutLimit.visibility = if (isChecked) View.VISIBLE else View.GONE
@@ -115,6 +123,14 @@ class BatteryActivity : AppCompatActivity() {
         swUsbFastCharge.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean("batt_usb_fast_charge", isChecked).apply()
             BatteryManager.setUsbFastCharge(isChecked)
+        }
+
+        swGpsSaver.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean("gps_auto_saver_enabled", isChecked).apply()
+        }
+
+        swStandbyGuard.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean("standby_guard_enabled", isChecked).apply()
         }
 
         swChargeSpeed.setOnCheckedChangeListener { _, isChecked ->

@@ -59,6 +59,21 @@
             android:exported="false"
             android:theme="@style/Theme.PhoneControl" />
 
+        <activity
+            android:name=".StorageActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PhoneControl" />
+
+        <activity
+            android:name=".StandbyWhitelistActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PhoneControl" />
+
+        <activity
+            android:name=".ScalingWhitelistActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PhoneControl" />
+
 
         <activity
             android:name=".DozeWhitelistActivity"
