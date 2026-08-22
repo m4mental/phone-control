@@ -14,9 +14,15 @@ object FreezerManager {
     /**
      * Hibernates an app using Kernel-level pausing (am freeze).
      */
-    fun freezeApp(packageName: String) {
+    fun freezeApp(context: Context, packageName: String) {
         if (packageName == lastLaunchedPackage && (System.currentTimeMillis() - lastLaunchTime) < 10000) {
             return
+        }
+
+        if (isSpecialFreeze(context, packageName)) {
+            // Special Freeze: Force Stop + Suspend
+            ShellUtils.fastCmd("am force-stop $packageName")
+            ShellUtils.fastCmd("pm suspend $packageName")
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -37,6 +43,7 @@ object FreezerManager {
      */
     fun unfreezeApp(packageName: String) {
         ShellUtils.fastCmd("pm enable $packageName")
+        ShellUtils.fastCmd("pm unsuspend $packageName")
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             ShellUtils.fastCmd("am unfreeze $packageName")
@@ -58,6 +65,8 @@ object FreezerManager {
         // Reverting to the previous launch logic as requested
         unfreezeApp(packageName)
         Thread.sleep(300)
+        // Trigger Turbo Launch Boost
+        TweakManager.triggerTurboBoost()
         
         val intent = context.packageManager.getLaunchIntentForPackage(packageName)
         intent?.let {
@@ -100,5 +109,15 @@ object FreezerManager {
     fun saveFrozenApps(context: Context, packages: Set<String>) {
         val prefs = context.getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE)
         prefs.edit().putStringSet("frozen_packages", packages).apply()
+    }
+
+    fun isSpecialFreeze(context: Context, packageName: String): Boolean {
+        val prefs = context.getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE)
+        return prefs.getBoolean("special_$packageName", false)
+    }
+
+    fun setSpecialFreeze(context: Context, packageName: String, enabled: Boolean) {
+        val prefs = context.getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putBoolean("special_$packageName", enabled).apply()
     }
 }

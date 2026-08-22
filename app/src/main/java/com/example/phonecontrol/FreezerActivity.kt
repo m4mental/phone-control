@@ -110,10 +110,10 @@ class FreezerActivity : AppCompatActivity() {
         tvPkg.text = pkg
         
         if (isActive) {
-            tvStatus.text = "ACTIVE"
+            tvStatus.text = if (FreezerManager.isSpecialFreeze(this, pkg)) "ACTIVE (SPECIAL)" else "ACTIVE"
             tvStatus.setTextColor(android.graphics.Color.GREEN)
         } else {
-            tvStatus.text = "HIBERNATING"
+            tvStatus.text = if (FreezerManager.isSpecialFreeze(this, pkg)) "HIBERNATING (SPECIAL)" else "HIBERNATING"
             tvStatus.setTextColor(android.graphics.Color.CYAN)
         }
 
@@ -127,10 +127,42 @@ class FreezerActivity : AppCompatActivity() {
         }
         
         view.setOnLongClickListener {
-            if (!isEditMode) enterEditMode(pkg)
+            if (!isEditMode) {
+                showAppOptionsDialog(pkg, tvName.text.toString())
+            }
             true
         }
         layoutFrozenAppsList.addView(view)
+    }
+
+    private fun showAppOptionsDialog(pkg: String, appName: String) {
+        val options = arrayOf("Special Freeze (Hard Kill + Suspend)", "Remove from List", "Bulk Edit Mode")
+
+        AlertDialog.Builder(this)
+            .setTitle(appName)
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> { // Special Freeze Toggle
+                        val newVal = !FreezerManager.isSpecialFreeze(this, pkg)
+                        FreezerManager.setSpecialFreeze(this, pkg, newVal)
+                        // Re-apply freeze to apply new settings immediately
+                        if (!FreezerManager.isAppTrulyActive(pkg)) {
+                            FreezerManager.freezeApp(this, pkg)
+                        }
+                        refreshList()
+                        Toast.makeText(this, "Special Freeze ${if(newVal) "Enabled" else "Disabled"}", Toast.LENGTH_SHORT).show()
+                    }
+                    1 -> { // Remove
+                        val current = FreezerManager.getFrozenApps(this).toMutableSet()
+                        current.remove(pkg)
+                        FreezerManager.unfreezeApp(pkg)
+                        FreezerManager.saveFrozenApps(this, current)
+                        refreshList()
+                    }
+                    2 -> enterEditMode(pkg)
+                }
+            }
+            .show()
     }
 
     private fun toggleSelection(pkg: String, cb: CheckBox) {
@@ -257,7 +289,7 @@ class FreezerActivity : AppCompatActivity() {
             .setView(dialogView)
             .setPositiveButton("Add to Hibernation") { _, _ ->
                 val current = FreezerManager.getFrozenApps(this).toMutableSet()
-                selectedPackages.forEach { current.add(it); FreezerManager.freezeApp(it) }
+                selectedPackages.forEach { current.add(it); FreezerManager.freezeApp(this, it) }
                 FreezerManager.saveFrozenApps(this, current)
                 FreezerWidgetProvider.updateAllWidgets(this)
                 refreshList()

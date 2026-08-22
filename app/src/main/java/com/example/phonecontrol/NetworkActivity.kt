@@ -54,6 +54,10 @@ class NetworkActivity : AppCompatActivity() {
                 
             applyNetwork(dnsKey, tcpEnabled, lowLatencyEnabled)
         }
+
+        findViewById<Button>(R.id.btnManageFirewall).setOnClickListener {
+            startActivity(android.content.Intent(this, FirewallActivity::class.java))
+        }
     }
 
     private fun applyNetwork(dnsKey: String, tcpEnabled: Boolean, lowLatencyEnabled: Boolean) {

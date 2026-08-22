@@ -47,6 +47,12 @@ class BatteryActivity : AppCompatActivity() {
         val swChargeSpeed = findViewById<SwitchMaterial>(R.id.switchChargeSpeed)
         val swGpsSaver = findViewById<SwitchMaterial>(R.id.switchGpsSaver)
         val swStandbyGuard = findViewById<SwitchMaterial>(R.id.switchStandbyGuard)
+
+        val swBlockGyro = findViewById<SwitchMaterial>(R.id.switchBlockGyro)
+        val swBlockMag = findViewById<SwitchMaterial>(R.id.switchBlockMag)
+        val swBlockLight = findViewById<SwitchMaterial>(R.id.switchBlockLight)
+        val swBlockMotion = findViewById<SwitchMaterial>(R.id.switchBlockMotion)
+        val swBlockNfc = findViewById<SwitchMaterial>(R.id.switchBlockNfc)
         
         val layoutLimit = findViewById<View>(R.id.layoutLimitSeek)
         val layoutChargeSpeed = findViewById<View>(R.id.layoutChargeSpeedOptions)
@@ -69,6 +75,12 @@ class BatteryActivity : AppCompatActivity() {
         swChargeSpeed.isChecked = prefs.getBoolean("batt_charge_speed_enabled", false)
         swGpsSaver.isChecked = prefs.getBoolean("gps_auto_saver_enabled", false)
         swStandbyGuard.isChecked = prefs.getBoolean("standby_guard_enabled", false)
+
+        swBlockGyro.isChecked = prefs.getBoolean("block_gyro", false)
+        swBlockMag.isChecked = prefs.getBoolean("block_mag", false)
+        swBlockLight.isChecked = prefs.getBoolean("block_light", false)
+        swBlockMotion.isChecked = prefs.getBoolean("block_motion", false)
+        swBlockNfc.isChecked = prefs.getBoolean("block_nfc", false)
         
         layoutChargeSpeed.visibility = if (swChargeSpeed.isChecked) View.VISIBLE else View.GONE
         val savedChargeMode = prefs.getString("batt_charge_speed_mode", "rbChargeDefault")
@@ -132,6 +144,26 @@ class BatteryActivity : AppCompatActivity() {
         swStandbyGuard.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean("standby_guard_enabled", isChecked).apply()
         }
+
+        val sensorListener = { _: android.widget.CompoundButton, _: Boolean ->
+            // Save states
+            prefs.edit().apply {
+                putBoolean("block_gyro", swBlockGyro.isChecked)
+                putBoolean("block_mag", swBlockMag.isChecked)
+                putBoolean("block_light", swBlockLight.isChecked)
+                putBoolean("block_motion", swBlockMotion.isChecked)
+                putBoolean("block_nfc", swBlockNfc.isChecked)
+                apply()
+            }
+            // Apply immediately
+            SensorManager.applySensorShield(this)
+        }
+
+        swBlockGyro.setOnCheckedChangeListener(sensorListener)
+        swBlockMag.setOnCheckedChangeListener(sensorListener)
+        swBlockLight.setOnCheckedChangeListener(sensorListener)
+        swBlockMotion.setOnCheckedChangeListener(sensorListener)
+        swBlockNfc.setOnCheckedChangeListener(sensorListener)
 
         swChargeSpeed.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean("batt_charge_speed_enabled", isChecked).apply()

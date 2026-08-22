@@ -59,6 +59,10 @@ class MainActivity : AppCompatActivity() {
             android.widget.Toast.makeText(this, "Stats Refreshed", android.widget.Toast.LENGTH_SHORT).show()
         }
 
+        findViewById<View>(R.id.btnSettings).setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
+
         requestNotificationPermission()
         
         // Root check on background thread with safety
@@ -91,6 +95,7 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         updateDisplayStatus()
         updateLiveStats() // Refresh once on open
+        updateCardVisibility()
     }
     
     override fun onPause() {
@@ -173,6 +178,23 @@ class MainActivity : AppCompatActivity() {
         
         // Ensure service is running
         startService(Intent(this, AutoTweakService::class.java))
+    }
+
+    private fun updateCardVisibility() {
+        val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+        
+        // Advanced Features Mapping (Controlled by Master Settings Categories)
+        findViewById<View>(R.id.cardThrottling).visibility = if (prefs.getBoolean("adaptive_thermal_enabled", false)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.cardNetwork).visibility = if (prefs.getBoolean("network_priority_enabled", false)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.cardStorage).visibility = if (prefs.getBoolean("storage_boost_enabled", false)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.cardOptimization).visibility = if (prefs.getBoolean("optimization_enabled", false)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.cardResolution).visibility = if (prefs.getBoolean("resolution_enabled", false)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.cardRam).visibility = if (prefs.getBoolean("ram_manager_enabled", false)) View.VISIBLE else View.GONE
+        
+        // Advanced Tools (Both share the adb_enabled category)
+        val adbToolsVisible = if (prefs.getBoolean("adb_enabled", false)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.cardBloatware).visibility = adbToolsVisible
+        findViewById<View>(R.id.cardAdb).visibility = adbToolsVisible
     }
 
 

@@ -417,4 +417,38 @@ object TweakManager {
             ShellUtils.runAsRoot("wm density reset")
         }
     }
+
+    /**
+     * 9. Cluster Control (Core Parking)
+     */
+    fun setClusterParking(parkBigCores: Boolean) {
+        val value = if (parkBigCores) "0" else "1"
+        // Common 8-core BIG.little: Cores 4-7 are usually BIG cores
+        for (i in 4..7) {
+            ShellUtils.fastCmd("echo $value > /sys/devices/system/cpu/cpu$i/online 2>/dev/null")
+        }
+    }
+
+    /**
+     * 10. Smart Network Firewall (Data Guard)
+     */
+    fun setFirewallRule(uid: Int, blocked: Boolean) {
+        val action = if (blocked) "-A" else "-D"
+        ShellUtils.runAsRoot("iptables $action OUTPUT -m owner --uid-owner $uid -j REJECT")
+    }
+
+    /**
+     * 11. Turbo Launch Boost
+     * Spikes CPU to 100% for a few seconds.
+     */
+    fun triggerTurboBoost() {
+        kotlin.concurrent.thread {
+            // Set all online cores to MAX
+            limitCpuFrequency(100)
+            // Hold for 3 seconds
+            Thread.sleep(3000)
+            // Note: The Adaptive Thermal Engine or Service will automatically 
+            // re-apply any necessary caps on the next tick/check if needed.
+        }
+    }
 }

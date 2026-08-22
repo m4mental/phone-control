@@ -22,6 +22,7 @@ class ThrottlingActivity : AppCompatActivity() {
         val switchDisable = findViewById<SwitchMaterial>(R.id.switchDisableThrottling)
         val switchAdaptive = findViewById<SwitchMaterial>(R.id.switchAdaptiveThermal)
         val switchIgnoreCharging = findViewById<SwitchMaterial>(R.id.switchIgnoreCharging)
+        val switchParking = findViewById<SwitchMaterial>(R.id.switchCoreParking)
         val seekbarFuse = findViewById<SeekBar>(R.id.seekbarTempFuse)
         val tvFuseValue = findViewById<TextView>(R.id.tvFuseValue)
         
@@ -36,6 +37,7 @@ class ThrottlingActivity : AppCompatActivity() {
         switchDisable.isChecked = prefs.getBoolean("disable_throttling", false)
         switchAdaptive.isChecked = prefs.getBoolean("adaptive_thermal_enabled", false)
         switchIgnoreCharging.isChecked = prefs.getBoolean("ignore_charging", false)
+        switchParking.isChecked = prefs.getBoolean("core_parking_enabled", false)
         val savedFuse = prefs.getInt("temp_fuse", 45)
         seekbarFuse.progress = savedFuse - 40
         tvFuseValue.text = "${savedFuse}°C"
@@ -78,6 +80,13 @@ class ThrottlingActivity : AppCompatActivity() {
 
         switchIgnoreCharging.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean("ignore_charging", isChecked).apply()
+        }
+
+        switchParking.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean("core_parking_enabled", isChecked).apply()
+            kotlin.concurrent.thread {
+                TweakManager.setClusterParking(isChecked)
+            }
         }
 
         seekbarFuse.setOnSeekBarChangeListener(createTempListener(tvFuseValue, "temp_fuse", 40))

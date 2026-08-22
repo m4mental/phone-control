@@ -74,6 +74,16 @@
             android:exported="false"
             android:theme="@style/Theme.PhoneControl" />
 
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PhoneControl" />
+
+        <activity
+            android:name=".FirewallActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PhoneControl" />
+
 
         <activity
             android:name=".DozeWhitelistActivity"

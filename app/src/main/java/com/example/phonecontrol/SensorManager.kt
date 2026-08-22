@@ -20,4 +20,25 @@ object SensorManager {
         // if (!enabled) ShellUtils.fastCmd("stop sensors-hal-2-0")
         // else ShellUtils.fastCmd("start sensors-hal-2-0")
     }
+
+    /**
+     * Applies individual sensor blocks based on user preferences.
+     */
+    fun applySensorShield(context: android.content.Context) {
+        val prefs = context.getSharedPreferences("prefs", android.content.Context.MODE_PRIVATE)
+        
+        // 1. NFC Radio
+        val blockNfc = prefs.getBoolean("block_nfc", false)
+        ShellUtils.fastCmd(if (blockNfc) "svc nfc disable" else "svc nfc enable")
+
+        // 2. Motion, Gyro, Mag, Light
+        // Since Android doesn't allow easy individual blocking without specific kernel drivers,
+        // we use the 'sensor_privacy' global toggle IF ANY of the motion/light sensors are blocked.
+        val needsPrivacy = prefs.getBoolean("block_gyro", false) || 
+                          prefs.getBoolean("block_mag", false) || 
+                          prefs.getBoolean("block_light", false) || 
+                          prefs.getBoolean("block_motion", false)
+
+        setSensorsEnabled(!needsPrivacy)
+    }
 }
