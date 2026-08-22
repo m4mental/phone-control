@@ -7,11 +7,17 @@ import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.widget.NestedScrollView
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.chip.Chip
+import androidx.biometric.BiometricPrompt
+import androidx.biometric.BiometricManager
+import androidx.core.content.ContextCompat
+import androidx.activity.result.contract.ActivityResultContracts
+import android.content.Intent
 import kotlin.concurrent.thread
 
 class AdbShellActivity : AppCompatActivity() {
@@ -20,6 +26,16 @@ class AdbShellActivity : AppCompatActivity() {
     private lateinit var etInput: EditText
     private lateinit var scrollOutput: NestedScrollView
 
+    private val appInspectorLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK) {
+            val pkg = result.data?.getStringExtra("package_name")
+            if (pkg != null) {
+                etInput.append(pkg)
+                etInput.requestFocus()
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_adb_shell)
@@ -27,11 +43,19 @@ class AdbShellActivity : AppCompatActivity() {
         tvOutput = findViewById(R.id.tvAdbOutput)
         etInput = findViewById(R.id.etAdbInput)
         scrollOutput = findViewById(R.id.scrollOutput)
+        
+        // Hide UI until authenticated
+        findViewById<View>(android.R.id.content).visibility = View.GONE
+        showSecurityCheck()
 
         findViewById<MaterialToolbar>(R.id.toolbarAdb).setNavigationOnClickListener { finish() }
         
         findViewById<View>(R.id.btnShowTips).setOnClickListener {
             showCommandTips()
+        }
+
+        findViewById<View>(R.id.btnAppList).setOnClickListener {
+            appInspectorLauncher.launch(Intent(this, AppInspectorActivity::class.java))
         }
 
         findViewById<ImageButton>(R.id.btnSendAdb).setOnClickListener {
@@ -127,14 +151,20 @@ class AdbShellActivity : AppCompatActivity() {
         val container = view.findViewById<LinearLayout>(R.id.layoutTipsContainer)
 
         val tips = listOf(
-            "pm enable <pkg>" to "Enables a disabled app.",
+            "pm enable <pkg>" to "Enables a disabled/frozen app.",
             "pm disable-user --user 0 <pkg>" to "Completely freezes/disables an app.",
-            "pm list packages -d" to "Lists all currently disabled apps.",
-            "wm density <dpi>" to "Changes screen DPI (e.g. 400). Use 'reset' to revert.",
-            "wm size <width>x<height>" to "Changes screen resolution. Use 'reset' to revert.",
-            "dumpsys battery" to "Shows detailed live battery and charging status.",
-            "top -n 1 -m 5" to "Shows top 5 apps consuming CPU currently.",
-            "settings put global window_animation_scale 0.5" to "Sets window animations to 0.5x speed.",
+            "pm hide <pkg>" to "Hides app from launcher (remains installed).",
+            "pm unhide <pkg>" to "Makes a hidden app visible again.",
+            "am force-stop <pkg>" to "Kills all app processes and services.",
+            "pm clear <pkg>" to "Resets all app data (Login, settings, etc).",
+            "pm list packages -3" to "Lists all installed user applications.",
+            "dumpsys window | grep mCurrentFocus" to "Shows the current foreground activity.",
+            "wm density <dpi>" to "Changes screen DPI (e.g. 400).",
+            "wm size <width>x<height>" to "Changes screen resolution.",
+            "df -h" to "Shows storage space usage for all partitions.",
+            "top -n 1 -m 5" to "Shows top 5 CPU consuming processes.",
+            "logcat -d" to "Displays the latest system log buffer.",
+            "uname -a" to "Shows Kernel info and architecture.",
             "reboot recovery" to "Restarts the phone into Recovery mode.",
             "input keyevent 26" to "Simulates pressing the Power button."
         )
@@ -153,6 +183,33 @@ class AdbShellActivity : AppCompatActivity() {
 
         dialog.setContentView(view)
         dialog.show()
+    }
+
+    private fun showSecurityCheck() {
+        val executor = ContextCompat.getMainExecutor(this)
+        val biometricPrompt = BiometricPrompt(this, executor, object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                super.onAuthenticationSucceeded(result)
+                runOnUiThread {
+                    findViewById<View>(android.R.id.content).visibility = View.VISIBLE
+                    Toast.makeText(this@AdbShellActivity, "Authenticated", Toast.LENGTH_SHORT).show()
+                }
+            }
+
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                super.onAuthenticationError(errorCode, errString)
+                Toast.makeText(this@AdbShellActivity, "Authentication failed: $errString", Toast.LENGTH_LONG).show()
+                finish() // Close activity if auth fails
+            }
+        })
+
+        val promptInfo = BiometricPrompt.PromptInfo.Builder()
+            .setTitle("Terminal Security")
+            .setSubtitle("Authenticate to access ADB Shell")
+            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL)
+            .build()
+
+        biometricPrompt.authenticate(promptInfo)
     }
 
     private fun executeCommand(cmd: String) {

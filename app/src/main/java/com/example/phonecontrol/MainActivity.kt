@@ -190,11 +190,8 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.cardOptimization).visibility = if (prefs.getBoolean("optimization_enabled", false)) View.VISIBLE else View.GONE
         findViewById<View>(R.id.cardResolution).visibility = if (prefs.getBoolean("resolution_enabled", false)) View.VISIBLE else View.GONE
         findViewById<View>(R.id.cardRam).visibility = if (prefs.getBoolean("ram_manager_enabled", false)) View.VISIBLE else View.GONE
-        
-        // Advanced Tools (Both share the adb_enabled category)
-        val adbToolsVisible = if (prefs.getBoolean("adb_enabled", false)) View.VISIBLE else View.GONE
-        findViewById<View>(R.id.cardBloatware).visibility = adbToolsVisible
-        findViewById<View>(R.id.cardAdb).visibility = adbToolsVisible
+        findViewById<View>(R.id.cardBloatware).visibility = if (prefs.getBoolean("bloatware_enabled", false)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.cardAdb).visibility = if (prefs.getBoolean("adb_enabled", false)) View.VISIBLE else View.GONE
     }
 
 

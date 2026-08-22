@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@android:color/black"
+    android:fitsSystemWindows="true">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbarInspector"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        app:title="App Inspector"
+        app:titleTextColor="@android:color/white"
+        app:navigationIcon="@android:drawable/ic_menu_revert"
+        app:navigationIconTint="@android:color/white" />
+
+    <com.google.android.material.tabs.TabLayout
+        android:id="@+id/tabLayoutApps"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@android:color/black"
+        app:tabTextColor="#888888"
+        app:tabSelectedTextColor="@android:color/white"
+        app:tabIndicatorColor="@android:color/white">
+        <com.google.android.material.tabs.TabItem android:text="User Apps" />
+        <com.google.android.material.tabs.TabItem android:text="System Apps" />
+    </com.google.android.material.tabs.TabLayout>
+
+    <EditText
+        android:id="@+id/etSearchApps"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Search package or name..."
+        android:textColor="@android:color/white"
+        android:textColorHint="#444444"
+        android:padding="12dp"
+        android:background="#1A1A1A"
+        android:layout_margin="12dp"
+        android:textSize="14sp"
+        android:inputType="text"
+        android:maxLines="1" />
+
+    <ListView
+        android:id="@+id/lvAdbApps"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:divider="#222222"
+        android:dividerHeight="1dp" />
+
+</LinearLayout>

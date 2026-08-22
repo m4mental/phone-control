@@ -49,6 +49,7 @@ object MasterManager {
             putBoolean("optimization_enabled", false)
             putBoolean("resolution_enabled", false)
             putBoolean("ram_manager_enabled", false)
+            putBoolean("bloatware_enabled", false)
             putBoolean("adb_enabled", false)
             putBoolean("automation_enabled", false)
             

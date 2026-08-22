@@ -103,7 +103,8 @@ class SettingsActivity : AppCompatActivity() {
             Triple("Display & Resolution", "resolution_enabled", "DPI, Resolution and Scaling dashboard."),
             Triple("Memory Manager", "ram_manager_enabled", "ZRAM and LMK tuning dashboard."),
             Triple("System Optimization", "optimization_enabled", "Deep Maintenance and Silent Mode dashboard."),
-            Triple("Advanced Tools", "adb_enabled", "Bloatware Remover and ADB Shell cards."),
+            Triple("Bloatware Remover", "bloatware_enabled", "Disable system junk apps card."),
+            Triple("ADB Shell Terminal", "adb_enabled", "Root shell terminal access card."),
             Triple("Automation Service", "automation_enabled", "Standby Guard and GPS Auto-Saver logic.")
         )
 
