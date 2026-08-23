@@ -1,6 +1,10 @@
 package com.example.phonecontrol
 
+import android.graphics.Color
 import android.os.Bundle
+import android.text.Spannable
+import android.text.SpannableStringBuilder
+import android.text.style.ForegroundColorSpan
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
@@ -87,8 +91,13 @@ class AdbShellActivity : AppCompatActivity() {
         }
 
         findViewById<Chip>(R.id.chipClear).setOnClickListener { 
-            tvOutput.text = "localhost:~# "
+            tvOutput.text = ""
+            appendColoredText("localhost:~# ", Color.GREEN)
         }
+        
+        // Initial prompt
+        tvOutput.text = ""
+        appendColoredText("localhost:~# ", Color.GREEN)
     }
 
     private fun showEnableAppDialog() {
@@ -217,7 +226,6 @@ class AdbShellActivity : AppCompatActivity() {
         
         var commandToRun = cmd.trim()
         
-        // Auto-fix: Remove 'adb shell' prefix if user typed it
         if (commandToRun.startsWith("adb shell ")) {
             commandToRun = commandToRun.substring("adb shell ".length)
         } else if (commandToRun.startsWith("adb ")) {
@@ -225,22 +233,27 @@ class AdbShellActivity : AppCompatActivity() {
         }
 
         etInput.setText("")
-        tvOutput.append("\nlocalhost:~# $commandToRun\n")
+        appendColoredText("\nlocalhost:~# $commandToRun\n", Color.GREEN)
         
         thread {
             val result = ShellUtils.runAsRoot(commandToRun)
             runOnUiThread {
                 if (result.output.isNotBlank()) {
-                    tvOutput.append(result.output + "\n")
+                    appendColoredText(result.output + "\n", Color.LTGRAY)
                 } else if (result.exitCode != 0) {
-                    tvOutput.append("[Error: Exit code ${result.exitCode}]\n")
+                    appendColoredText("[Error: Exit code ${result.exitCode}]\n", Color.RED)
                 }
                 
-                // Scroll to bottom
                 scrollOutput.post {
                     scrollOutput.fullScroll(NestedScrollView.FOCUS_DOWN)
                 }
             }
         }
+    }
+
+    private fun appendColoredText(text: String, color: Int) {
+        val builder = SpannableStringBuilder(text)
+        builder.setSpan(ForegroundColorSpan(color), 0, text.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        tvOutput.append(builder)
     }
 }

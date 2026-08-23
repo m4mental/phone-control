@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@android:color/black"
+    android:fitsSystemWindows="true">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbarBackupList"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        app:title="Select App to Backup"
+        app:titleTextColor="@android:color/white"
+        app:navigationIcon="@android:drawable/ic_menu_revert"
+        app:navigationIconTint="@android:color/white" />
+
+    <EditText
+        android:id="@+id/etSearchBackup"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Search installed apps..."
+        android:textColor="@android:color/white"
+        android:textColorHint="#444444"
+        android:padding="12dp"
+        android:background="#1A1A1A"
+        android:layout_margin="12dp"
+        android:textSize="14sp"
+        android:inputType="text" />
+
+    <ListView
+        android:id="@+id/lvBackupApps"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:divider="#222222"
+        android:dividerHeight="1dp" />
+
+</LinearLayout>

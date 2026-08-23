@@ -13,6 +13,7 @@ import android.text.TextWatcher
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.tabs.TabLayout
@@ -102,11 +103,8 @@ class AppInspectorActivity : AppCompatActivity() {
         })
 
         listView.setOnItemClickListener { _, _, position, _ ->
-            val pkg = appList[position].packageName
-            val data = Intent()
-            data.putExtra("package_name", pkg)
-            setResult(RESULT_OK, data)
-            finish()
+            val item = appList[position]
+            showAppOptions(item)
         }
 
         listView.setOnItemLongClickListener { _, _, position, _ ->
@@ -117,6 +115,56 @@ class AppInspectorActivity : AppCompatActivity() {
             Toast.makeText(this, "Copied: $pkg", Toast.LENGTH_SHORT).show()
             true
         }
+    }
+
+    private fun showAppOptions(item: AdbAppItem) {
+        val options = arrayOf("Select for Terminal", "Backup App & Data", "Copy Package Name")
+        AlertDialog.Builder(this)
+            .setTitle(item.name)
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> {
+                        val data = Intent()
+                        data.putExtra("package_name", item.packageName)
+                        setResult(RESULT_OK, data)
+                        finish()
+                    }
+                    1 -> showBackupDialog(item)
+                    2 -> {
+                        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val clip = ClipData.newPlainText("Package Name", item.packageName)
+                        clipboard.setPrimaryClip(clip)
+                        Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .show()
+    }
+
+    private fun showBackupDialog(item: AdbAppItem) {
+        val et = EditText(this)
+        et.hint = "Add a custom note (e.g. Stable version)"
+        
+        AlertDialog.Builder(this)
+            .setTitle("Backup ${item.name}")
+            .setMessage("Full APK and Data backup. This may take a while for large apps.")
+            .setView(et)
+            .setPositiveButton("START BACKUP") { _, _ ->
+                val notes = et.text.toString()
+                val masterPath = BackupManager.getAutoVaultPath()
+                
+                val intent = Intent(this, BackupService::class.java).apply {
+                    action = "ACTION_BACKUP"
+                    putExtra("package_name", item.packageName)
+                    putExtra("app_name", item.name)
+                    putExtra("master_path", masterPath)
+                    putExtra("notes", notes)
+                }
+                startForegroundService(intent)
+                Toast.makeText(this, "Backup started in background", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     data class AdbAppItem(val name: String, val packageName: String, val icon: Drawable, val tag: String)

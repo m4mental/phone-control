@@ -19,17 +19,12 @@ class SettingsActivity : AppCompatActivity() {
 
     private lateinit var layoutToggleContainer: LinearLayout
 
-    private val createBackupLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
-        uri?.let { saveBackupToUri(it) }
-    }
-
-    private val openBackupLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let { restoreBackupFromUri(it) }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
+
+        // Ensure storage structure is ready
+        thread { BackupManager.ensureStorageStructure() }
 
         findViewById<MaterialToolbar>(R.id.toolbarSettings).setNavigationOnClickListener { finish() }
         layoutToggleContainer = findViewById(R.id.layoutToggleContainer)
@@ -43,53 +38,33 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.btnBackup).setOnClickListener {
-            createBackupLauncher.launch("PhoneControl_Backup.json")
+            thread {
+                val success = BackupManager.saveBackupAuto(this)
+                runOnUiThread {
+                    if (success) {
+                        Toast.makeText(this, "Backup Saved to /sdcard/PHONE_CONTROL/", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(this, "Backup Failed!", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
         }
 
         findViewById<Button>(R.id.btnRestore).setOnClickListener {
-            openBackupLauncher.launch(arrayOf("application/json"))
+            thread {
+                val success = BackupManager.restoreLatestAuto(this)
+                runOnUiThread {
+                    if (success) {
+                        Toast.makeText(this, "Latest Backup Restored!", Toast.LENGTH_SHORT).show()
+                        refreshToggles()
+                    } else {
+                        Toast.makeText(this, "No Backup Found!", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
         }
 
         refreshToggles()
-    }
-
-    private fun saveBackupToUri(uri: Uri) {
-        thread {
-            try {
-                val json = BackupManager.generateBackupJson(this)
-                if (json != null) {
-                    contentResolver.openOutputStream(uri)?.use { os ->
-                        os.write(json.toByteArray())
-                    }
-                    runOnUiThread { Toast.makeText(this, "Backup Saved!", Toast.LENGTH_SHORT).show() }
-                } else {
-                    runOnUiThread { Toast.makeText(this, "Failed to generate backup!", Toast.LENGTH_SHORT).show() }
-                }
-            } catch (e: Exception) {
-                runOnUiThread { Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_SHORT).show() }
-            }
-        }
-    }
-
-    private fun restoreBackupFromUri(uri: Uri) {
-        thread {
-            try {
-                contentResolver.openInputStream(uri)?.use { `is` ->
-                    val json = `is`.bufferedReader().use { it.readText() }
-                    val success = BackupManager.restoreFromJson(this, json)
-                    runOnUiThread {
-                        if (success) {
-                            Toast.makeText(this, "Configuration Restored!", Toast.LENGTH_SHORT).show()
-                            refreshToggles()
-                        } else {
-                            Toast.makeText(this, "Invalid Backup File!", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                runOnUiThread { Toast.makeText(this, "Restore Error: ${e.message}", Toast.LENGTH_SHORT).show() }
-            }
-        }
     }
 
     private fun refreshToggles() {
@@ -105,6 +80,8 @@ class SettingsActivity : AppCompatActivity() {
             Triple("System Optimization", "optimization_enabled", "Deep Maintenance and Silent Mode dashboard."),
             Triple("Bloatware Remover", "bloatware_enabled", "Disable system junk apps card."),
             Triple("ADB Shell Terminal", "adb_enabled", "Root shell terminal access card."),
+            Triple("App & Data Vault", "vault_enabled", "Advanced APK + Data backup dashboard."),
+            Triple("Home Tower Lock", "tower_lock_enabled", "Indoor 5G stability for MediaTek devices."),
             Triple("Automation Service", "automation_enabled", "Standby Guard and GPS Auto-Saver logic.")
         )
 

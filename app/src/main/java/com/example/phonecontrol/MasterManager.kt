@@ -51,6 +51,8 @@ object MasterManager {
             putBoolean("ram_manager_enabled", false)
             putBoolean("bloatware_enabled", false)
             putBoolean("adb_enabled", false)
+            putBoolean("vault_enabled", false)
+            putBoolean("tower_lock_enabled", false)
             putBoolean("automation_enabled", false)
             
             // Sub-features
@@ -73,8 +75,9 @@ object MasterManager {
             apply()
         }
 
-        // 6.1 Clear Firewall Prefs
+        // 6.1 Clear Vault/Firewall Prefs
         context.getSharedPreferences("firewall_prefs", Context.MODE_PRIVATE).edit().clear().apply()
+        context.getSharedPreferences("multitasking_prefs", Context.MODE_PRIVATE).edit().clear().apply()
 
         // 7. Stop Background Logic
         DaemonManager.stopDaemon()

@@ -42,6 +42,8 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.cardPerApp).setOnClickListener { startActivity(Intent(this, PerAppActivity::class.java)) }
         findViewById<View>(R.id.cardFreezer).setOnClickListener { startActivity(Intent(this, FreezerActivity::class.java)) }
         findViewById<View>(R.id.cardBattery).setOnClickListener { startActivity(Intent(this, BatteryActivity::class.java)) }
+        findViewById<View>(R.id.cardVault).setOnClickListener { startActivity(Intent(this, VaultActivity::class.java)) }
+        findViewById<View>(R.id.cardTowerLock).setOnClickListener { startActivity(Intent(this, HomeTowerLockActivity::class.java)) }
         findViewById<View>(R.id.cardThrottling).setOnClickListener { startActivity(Intent(this, ThrottlingActivity::class.java)) }
         
         // Advanced Section
@@ -190,6 +192,8 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.cardOptimization).visibility = if (prefs.getBoolean("optimization_enabled", false)) View.VISIBLE else View.GONE
         findViewById<View>(R.id.cardResolution).visibility = if (prefs.getBoolean("resolution_enabled", false)) View.VISIBLE else View.GONE
         findViewById<View>(R.id.cardRam).visibility = if (prefs.getBoolean("ram_manager_enabled", false)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.cardVault).visibility = if (prefs.getBoolean("vault_enabled", false)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.cardTowerLock).visibility = if (prefs.getBoolean("tower_lock_enabled", false)) View.VISIBLE else View.GONE
         findViewById<View>(R.id.cardBloatware).visibility = if (prefs.getBoolean("bloatware_enabled", false)) View.VISIBLE else View.GONE
         findViewById<View>(R.id.cardAdb).visibility = if (prefs.getBoolean("adb_enabled", false)) View.VISIBLE else View.GONE
     }

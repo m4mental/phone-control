@@ -9,6 +9,9 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <application
         android:allowBackup="true"
@@ -88,6 +91,31 @@
             android:name=".AppInspectorActivity"
             android:exported="false"
             android:theme="@style/Theme.PhoneControl" />
+
+        <activity
+            android:name=".VaultActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PhoneControl" />
+
+        <activity
+            android:name=".AppBackupListActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PhoneControl" />
+
+        <activity
+            android:name=".AppRestoreListActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PhoneControl" />
+
+        <activity
+            android:name=".HomeTowerLockActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PhoneControl" />
+
+        <service
+            android:name=".BackupService"
+            android:foregroundServiceType="specialUse"
+            android:exported="false" />
 
 
         <activity

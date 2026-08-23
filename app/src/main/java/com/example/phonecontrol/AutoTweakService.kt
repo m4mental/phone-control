@@ -11,6 +11,9 @@ import android.os.IBinder
 class AutoTweakService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Ensure storage structure is ready
+        BackupManager.ensureStorageStructure()
+
         // Start the lightweight Native Daemon
         DaemonManager.startDaemon(this)
         
