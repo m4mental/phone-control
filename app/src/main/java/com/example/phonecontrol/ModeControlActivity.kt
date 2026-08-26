@@ -1,5 +1,6 @@
 package com.example.phonecontrol
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.widget.*
@@ -64,14 +65,19 @@ class ModeControlActivity : AppCompatActivity() {
             layoutFocusSettings.visibility = if (modeKey == "rbAutomatic") View.VISIBLE else View.GONE
             prefs.edit().putString("selected_mode", modeKey).apply()
             
-            // Immediate Application
-            val displayMode = when(modeKey) {
-                "rbPowerSaver" -> "Power Saver"
-                "rbPerformance" -> "Performance"
-                else -> "Balance"
-            }
-            
-            if (modeKey != "rbAutomatic") {
+            if (modeKey == "rbAutomatic") {
+                // Trigger AI logic immediately
+                startService(Intent(this, AutoTweakService::class.java))
+            } else {
+                // Clear AI label when switching to manual
+                prefs.edit().remove("active_ai_label").apply()
+                
+                // Immediate Application
+                val displayMode = when(modeKey) {
+                    "rbPowerSaver" -> "Power Saver"
+                    "rbPerformance" -> "Performance"
+                    else -> "Balance"
+                }
                 kotlin.concurrent.thread {
                     TweakManager.applyGlobalMode(displayMode)
                 }

@@ -25,6 +25,7 @@ object MasterManager {
         TweakManager.setLocationEnabled(true)
         SensorManager.setSensorsEnabled(true)
         ShellUtils.fastCmd("svc nfc enable")
+        ShellUtils.fastCmd("svc data enable")
         
         // 4. Revert RAM & I/O
         TweakManager.applyRamSettings("rbZram4G", "rbProfileBalance")
@@ -52,6 +53,8 @@ object MasterManager {
             putBoolean("bloatware_enabled", false)
             putBoolean("adb_enabled", false)
             putBoolean("vault_enabled", false)
+            putBoolean("data_guard_enabled", false)
+            putBoolean("smart_switch_enabled", false)
             putBoolean("tower_lock_enabled", false)
             putBoolean("automation_enabled", false)
             
@@ -60,8 +63,12 @@ object MasterManager {
             putBoolean("daily_deep_opt_enabled", false)
             putBoolean("standby_guard_enabled", false)
             putBoolean("gps_auto_saver_enabled", false)
+            putBoolean("batt_low_trigger_enabled", false)
             putBoolean("batt_power_save_screen_off", false)
+            putBoolean("batt_data_saver_screen_off", false)
+            putBoolean("batt_limit_enabled", false)
             putBoolean("core_parking_enabled", false)
+            putBoolean("sensor_firewall_enabled", false)
             
             // Sensor Shield
             putBoolean("block_gyro", false)
@@ -71,13 +78,27 @@ object MasterManager {
             putBoolean("block_nfc", false)
 
             putString("selected_mode", "rbBalance")
+            putString("screen_res", "rbRes1080")
             putInt("active_cpu_cap", 100)
             apply()
         }
 
-        // 6.1 Clear Vault/Firewall Prefs
+        // 6.1 Kill Xposed Monitor if active
+        val intent = Intent("com.example.phonecontrol.TOGGLE_MONITOR")
+        intent.putExtra("enabled", false)
+        intent.addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+        context.sendBroadcast(intent)
+
+        // 6.2 Restore default Network/Kernel values
+        ShellUtils.fastCmd("sysctl -w net.ipv4.tcp_congestion_control=cubic 2>/dev/null")
+
+        // 6.3 Clear all sub-prefs
         context.getSharedPreferences("firewall_prefs", Context.MODE_PRIVATE).edit().clear().apply()
         context.getSharedPreferences("multitasking_prefs", Context.MODE_PRIVATE).edit().clear().apply()
+        context.getSharedPreferences("tower_prefs", Context.MODE_PRIVATE).edit().clear().apply()
+        context.getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE).edit().clear().apply()
+        context.getSharedPreferences("game_turbo_prefs", Context.MODE_PRIVATE).edit().clear().apply()
+        context.getSharedPreferences("super_doze_prefs", Context.MODE_PRIVATE).edit().clear().apply()
 
         // 7. Stop Background Logic
         DaemonManager.stopDaemon()

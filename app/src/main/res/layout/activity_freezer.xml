@@ -27,20 +27,58 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Freezer completely suspends apps to save battery and RAM. Suspended apps cannot run in background until launched manually."
+            android:text="Hibernation completely suspends apps to save battery. Suspended apps cannot run until launched manually."
             android:textColor="#AAAAAA"
-            android:textSize="12sp"
-            android:layout_marginBottom="16dp" />
+            android:textSize="12sp" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnAddNewFreeze"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="+ Add App to Freeze"
-            android:textColor="@android:color/black"
-            android:textStyle="bold"
-            app:backgroundTint="@android:color/white"
-            app:cornerRadius="8dp" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="16dp">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:text="Auto-Freeze on Screen OFF"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp" />
+            <com.google.android.material.switchmaterial.SwitchMaterial
+                android:id="@+id/switchAutoFreeze"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnAddNewFreeze"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="+ Add App"
+                android:textColor="@android:color/black"
+                android:textStyle="bold"
+                app:backgroundTint="@android:color/white"
+                app:cornerRadius="8dp" />
+            <View android:layout_width="8dp" android:layout_height="0dp" />
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnFreezeAllNow"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Freeze All"
+                android:textColor="@android:color/white"
+                android:textStyle="bold"
+                app:backgroundTint="#1A1A1A"
+                app:strokeWidth="1dp"
+                app:strokeColor="#444444"
+                app:cornerRadius="8dp" />
+        </LinearLayout>
 
         <LinearLayout
             android:id="@+id/layoutEditActions"

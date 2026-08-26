@@ -1,6 +1,9 @@
 package com.example.phonecontrol
 
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Build
@@ -22,6 +25,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvLiveCpuCap: TextView
     private lateinit var tvLiveCpuUsage: TextView
 
+    private val uiReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            updateDisplayStatus()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -29,6 +38,15 @@ class MainActivity : AppCompatActivity() {
         tvStatus = findViewById(R.id.tvStatus)
         tvRootStatus = findViewById(R.id.tvRootStatus)
         tvKernelStatus = findViewById(R.id.tvKernelStatus)
+        
+        // Dynamic UI Update Receiver
+        val uiFilter = IntentFilter("com.example.phonecontrol.UPDATE_UI")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(uiReceiver, uiFilter, RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("UnspecifiedRegisterReceiverFlag")
+            registerReceiver(uiReceiver, uiFilter)
+        }
         
         tvLiveTemp = findViewById(R.id.tvLiveTemp)
         tvLiveWatts = findViewById(R.id.tvLiveWatts)
@@ -38,6 +56,12 @@ class MainActivity : AppCompatActivity() {
         tvLiveCpuUsage = findViewById(R.id.tvLiveCpuUsage)
 
         // Navigation Hub
+        findViewById<View>(R.id.cardGameTurbo).setOnClickListener { 
+            startActivity(Intent(this, GameTurboActivity::class.java))
+        }
+        findViewById<View>(R.id.cardSuperDoze).setOnClickListener {
+            startActivity(Intent(this, SuperDozeActivity::class.java))
+        }
         findViewById<View>(R.id.cardModeControl).setOnClickListener { startActivity(Intent(this, ModeControlActivity::class.java)) }
         findViewById<View>(R.id.cardPerApp).setOnClickListener { startActivity(Intent(this, PerAppActivity::class.java)) }
         findViewById<View>(R.id.cardFreezer).setOnClickListener { startActivity(Intent(this, FreezerActivity::class.java)) }
@@ -69,6 +93,11 @@ class MainActivity : AppCompatActivity() {
         
         // Root check on background thread with safety
         checkRootAsync()
+    }
+
+    override fun onDestroy() {
+        try { unregisterReceiver(uiReceiver) } catch (e: Exception) {}
+        super.onDestroy()
     }
 
     private fun checkRootAsync() {
@@ -169,14 +198,23 @@ class MainActivity : AppCompatActivity() {
     private fun updateDisplayStatus() {
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
         val savedMode = prefs.getString("selected_mode", "rbBalance")
+        val activeAiLabel = prefs.getString("active_ai_label", "AI: Active")
+
         val statusText = when (savedMode) {
             "rbPowerSaver" -> "Manual: Power Saver"
             "rbBalance" -> "Manual: Balanced"
             "rbPerformance" -> "Manual: Performance"
-            "rbAutomatic" -> "Automatic (AI)"
+            "rbAutomatic" -> activeAiLabel ?: "Automatic (AI)"
             else -> "Unknown"
         }
         tvStatus.text = "Mode: $statusText"
+        
+        // Dynamic Status Color
+        if (savedMode == "rbAutomatic") {
+            tvStatus.setTextColor(Color.parseColor("#00C853")) // Bright Green for AI
+        } else {
+            tvStatus.setTextColor(Color.WHITE)
+        }
         
         // Ensure service is running
         startService(Intent(this, AutoTweakService::class.java))
@@ -187,6 +225,8 @@ class MainActivity : AppCompatActivity() {
         
         // Advanced Features Mapping (Controlled by Master Settings Categories)
         findViewById<View>(R.id.cardThrottling).visibility = if (prefs.getBoolean("adaptive_thermal_enabled", false)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.cardGameTurbo).visibility = if (prefs.getBoolean("game_turbo_enabled", false)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.cardSuperDoze).visibility = if (prefs.getBoolean("super_doze_enabled", false)) View.VISIBLE else View.GONE
         findViewById<View>(R.id.cardNetwork).visibility = if (prefs.getBoolean("network_priority_enabled", false)) View.VISIBLE else View.GONE
         findViewById<View>(R.id.cardStorage).visibility = if (prefs.getBoolean("storage_boost_enabled", false)) View.VISIBLE else View.GONE
         findViewById<View>(R.id.cardOptimization).visibility = if (prefs.getBoolean("optimization_enabled", false)) View.VISIBLE else View.GONE

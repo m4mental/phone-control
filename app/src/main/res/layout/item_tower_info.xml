@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:paddingVertical="8dp"
+    android:gravity="center_vertical">
+
+    <TextView
+        android:id="@+id/tvTowerRank"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:background="@drawable/bg_circle_rank"
+        android:gravity="center"
+        android:text="1"
+        android:textColor="@android:color/black"
+        android:textSize="12sp"
+        android:textStyle="bold" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="12dp"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tvTowerMainInfo"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="PCI: 245 | EARFCN: 627000"
+            android:textColor="@android:color/white"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvTowerDetails"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Signal: -85 dBm (LTE)"
+            android:textColor="#888888"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/tvTowerBadge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="#1A00C853"
+        android:paddingHorizontal="6dp"
+        android:paddingVertical="2dp"
+        android:text="ACTIVE"
+        android:textColor="#00C853"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+</LinearLayout>

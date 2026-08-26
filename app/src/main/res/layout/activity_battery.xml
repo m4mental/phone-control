@@ -86,7 +86,7 @@
                     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
                         <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
                             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Power-save mode" android:textColor="#FFFFFF" />
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Automatically enable battery saver when screen is off." android:textColor="#888888" android:textSize="11sp" />
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Automatically enable system battery saver when screen is off." android:textColor="#888888" android:textSize="11sp" />
                         </LinearLayout>
                         <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchPowerSave" android:layout_width="wrap_content" android:layout_height="wrap_content" />
                     </LinearLayout>
@@ -94,7 +94,7 @@
                     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
                         <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
                             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Data saver" android:textColor="#FFFFFF" />
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Restrict background data usage when screen is off." android:textColor="#888888" android:textSize="11sp" />
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Restrict background apps from using mobile data when screen is off." android:textColor="#888888" android:textSize="11sp" />
                         </LinearLayout>
                         <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchDataSaver" android:layout_width="wrap_content" android:layout_height="wrap_content" />
                     </LinearLayout>
@@ -110,7 +110,7 @@
                     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
                         <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
                             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Sensor Firewall" android:textColor="#FFFFFF" />
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Disable Gyro, Accel, etc. on screen-off to stop standby drain." android:textColor="#888888" android:textSize="11sp" />
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Completely disable all sensors on screen-off to stop idle drain." android:textColor="#888888" android:textSize="11sp" />
                         </LinearLayout>
                         <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchSensorFirewall" android:layout_width="wrap_content" android:layout_height="wrap_content" />
                     </LinearLayout>
@@ -118,7 +118,7 @@
                     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
                         <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
                             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="GPS Auto-Saver" android:textColor="#FFFFFF" />
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Automatically disable GPS on screen-off to save power." android:textColor="#888888" android:textSize="11sp" />
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Disable GPS radio on screen-off and restore it on unlock." android:textColor="#888888" android:textSize="11sp" />
                         </LinearLayout>
                         <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchGpsSaver" android:layout_width="wrap_content" android:layout_height="wrap_content" />
                     </LinearLayout>
@@ -126,7 +126,7 @@
                     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
                         <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
                             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Standby Guard" android:textColor="#FFFFFF" />
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Force background apps to Restricted bucket on screen-off." android:textColor="#888888" android:textSize="11sp" />
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Force background apps to the 'Restricted' bucket to stop CPU wakeups." android:textColor="#888888" android:textSize="11sp" />
                         </LinearLayout>
                         <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchStandbyGuard" android:layout_width="wrap_content" android:layout_height="wrap_content" />
                     </LinearLayout>

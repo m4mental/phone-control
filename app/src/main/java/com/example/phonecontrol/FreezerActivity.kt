@@ -11,6 +11,7 @@ import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.switchmaterial.SwitchMaterial
 import kotlin.concurrent.thread
 
 class FreezerActivity : AppCompatActivity() {
@@ -38,6 +39,10 @@ class FreezerActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnAddNewFreeze).setOnClickListener {
             showSearchableAppPicker()
         }
+
+        findViewById<Button>(R.id.btnFreezeAllNow).setOnClickListener {
+            freezeAll()
+        }
         
         findViewById<Button>(R.id.btnRemoveSelected).setOnClickListener {
             removeMultipleApps()
@@ -45,6 +50,14 @@ class FreezerActivity : AppCompatActivity() {
         
         findViewById<Button>(R.id.btnCancelEdit).setOnClickListener {
             exitEditMode()
+        }
+
+        val swAutoFreeze = findViewById<SwitchMaterial>(R.id.switchAutoFreeze)
+        val prefs = getSharedPreferences("freezer_prefs", MODE_PRIVATE)
+        swAutoFreeze.isChecked = prefs.getBoolean("auto_freeze_enabled", false)
+        swAutoFreeze.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean("auto_freeze_enabled", isChecked).apply()
+            Toast.makeText(this, if (isChecked) "Auto-Hibernation Active" else "Auto-Hibernation Disabled", Toast.LENGTH_SHORT).show()
         }
 
         thread {
@@ -133,6 +146,19 @@ class FreezerActivity : AppCompatActivity() {
             true
         }
         layoutFrozenAppsList.addView(view)
+    }
+
+    private fun freezeAll() {
+        val apps = FreezerManager.getFrozenApps(this)
+        if (apps.isEmpty()) return
+
+        Toast.makeText(this, "Hibernating all apps...", Toast.LENGTH_SHORT).show()
+        thread {
+            for (pkg in apps) {
+                FreezerManager.freezeApp(this, pkg)
+            }
+            runOnUiThread { refreshList() }
+        }
     }
 
     private fun showAppOptionsDialog(pkg: String, appName: String) {

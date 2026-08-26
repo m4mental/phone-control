@@ -52,104 +52,88 @@ object DaemonManager {
                     fi
                 }
 
+                apply_5g_antisleep() {
+                    if [ ${'$'}(get_pref_bool "${'$'}TOWER_PREFS" "5g_antisleep_enabled") -eq 0 ]; then
+                        # Gentle Wakeup: Tells MTK modem to prioritize 5G availability
+                        echo -e "AT+E5GSWITCH=1\r\n" > /dev/radio/pttycmd1
+                        echo -e "AT+EPOWERCONF=0\r\n" > /dev/radio/pttycmd1
+                    fi
+                }
+
+
                 apply_sensors() {
-                    # 1. Any individual sensor block?
+                    # 1. Any individual sensor block? (Gyro, Mag, Light, Motion)
                     [ ${'$'}(get_pref_bool "${'$'}PREFS" "block_gyro") -eq 0 ] || [ ${'$'}(get_pref_bool "${'$'}PREFS" "block_mag") -eq 0 ] || [ ${'$'}(get_pref_bool "${'$'}PREFS" "block_light") -eq 0 ] || [ ${'$'}(get_pref_bool "${'$'}PREFS" "block_motion") -eq 0 ]
                     indiv_block=${'$'}?
                     
-                    # 2. Screen Off Firewall?
-                    [ ${'$'}(get_pref_bool "${'$'}PREFS" "sensor_firewall_enabled") -eq 0 ]
-                    firewall=${'$'}?
-                    
-                    # 3. NFC (Independent)
+                    # 2. NFC (Independent)
                     if [ ${'$'}(get_pref_bool "${'$'}PREFS" "block_nfc") -eq 0 ]; then
                         svc nfc disable
                     else
                         svc nfc enable
                     fi
 
+                    # 3. Always-OFF Enforcement: If an individual block is active, force privacy ON
+                    # If not, we stay out of it to avoid interfering with the app's Screen-OFF firewall
                     if [ ${'$'}indiv_block -eq 0 ]; then
                         settings put global sensor_privacy 1
                         service call sensor_privacy 2 i32 1
-                    elif [ "${'$'}1" = "off" ] && [ ${'$'}firewall -eq 0 ]; then
-                        settings put global sensor_privacy 1
-                        service call sensor_privacy 2 i32 1
-                    else
-                        settings put global sensor_privacy 0
-                        service call sensor_privacy 2 i32 0
                     fi
                 }
 
-                last_app=""
+            last_app=""
             last_screen="on"
 
+            # 1. TCP BBR Persistence
+            sysctl -w net.ipv4.tcp_congestion_control=bbr 2>/dev/null
+
+            # 2. Automated FSTRIM (Runs once a week)
+            TRIM_FILE="/data/local/tmp/last_trim"
+            NOW=${'$'}(date +%s)
+            LAST=${'$'}(cat "${'$'}TRIM_FILE" 2>/dev/null || echo 0)
+            if [ ${'$'}((NOW - LAST)) -gt 604800 ]; then
+                echo "Running weekly FSTRIM..." >> "${'$'}LOG"
+                fstrim -v /data >> "${'$'}LOG" 2>&1
+                echo "${'$'}NOW" > "${'$'}TRIM_FILE"
+            fi
+
+            # 3. Main Loop: Handles persistent refresh and AI load monitoring
             while true; do
-                # 1. Check Screen State (More compatible method)
-                pstate=${'$'}(dumpsys power | grep "Display Power: state=" | cut -d "=" -f2)
-                [ -z "${'$'}pstate" ] && pstate="ON" # Fallback
-
-                if [ "${'$'}pstate" = "OFF" ] || [ "${'$'}pstate" = "DisplayOff" ]; then
-                    if [ "${'$'}last_screen" != "off" ]; then
-                        echo "Screen Off Triggered" >> "${'$'}LOG"
-                        # Master Automation check
-                        if [ ${'$'}(get_pref_bool "${'$'}PREFS" "automation_enabled") -eq 0 ]; then
-                            # Sensor logic
-                            apply_sensors "off"
-
-                            # GPS Saver logic: Remember state before turning off
-                            if [ ${'$'}(get_pref_bool "${'$'}PREFS" "gps_auto_saver_enabled") -eq 0 ]; then
-                                current_gps=${'$'}(settings get secure location_mode)
-                                if [ "${'$'}current_gps" != "0" ]; then
-                                    echo "1" > "/data/local/tmp/gps_was_on"
-                                    settings put secure location_mode 0
-                                else
-                                    echo "0" > "/data/local/tmp/gps_was_on"
-                                fi
-                            fi
-
-                            [ ${'$'}(get_pref_bool "${'$'}PREFS" "batt_power_save_screen_off") -eq 0 ] && cmd battery-saver set-enabled true
-                            
-                            # Standby Guard
-                            if [ ${'$'}(get_pref_bool "${'$'}PREFS" "standby_guard_enabled") -eq 0 ]; then
-                                pm list packages -3 | cut -d ':' -f2 | while read pkg; do
-                                    am set-standby-bucket "${'$'}pkg" restricted 2>/dev/null
-                                done
-                            fi
-                        fi
-                        last_screen="off"
-                    fi
-
-                    # Persistent Tower Lock logic for Screen-Off (Hotspot support)
-                    if [ ${'$'}(get_pref_bool "${'$'}TOWER_PREFS" "persistent_lock_enabled") -eq 0 ]; then
-                         apply_tower_lock
-                    fi
-
-                    sleep 5
-                else
-                    if [ "${'$'}last_screen" != "on" ]; then
-                        echo "Screen On Triggered" >> "${'$'}LOG"
-                        
-                        # Re-apply Tower Lock on Screen ON to ensure persistence
-                        apply_tower_lock
-
-                        if [ ${'$'}(get_pref_bool "${'$'}PREFS" "automation_enabled") -eq 0 ]; then
-                            # Sensor logic
-                            apply_sensors "on"
-
-                            # GPS Saver logic: Restore only if it was ON before screen-off
-                            if [ ${'$'}(get_pref_bool "${'$'}PREFS" "gps_auto_saver_enabled") -eq 0 ]; then
-                                if [ -f "/data/local/tmp/gps_was_on" ] && [ "${'$'}(cat /data/local/tmp/gps_was_on)" = "1" ]; then
-                                    settings put secure location_mode 3
-                                fi
-                                rm -f "/data/local/tmp/gps_was_on"
-                            fi
-                        fi
-                        cmd battery-saver set-enabled false
-                        last_screen="on"
-                    fi
+                # Global Periodic Refresh
+                if [ ${'$'}(get_pref_bool "${'$'}TOWER_PREFS" "is_tower_locked") -eq 0 ]; then
+                     apply_tower_lock
+                fi
+                apply_5g_antisleep
+                apply_sensors "static"
+                
+                # 4. AI Load Monitoring (CPU Usage check)
+                if [ ${'$'}(get_pref_bool "${'$'}PREFS" "selected_mode" | grep -q "rbAutomatic") ]; then
+                    # Get 1-min load average or current usage
+                    # Faster way: look at first number in /proc/loadavg (multiplied by 100)
+                    load_raw=${'$'}(cat /proc/loadavg | cut -d' ' -f1 | sed 's/\.//')
+                    # Standardize to 0-100 range (approximate)
+                    load_val=${'$'}((load_raw / 4)) # Adjusted for 8 cores
+                    [ "${'$'}load_val" -gt 100 ] && load_val=100
+                    
+                    # Notify App Service to adjust AI profile
+                    am start-service -a com.example.phonecontrol.ACTION_AI_TICK --ei load "${'$'}load_val" com.example.phonecontrol/.AutoTweakService >/dev/null 2>&1
                 fi
 
-                sleep 5
+                # Check for SIM/Network resets and re-apply TCP BBR
+                sysctl net.ipv4.tcp_congestion_control | grep -v bbr >/dev/null && sysctl -w net.ipv4.tcp_congestion_control=bbr
+
+                # AI Mode Latency Fix: 
+                # If Screen is OFF, sleep 120s regardless of mode.
+                # If Screen is ON and in Auto mode, check every 5s for speed.
+                current_screen=${'$'}(cat /data/local/tmp/pc_screen 2>/dev/null || echo "on")
+                
+                if [ "${'$'}current_screen" = "off" ]; then
+                    sleep 120
+                elif [ ${'$'}(get_pref_bool "${'$'}PREFS" "selected_mode" | grep -q "rbAutomatic") ]; then
+                    sleep 5
+                else
+                    sleep 120
+                fi
             done
         """.trimIndent()
 

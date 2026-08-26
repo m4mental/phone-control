@@ -26,6 +26,33 @@ object TweakManager {
                 applyIoOptimization("perf")
                 applyInputBoost(true)
             }
+            // AI Engine Granular Profiles
+            "AI_Sleeping" -> {
+                applyBatterySaver()
+                setClusterParking(true) // Park only Big Cores
+                applyCpuTuning("power")
+                // Minimum boost to keep UI from sticking
+                ShellUtils.fastCmd("echo 40 > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null")
+            }
+            "AI_Daily" -> {
+                applyBalance()
+                setClusterParking(false) // All cores online
+                applyCpuTuning("balance")
+                applyInputBoost(false) // Light boost
+            }
+            "AI_Boost" -> {
+                applyPerformance()
+                applyCpuTuning("perf")
+                applyIoOptimization("perf")
+                applyInputBoost(true) // Fast touch response for reels
+            }
+            "AI_Extreme" -> {
+                applyPerformance()
+                ShellUtils.fastCmd("echo 1 > /sys/kernel/gpu/gpu_max_clock 2>/dev/null")
+                applyCpuTuning("perf")
+                applyInputBoost(true)
+                applyProcessPriority("com.android.systemui", true) // Ensure UI is never laggy
+            }
         }
     }
 
@@ -36,9 +63,10 @@ object TweakManager {
     fun applyInputBoost(enabled: Boolean) {
         if (enabled) {
             // Boost frequencies for 500ms on touch
+            // Target first core of Little and first core of Big clusters
             ShellUtils.fastCmd("echo 1 > /sys/module/cpu_boost/parameters/input_boost_enabled 2>/dev/null")
-            ShellUtils.fastCmd("echo 0:1200000 1:1200000 2:1200000 3:1200000 4:1800000 5:1800000 6:1800000 7:1800000 > /sys/module/cpu_boost/parameters/input_boost_freq 2>/dev/null")
-            ShellUtils.fastCmd("echo 500 > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null")
+            ShellUtils.fastCmd("echo 0:1326000 6:2000000 > /sys/module/cpu_boost/parameters/input_boost_freq 2>/dev/null")
+            ShellUtils.fastCmd("echo 400 > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null")
             
             // MTK Touch Sampling / Response Boost
             ShellUtils.fastCmd("echo 1 > /proc/touchpanel/game_switch_enable 2>/dev/null")
@@ -421,11 +449,18 @@ object TweakManager {
     /**
      * 9. Cluster Control (Core Parking)
      */
-    fun setClusterParking(parkBigCores: Boolean) {
+    fun setClusterParking(parkBigCores: Boolean, deep: Boolean = false) {
         val value = if (parkBigCores) "0" else "1"
-        // Common 8-core BIG.little: Cores 4-7 are usually BIG cores
-        for (i in 4..7) {
-            ShellUtils.fastCmd("echo $value > /sys/devices/system/cpu/cpu$i/online 2>/dev/null")
+        // Nothing Phone (2a) - Dimensity 7200 Pro:
+        // Cores 0-5: Efficiency (Cortex-A510)
+        // Cores 6-7: Performance (Cortex-A715)
+        
+        if (deep) {
+            // Extreme sleep: leave only 2 efficiency cores online
+            for (i in 2..7) ShellUtils.fastCmd("echo $value > /sys/devices/system/cpu/cpu$i/online 2>/dev/null")
+        } else {
+            // Normal Power Save: park only the 2 performance cores (6-7)
+            for (i in 6..7) ShellUtils.fastCmd("echo $value > /sys/devices/system/cpu/cpu$i/online 2>/dev/null")
         }
     }
 

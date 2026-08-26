@@ -177,6 +177,52 @@
                 android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
                 android:layout_marginBottom="12dp" />
 
+            <!-- 0. Game Turbo Suite -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardGameTurbo"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                app:cardCornerRadius="16dp"
+                app:cardBackgroundColor="#1A1A1A"
+                app:strokeWidth="1.5dp"
+                app:strokeColor="#FFD600"
+                android:clickable="true"
+                android:focusable="true">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:padding="16dp"
+                    android:gravity="center_vertical">
+                    <ImageView
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:src="@android:drawable/ic_media_play"
+                        app:tint="#FFD600" />
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="16dp"
+                        android:orientation="vertical">
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Game Turbo Suite"
+                            android:textColor="@android:color/white"
+                            android:textStyle="bold"
+                            android:textSize="16sp" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Auto-Performance &amp; Network Priority for Games."
+                            android:textColor="#AAAAAA"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- 1. Mode Control -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/cardModeControl"
@@ -217,7 +263,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Global system performance &amp; AI logic"
+                            android:text="Global performance profiles: Cheetah (Gaming), Kachua (Battery), or AI Balance."
                             android:textColor="#888888"
                             android:textSize="11sp" />
                     </LinearLayout>
@@ -262,7 +308,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Unique performance, FPS, thermal &amp; touch profiles per app."
+                            android:text="Custom profiles: Force FPS, Sampling rate, and CPU priority for specific apps."
                             android:textColor="#888888"
                             android:textSize="11sp" />
                     </LinearLayout>
@@ -307,7 +353,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Completely suspend background apps"
+                            android:text="Hibernation: Automatically stop background apps on screen-off or manually freeze all at once."
                             android:textColor="#888888"
                             android:textSize="11sp" />
                     </LinearLayout>
@@ -352,7 +398,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Charging protection &amp; deep battery analytics"
+                            android:text="Charging protection, cycles tracking, and deep standby power management."
                             android:textColor="#888888"
                             android:textSize="11sp" />
                     </LinearLayout>
@@ -398,7 +444,55 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Advanced APK + Data backup (Neo-Style)."
+                            android:text="⚠️ UNDER DEVELOPMENT: Unstable / Experimental."
+                            android:textColor="#FF5252"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+
+
+            <!-- Super Doze Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardSuperDoze"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                app:cardCornerRadius="16dp"
+                app:cardBackgroundColor="#1A1A1A"
+                app:strokeWidth="1.5dp"
+                app:strokeColor="#7C4DFF"
+                android:clickable="true"
+                android:focusable="true">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:padding="20dp"
+                    android:gravity="center_vertical">
+                    <ImageView
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:src="@android:drawable/ic_lock_idle_low_battery"
+                        app:tint="#7C4DFF" />
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="16dp"
+                        android:orientation="vertical">
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Super Doze Mode"
+                            android:textColor="@android:color/white"
+                            android:textStyle="bold"
+                            android:textSize="16sp" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Kernel-level deep sleep for 0% standby drain."
                             android:textColor="#AAAAAA"
                             android:textSize="12sp" />
                     </LinearLayout>
@@ -443,7 +537,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Indoor 5G stability via PCI/EARFCN lock."
+                            android:text="Modem Lock: Force connect to specific 5G/4G cells to prevent signal drops."
                             android:textColor="#888888"
                             android:textSize="11sp" />
                     </LinearLayout>
@@ -534,7 +628,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Optimize UFS speed and database access."
+                            android:text="UFS Speed: Weekly FSTRIM and I/O tuning to keep storage as fast as new."
                             android:textColor="#888888"
                             android:textSize="11sp" />
                     </LinearLayout>
@@ -624,7 +718,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Adjust ZRAM size &amp; multitasking"
+                            android:text="ZRAM Engine: Efficient 4GB compressed RAM (In-Memory) for 50x faster multitasking than disk-based Virtual RAM."
                             android:textColor="#888888"
                             android:textSize="11sp" />
                     </LinearLayout>
@@ -669,7 +763,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="DNS tweaks &amp; Gaming ping fix"
+                            android:text="Stable Ping: Enable TCP BBR and packet marking to prioritize gaming traffic."
                             android:textColor="#888888"
                             android:textSize="11sp" />
                     </LinearLayout>
@@ -714,7 +808,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Disable limits &amp; Emergency cooling"
+                            android:text="Cooling Engine: Dynamic CPU capping and core parking to prevent overheating."
                             android:textColor="#888888"
                             android:textSize="11sp" />
                     </LinearLayout>
@@ -759,7 +853,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Clean system junk &amp; optimize ART cache"
+                            android:text="Maintenance: Clean system junk and rebuild ART cache for peak responsiveness."
                             android:textColor="#888888"
                             android:textSize="11sp" />
                     </LinearLayout>

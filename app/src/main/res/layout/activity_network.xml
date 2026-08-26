@@ -48,7 +48,7 @@
                     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
                         <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
                             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="TCP BBR Optimization" android:textColor="#FFFFFF" android:textStyle="bold" />
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Google's BBR algorithm for max throughput." android:textColor="#888888" android:textSize="11sp" />
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Google's BBR algorithm: Prevents packet loss and keeps internet speeds stable at high speeds." android:textColor="#888888" android:textSize="11sp" />
                         </LinearLayout>
                         <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchTcp" android:layout_width="wrap_content" android:layout_height="wrap_content" />
                     </LinearLayout>
@@ -58,7 +58,7 @@
                     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
                         <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
                             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Low Latency Mode" android:textColor="#FFFFFF" android:textStyle="bold" />
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Reduce ping spikes by disabling Wi-Fi scanning." android:textColor="#888888" android:textSize="11sp" />
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Stops background Wi-Fi scanning to eliminate ping spikes during online gaming (BGMI/FreeFire)." android:textColor="#888888" android:textSize="11sp" />
                         </LinearLayout>
                         <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchLowLatency" android:layout_width="wrap_content" android:layout_height="wrap_content" />
                     </LinearLayout>
@@ -68,7 +68,7 @@
                     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
                         <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
                             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Packet Guard (Priority)" android:textColor="#FFFFFF" android:textStyle="bold" />
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Prioritize data packets for the foreground app." android:textColor="#888888" android:textSize="11sp" />
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Uses iptables to mark and prioritize data packets for the app you are currently using." android:textColor="#888888" android:textSize="11sp" />
                         </LinearLayout>
                         <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchNetworkPriority" android:layout_width="wrap_content" android:layout_height="wrap_content" />
                     </LinearLayout>
@@ -87,6 +87,26 @@
                         app:strokeWidth="1dp"
                         app:strokeColor="@color/color_network" />
 
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Smart Data Switcher -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="16dp"
+                app:cardBackgroundColor="#121212"
+                app:strokeWidth="1dp"
+                app:strokeColor="#333333">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Smart Data Switcher" android:textColor="#FFFFFF" android:textStyle="bold" />
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Auto-OFF mobile data on WiFi to save battery and heat." android:textColor="#888888" android:textSize="11sp" />
+                        </LinearLayout>
+                        <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchSmartSwitch" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                    </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

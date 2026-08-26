@@ -22,6 +22,7 @@ import androidx.biometric.BiometricManager
 import androidx.core.content.ContextCompat
 import androidx.activity.result.contract.ActivityResultContracts
 import android.content.Intent
+import androidx.appcompat.app.AlertDialog
 import kotlin.concurrent.thread
 
 class AdbShellActivity : AppCompatActivity() {
@@ -29,6 +30,9 @@ class AdbShellActivity : AppCompatActivity() {
     private lateinit var tvOutput: TextView
     private lateinit var etInput: EditText
     private lateinit var scrollOutput: NestedScrollView
+    
+    private val commandHistory = mutableListOf<String>()
+    private var historyIndex = -1
 
     private val appInspectorLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) {
@@ -62,22 +66,41 @@ class AdbShellActivity : AppCompatActivity() {
             appInspectorLauncher.launch(Intent(this, AppInspectorActivity::class.java))
         }
 
+        findViewById<View>(R.id.btnProcessMonitor).setOnClickListener {
+            appendColoredText("\n[ANALYZING] Top 10 Power-Hungry Apps...\n", Color.YELLOW)
+            // Filter dumpsys to show only % and package names clearly
+            executeCommand("dumpsys cpuinfo | grep -E '[0-9]+% [0-9]+/' | head -n 10")
+        }
+
         findViewById<ImageButton>(R.id.btnSendAdb).setOnClickListener {
-            executeCommand(etInput.text.toString())
+            handleCommandSubmission(etInput.text.toString())
+        }
+
+        findViewById<ImageButton>(R.id.btnHistory).setOnClickListener {
+            showHistoryDialog()
         }
 
         etInput.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEND) {
-                executeCommand(etInput.text.toString())
+                handleCommandSubmission(etInput.text.toString())
                 true
             } else false
         }
+        
+        loadHistory()
 
         // Quick Chips
         findViewById<Chip>(R.id.chipGetProp).setOnClickListener { executeCommand("getprop | grep model") }
         findViewById<Chip>(R.id.chipLs).setOnClickListener { executeCommand("ls -l /data") }
         findViewById<Chip>(R.id.chipUptime).setOnClickListener { executeCommand("uptime") }
         
+        findViewById<Chip>(R.id.chipUfs).setOnClickListener { 
+            executeCommand("cat /sys/block/sd*/device/model; echo 'Health:'; cat /sys/class/scsi_host/host*/health_index 2>/dev/null || echo 'Not Supported'") 
+        }
+        findViewById<Chip>(R.id.chipNet).setOnClickListener { 
+            executeCommand("dumpsys telephony.registry | grep -E 'mServiceState|mSignalStrength|mMessage'") 
+        }
+
         findViewById<Chip>(R.id.chipEnableApp).setOnClickListener {
             showEnableAppDialog()
         }
@@ -160,6 +183,7 @@ class AdbShellActivity : AppCompatActivity() {
         val container = view.findViewById<LinearLayout>(R.id.layoutTipsContainer)
 
         val tips = listOf(
+            "dumpsys cpuinfo | head -n 10" to "Power Monitor: Top apps by CPU/Battery usage.",
             "pm enable <pkg>" to "Enables a disabled/frozen app.",
             "pm disable-user --user 0 <pkg>" to "Completely freezes/disables an app.",
             "pm hide <pkg>" to "Hides app from launcher (remains installed).",
@@ -171,11 +195,8 @@ class AdbShellActivity : AppCompatActivity() {
             "wm density <dpi>" to "Changes screen DPI (e.g. 400).",
             "wm size <width>x<height>" to "Changes screen resolution.",
             "df -h" to "Shows storage space usage for all partitions.",
-            "top -n 1 -m 5" to "Shows top 5 CPU consuming processes.",
             "logcat -d" to "Displays the latest system log buffer.",
-            "uname -a" to "Shows Kernel info and architecture.",
-            "reboot recovery" to "Restarts the phone into Recovery mode.",
-            "input keyevent 26" to "Simulates pressing the Power button."
+            "reboot recovery" to "Restarts the phone into Recovery mode."
         )
 
         for (tip in tips) {
@@ -221,6 +242,62 @@ class AdbShellActivity : AppCompatActivity() {
         biometricPrompt.authenticate(promptInfo)
     }
 
+    private fun handleCommandSubmission(cmd: String) {
+        if (cmd.isBlank()) return
+        
+        // Dangerous Command Safeguard
+        val lowerCmd = cmd.lowercase()
+        if (lowerCmd.contains("rm ") || lowerCmd.contains("reboot") || lowerCmd.contains("pm uninstall")) {
+            AlertDialog.Builder(this)
+                .setTitle("⚠️ DANGEROUS COMMAND")
+                .setMessage("You are about to run a system-altering command: \"$cmd\"\n\nProceeding may cause data loss or bootloops. Are you sure?")
+                .setPositiveButton("RUN ANYWAY") { _, _ -> executeCommand(cmd) }
+                .setNegativeButton("CANCEL", null)
+                .show()
+        } else {
+            executeCommand(cmd)
+        }
+    }
+
+    private fun loadHistory() {
+        val prefs = getSharedPreferences("adb_history", MODE_PRIVATE)
+        val historySet = prefs.getStringSet("history", emptySet())
+        if (historySet != null) {
+            commandHistory.clear()
+            commandHistory.addAll(historySet.toList())
+        }
+    }
+
+    private fun saveToHistory(cmd: String) {
+        if (!commandHistory.contains(cmd)) {
+            commandHistory.add(0, cmd)
+            if (commandHistory.size > 20) commandHistory.removeAt(commandHistory.size - 1)
+            val prefs = getSharedPreferences("adb_history", MODE_PRIVATE)
+            prefs.edit().putStringSet("history", commandHistory.toSet()).apply()
+        }
+    }
+
+    private fun showHistoryDialog() {
+        if (commandHistory.isEmpty()) {
+            Toast.makeText(this, "No history available", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Command History")
+            .setItems(commandHistory.toTypedArray()) { _, which ->
+                etInput.setText(commandHistory[which])
+                etInput.setSelection(etInput.text.length)
+                etInput.requestFocus()
+            }
+            .setNeutralButton("Clear All") { _, _ ->
+                commandHistory.clear()
+                getSharedPreferences("adb_history", MODE_PRIVATE).edit().clear().apply()
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
     private fun executeCommand(cmd: String) {
         if (cmd.isBlank()) return
         
@@ -232,6 +309,7 @@ class AdbShellActivity : AppCompatActivity() {
             commandToRun = commandToRun.substring("adb ".length)
         }
 
+        saveToHistory(cmd) // Save successful or attempted command
         etInput.setText("")
         appendColoredText("\nlocalhost:~# $commandToRun\n", Color.GREEN)
         
@@ -240,9 +318,18 @@ class AdbShellActivity : AppCompatActivity() {
             runOnUiThread {
                 if (result.output.isNotBlank()) {
                     appendColoredText(result.output + "\n", Color.LTGRAY)
-                } else if (result.exitCode != 0) {
+                } else {
+                    // Feedback for commands that produce no output
+                    if (result.exitCode == 0) {
+                        appendColoredText("[Command executed successfully]\n", Color.GRAY)
+                    }
+                }
+
+                if (result.exitCode != 0 && result.exitCode != -1) {
                     appendColoredText("[Error: Exit code ${result.exitCode}]\n", Color.RED)
                 }
+                
+                appendColoredText("localhost:~# ", Color.GREEN)
                 
                 scrollOutput.post {
                     scrollOutput.fullScroll(NestedScrollView.FOCUS_DOWN)

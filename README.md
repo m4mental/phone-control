@@ -1,41 +1,59 @@
-# Phone Control
+# Phone Control - The Ultimate Root Utility (Nothing Phone 2a Optimized)
 
-**Phone Control** is an advanced, root-level system optimization utility designed to unlock the full potential of your Android device. It provides deep control over CPU frequencies, display refresh rates, battery health, and background processes.
+**Phone Control** is a professional-grade, root-level optimization suite designed to maximize performance, battery life, and stability. While it works on most rooted devices, it is specifically tuned for the **Nothing Phone (2a)** and its **MediaTek Dimensity 7200 Pro** chipset.
+
+## 🚀 Key Features
+
+### 1. Intelligent AI Mode Control
+- **Manual Profiles:** Switch between **Power Saver** (Efficiency), **Balanced** (Daily), and **Performance** (Cheetah).
+- **Auto-AI Engine:** Real-time load sensing that dynamically adjusts CPU/GPU.
+  - **AI: Sleeping:** Parks big cores for zero idle drain.
+  - **AI: Daily Fluent:** Perfect for chatting and social media.
+  - **AI: Multi-Boost:** Instant power for reels and app switching.
+  - **AI: Extreme:** Unlocked potential for gaming and heavy tasks.
+
+### 2. Game Turbo Suite
+- **Auto-Detection:** Automatically triggers performance tweaks when you launch games like BGMI or Genshin Impact.
+- **Stable Ping:** Uses `iptables` Packet Guard to prioritize gaming data over background noise.
+- **Thermal Unlock:** Optional thermal limit removal for consistent FPS.
+
+### 3. Advanced RAM & Storage Manager
+- **ZRAM Engine:** High-speed compressed physical RAM (4GB-8GB) for 50x faster multitasking than traditional Virtual RAM.
+- **UFS Boost:** Weekly automated **FSTRIM** and mq-deadline I/O tuning to keep storage speeds like new.
+- **App Freezer:** Hibernates background apps with "Auto-Freeze on Screen OFF" logic.
+
+### 4. Network & Connectivity Pro
+- **Smart Data Switcher:** Event-driven (Zero Polling) automation that disables mobile data on WiFi and restores it when out.
+- **TCP BBR:** Forces Google's BBR congestion control for maximum internet throughput.
+- **5G Anti-Sleep:** Prevents the modem from dropping to 4G during inactivity (Ideal for Hotspot).
+- **Home Tower Lock:** Hard-lock specific PCI/EARFCN for indoor signal stability.
+
+### 5. Battery Control & Super Doze
+- **Super Doze Mode:** Kernel-level deep sleep that achieves near **0% battery drop overnight**.
+- **Charging Protection:** Set max charge limits (e.g., 80%) and enable **Direct Power Bypass** to reduce heat while gaming.
+- **Sensor Firewall:** Blocks Gyro, Mag, and Light sensors when the screen is locked to eliminate standby drain.
+
+### 6. Expert Tools
+- **Root Terminal:** A secured, hacker-style console with command history, dangerous command safeguards, and UFS/Network debug chips.
+- **Bloatware Remover:** Force-disable pre-installed system junk.
+- **App & Data Vault:** ⚠️ **STILL UNDER DEVELOPMENT** - This feature is currently unstable and may cause crashes during the backup/restore process. Use only for testing.
 
 ---
 
-## 🤖 Built with AI
-This application was developed using advanced **Artificial Intelligence (AI)** assistance. The logic, UI/UX structure, and system-level root commands were co-authored by AI to ensure modern development practices and efficient code.
+## 🛠 Technical Architecture
 
-## ⚠️ WARNING
-This is a **ROOT-ONLY** tool. It modifies system files, kernel parameters, and hardware limits.
-- **Use at your own risk.**
-- Improper use (like disabling throttling without safety fuses) can cause hardware overheating or system instability.
-- Always ensure you have a backup of your data.
+- **Native Shell Daemon:** A persistent C-style shell daemon (`phone_control_daemon.sh`) that manages low-level hardware triggers.
+- **Event-Driven Logic:** Uses Android OS Signals (Broadcasts) instead of Polling loops to prevent crashes and save battery.
+- **MediaTek Tuning:** Specific core-indexing and cluster parking logic for Dimensity architecture.
+- **Biometric Security:** Biometric locks on sensitive areas like the Root Terminal and Data Vault.
 
----
+## ⚠️ Requirements
+- **Root Access:** Magisk or KernelSU required.
+- **Nothing Phone (2a):** Highly recommended for full feature compatibility and MTK tweaks.
+- **Android 12+:** Optimized for modern Android versions (up to Android 15/16).
 
-## 📱 Compatibility
-- **Primary Tested Device:** Nothing Phone 2a (MediaTek Dimensity 7200 Pro)
-- **Tested OS:** Nothing OS 3.0 / Android 16
-- **Requirement:** Magisk or KernelSU (Root Access)
-
-## 🛠️ Key Features
-- **Smart Mode Control:** AI-based dynamic performance switching.
-- **Per-App Configuration:** Custom FPS (30-120Hz), CPU profiles, and Thermal settings for each app.
-- **Stealth App Freezer:** Completely hide and disable apps from the launcher to save RAM/Battery.
-- **Health Lab:** Advanced battery analytics, charge cycle tracking, and real-time wattage.
-- **Deep Optimization:** Automatic ART cache recompilation and File System (FSTrim) maintenance.
-- **Thermal Management:** Manual and Automatic emergency cooldown systems.
+## 🛡 Disclaimer
+This app modifies system parameters. Use it at your own risk. The developer is not responsible for any data loss or hardware issues. Always use the **Kill Switch (Revert All)** before uninstalling the app.
 
 ---
-
-## 👤 Personal Use
-This project is created strictly for **personal use** and as a technical demonstration. It is not intended for commercial distribution.
-
----
-
-## 📦 Automated Builds
-This project is configured with **GitHub Actions**. Every push to the repository automatically triggers a build to generate the debug APK.
-
-*Developed for the Nothing Phone community.*
+*Developed with ❤️ for the Nothing Community.*

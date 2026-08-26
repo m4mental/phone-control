@@ -3,14 +3,15 @@ package com.example.phonecontrol
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import android.telephony.*
-import android.telephony.*
-import android.widget.EditText
-import android.widget.TextView
-import android.widget.Toast
+import android.view.LayoutInflater
+import android.view.View
+import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import com.google.android.material.appbar.MaterialToolbar
@@ -19,14 +20,11 @@ import com.google.android.material.switchmaterial.SwitchMaterial
 import kotlinx.coroutines.*
 
 class HomeTowerLockActivity : AppCompatActivity() {
-
-    private lateinit var tvCurrentPci: TextView
-    private lateinit var tvCurrentEarfcn: TextView
-    private lateinit var tvCurrentBand: TextView
-    private lateinit var tvCurrentRsrp: TextView
     private lateinit var tvSavedHomeInfo: TextView
     private lateinit var tvLockStatus: TextView
+    private lateinit var layoutTowerList: LinearLayout
     private lateinit var swPersistent: SwitchMaterial
+    private lateinit var sw5gAntiSleep: SwitchMaterial
     private lateinit var etManualPci: EditText
     private lateinit var etManualEarfcn: EditText
 
@@ -41,43 +39,45 @@ class HomeTowerLockActivity : AppCompatActivity() {
 
         findViewById<MaterialToolbar>(R.id.toolbarTower).setNavigationOnClickListener { finish() }
 
-        tvCurrentPci = findViewById(R.id.tvCurrentPci)
-        tvCurrentEarfcn = findViewById(R.id.tvCurrentEarfcn)
-        tvCurrentBand = findViewById(R.id.tvCurrentBand)
-        tvCurrentRsrp = findViewById(R.id.tvCurrentRsrp)
+        layoutTowerList = findViewById(R.id.layoutTowerList)
         tvSavedHomeInfo = findViewById(R.id.tvSavedHomeInfo)
         tvLockStatus = findViewById(R.id.tvLockStatus)
         swPersistent = findViewById(R.id.swPersistentLock)
+        sw5gAntiSleep = findViewById(R.id.sw5gAntiSleep)
         etManualPci = findViewById(R.id.etManualPci)
         etManualEarfcn = findViewById(R.id.etManualEarfcn)
 
         val towerPrefs = getSharedPreferences("tower_prefs", MODE_PRIVATE)
         swPersistent.isChecked = towerPrefs.getBoolean("persistent_lock_enabled", false)
-        
+        sw5gAntiSleep.isChecked = towerPrefs.getBoolean("5g_antisleep_enabled", false)
+
         swPersistent.setOnCheckedChangeListener { _, isChecked ->
             towerPrefs.edit().putBoolean("persistent_lock_enabled", isChecked).apply()
-            // Trigger daemon restart to apply new persistence logic
             DaemonManager.startDaemon(this)
             Toast.makeText(this, "Persistence logic updated", Toast.LENGTH_SHORT).show()
         }
+
+        sw5gAntiSleep.setOnCheckedChangeListener { _, isChecked ->
+            towerPrefs.edit().putBoolean("5g_antisleep_enabled", isChecked).apply()
+            DaemonManager.startDaemon(this)
+            val msg = if (isChecked) "5G Anti-Sleep Active" else "5G Power Save Restored"
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+        }
+
 
         findViewById<MaterialButton>(R.id.btnSaveHomeTower).setOnClickListener { saveHomeTower() }
         findViewById<MaterialButton>(R.id.btnLockHome).setOnClickListener { lockToHome() }
         findViewById<MaterialButton>(R.id.btnReleaseLock).setOnClickListener { releaseLock() }
         findViewById<MaterialButton>(R.id.btnApplyManualLock).setOnClickListener { applyManual() }
+        findViewById<MaterialButton>(R.id.btnManualScan).setOnClickListener { 
+            Toast.makeText(this, "Scanning nearby towers...", Toast.LENGTH_SHORT).show()
+            updateTowerInfo() 
+        }
 
         updateSavedInfo()
-        startLiveScanner()
+        // Removed startLiveScanner() from onCreate to save battery
     }
 
-    private fun startLiveScanner() {
-        scope.launch {
-            while (isActive) {
-                updateTowerInfo()
-                delay(3000)
-            }
-        }
-    }
 
     @SuppressLint("SetTextI18n")
     private fun updateTowerInfo() {
@@ -88,31 +88,63 @@ class HomeTowerLockActivity : AppCompatActivity() {
 
         val tm = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
         val cellInfoList = tm.allCellInfo ?: return
+        val towerList = mutableListOf<TowerInfo>()
 
         for (info in cellInfoList) {
-            if (info is CellInfoLte && info.isRegistered) {
+            val isRegistered = info.isRegistered
+            if (info is CellInfoLte) {
                 val identity = info.cellIdentity
-                currentPci = identity.pci
-                currentEarfcn = identity.earfcn
+                val pci = identity.pci
+                val earfcn = identity.earfcn
+                if (pci == 2147483647 || earfcn == 2147483647) continue // Filter invalid
                 
-                tvCurrentPci.text = "PCI: $currentPci"
-                tvCurrentEarfcn.text = "EARFCN: $currentEarfcn"
-                tvCurrentRsrp.text = "RSRP: ${info.cellSignalStrength.rsrp} dBm"
-                tvCurrentBand.text = "Band: ${getLteBand(currentEarfcn)}"
-                break
-            } else if (info is CellInfoNr && info.isRegistered) {
+                val rsrp = info.cellSignalStrength.rsrp
+                towerList.add(TowerInfo(pci, earfcn, rsrp, "LTE", isRegistered))
+            } else if (info is CellInfoNr) {
                 val identity = info.cellIdentity as CellIdentityNr
-                currentPci = identity.pci
-                currentEarfcn = identity.nrarfcn
+                val pci = identity.pci
+                val earfcn = identity.nrarfcn
+                if (pci == 2147483647 || earfcn == 2147483647) continue // Filter invalid
                 
-                tvCurrentPci.text = "PCI: $currentPci"
-                tvCurrentEarfcn.text = "EARFCN: $currentEarfcn"
-                tvCurrentRsrp.text = "RSRP: ${info.cellSignalStrength.dbm} dBm"
-                tvCurrentBand.text = "Band: NR" // Band detection for NR is complex
-                break
+                val rsrp = info.cellSignalStrength.dbm
+                towerList.add(TowerInfo(pci, earfcn, rsrp, "5G NR", isRegistered))
             }
         }
+
+        // Sort by Signal (Descending) and take top 3
+        val top3 = towerList.sortedByDescending { it.rsrp }.distinctBy { "${it.pci}_${it.earfcn}" }.take(3)
+        
+        runOnUiThread { renderTowerList(top3) }
     }
+
+    private fun renderTowerList(towers: List<TowerInfo>) {
+        layoutTowerList.removeAllViews()
+        val inflater = LayoutInflater.from(this)
+
+        if (towers.isEmpty()) {
+            val tv = TextView(this)
+            tv.text = "No towers detected. Checking..."
+            tv.setTextColor(Color.GRAY)
+            layoutTowerList.addView(tv)
+            return
+        }
+
+        towers.forEachIndexed { index, tower ->
+            val v = inflater.inflate(R.layout.item_tower_info, layoutTowerList, false)
+            v.findViewById<TextView>(R.id.tvTowerRank).text = (index + 1).toString()
+            v.findViewById<TextView>(R.id.tvTowerMainInfo).text = "PCI: ${tower.pci} | EARFCN: ${tower.earfcn}"
+            v.findViewById<TextView>(R.id.tvTowerDetails).text = "Signal: ${tower.rsrp} dBm (${tower.type})"
+            
+            if (tower.isActive) {
+                v.findViewById<TextView>(R.id.tvTowerBadge).visibility = View.VISIBLE
+                currentPci = tower.pci
+                currentEarfcn = tower.earfcn
+            }
+            layoutTowerList.addView(v)
+        }
+    }
+
+    data class TowerInfo(val pci: Int, val earfcn: Int, val rsrp: Int, val type: String, val isActive: Boolean)
 
     private fun getLteBand(earfcn: Int): String {
         return when {
@@ -216,10 +248,16 @@ class HomeTowerLockActivity : AppCompatActivity() {
 
     private fun executeRadioLock(earfcn: Int, pci: Int, statusText: String) {
         scope.launch(Dispatchers.IO) {
+            // 1. Send the lock command
             val cmd = "echo -e \"AT+ECELL=1,$earfcn,$pci\\r\\n\" > /dev/radio/pttycmd1"
-            val refresh = "cmd connectivity airplane-mode enable && sleep 2 && cmd connectivity airplane-mode disable"
-            
             ShellUtils.runAsRoot(cmd)
+
+            // 2. Force Modem Full Reset (AT+CFUN=1,1) to clear cell memory and force re-scan
+            // This is the "Hard Lock" part that prevents the modem from ignoring the command.
+            ShellUtils.runAsRoot("echo -e \"AT+CFUN=1,1\\r\\n\" > /dev/radio/pttycmd1")
+            
+            // 3. System Radio Refresh
+            val refresh = "cmd connectivity airplane-mode enable && sleep 3 && cmd connectivity airplane-mode disable"
             ShellUtils.runAsRoot(refresh)
             
             getSharedPreferences("tower_prefs", MODE_PRIVATE).edit().apply {
@@ -232,10 +270,12 @@ class HomeTowerLockActivity : AppCompatActivity() {
             withContext(Dispatchers.Main) {
                 tvLockStatus.text = "🟢 $statusText"
                 tvLockStatus.setTextColor(Color.YELLOW)
-                Toast.makeText(this@HomeTowerLockActivity, "Radio Lock Applied", Toast.LENGTH_LONG).show()
+                Toast.makeText(this@HomeTowerLockActivity, "Modem Hard-Locked to PCI: $pci", Toast.LENGTH_LONG).show()
+                DaemonManager.startDaemon(this@HomeTowerLockActivity)
             }
         }
     }
+
 
     override fun onDestroy() {
         super.onDestroy()

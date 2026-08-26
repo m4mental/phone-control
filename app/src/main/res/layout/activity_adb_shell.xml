@@ -28,6 +28,15 @@
             app:iconTint="@android:color/white" />
 
         <ImageButton
+            android:id="@+id/btnProcessMonitor"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_gravity="end"
+            android:src="@android:drawable/ic_menu_recent_history"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            app:tint="#00FF00" />
+
+        <ImageButton
             android:id="@+id/btnShowTips"
             android:layout_width="48dp"
             android:layout_height="48dp"
@@ -85,6 +94,14 @@
             android:inputType="textNoSuggestions"
             android:fontFamily="monospace"
             android:textSize="14sp" />
+
+        <ImageButton
+            android:id="@+id/btnHistory"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@android:drawable/ic_menu_recent_history"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            app:tint="#888888" />
 
         <ImageButton
             android:id="@+id/btnSendAdb"
@@ -152,6 +169,22 @@
                 android:layout_height="wrap_content"
                 android:text="Delete Any App"
                 android:textColor="#FF1744"
+                android:layout_marginEnd="8dp" />
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chipUfs"
+                style="@style/Widget.Material3.Chip.Assist"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="UFS Health"
+                android:textColor="#00E5FF"
+                android:layout_marginEnd="8dp" />
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chipNet"
+                style="@style/Widget.Material3.Chip.Assist"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Net Stats"
+                android:textColor="#76FF03"
                 android:layout_marginEnd="8dp" />
             <com.google.android.material.chip.Chip
                 android:id="@+id/chipClear"

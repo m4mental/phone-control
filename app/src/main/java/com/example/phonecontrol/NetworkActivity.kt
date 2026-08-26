@@ -23,6 +23,7 @@ class NetworkActivity : AppCompatActivity() {
         val switchTcp = findViewById<SwitchMaterial>(R.id.switchTcp)
         val switchLowLatency = findViewById<SwitchMaterial>(R.id.switchLowLatency)
         val switchPriority = findViewById<SwitchMaterial>(R.id.switchNetworkPriority)
+        val switchSmart = findViewById<SwitchMaterial>(R.id.switchSmartSwitch)
         
         // Load Saved States
         val savedDns = prefs.getString("network_dns", "rbDnsDefault")
@@ -34,6 +35,7 @@ class NetworkActivity : AppCompatActivity() {
         switchTcp.isChecked = prefs.getBoolean("network_tcp_tweaks", false)
         switchLowLatency.isChecked = prefs.getBoolean("network_low_latency", false)
         switchPriority.isChecked = prefs.getBoolean("network_priority_enabled", false)
+        switchSmart.isChecked = prefs.getBoolean("smart_switch_enabled", false)
 
         findViewById<Button>(R.id.btnApplyNetwork).setOnClickListener {
             val dnsKey = when (rgDns.checkedRadioButtonId) {
@@ -53,6 +55,12 @@ class NetworkActivity : AppCompatActivity() {
                 .apply()
                 
             applyNetwork(dnsKey, tcpEnabled, lowLatencyEnabled)
+        }
+
+        switchSmart.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean("smart_switch_enabled", isChecked).apply()
+            // Force service to update callback registration
+            startService(android.content.Intent(this, AutoTweakService::class.java))
         }
 
         findViewById<Button>(R.id.btnManageFirewall).setOnClickListener {

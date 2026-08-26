@@ -31,19 +31,29 @@ object ShellUtils {
                 isBusy = true
                 ensureShell()
                 
-                os?.writeBytes("$command\n")
+                // 1. We append 2>&1 to capture errors
+                // 2. We echo the exit code ($?) so we know if the command actually failed
+                // 3. We use a unique token to mark the end
+                val wrappedCommand = "($command) 2>&1; echo \"_EXIT_CODE_:\$?\"\n"
+                
+                os?.writeBytes(wrappedCommand)
                 os?.writeBytes("echo $DONE_TOKEN\n")
                 os?.flush()
 
                 val output = StringBuilder()
-                var line: String?
+                var exitCode = 0
                 while (true) {
-                    line = reader?.readLine()
-                    if (line == null || line == DONE_TOKEN) break
-                    output.append(line).append("\n")
+                    val line = reader?.readLine() ?: break
+                    if (line == DONE_TOKEN) break
+                    
+                    if (line.startsWith("_EXIT_CODE_:")) {
+                        exitCode = line.substringAfter(":").toIntOrNull() ?: 0
+                    } else {
+                        output.append(line).append("\n")
+                    }
                 }
                 
-                return ShellResult(0, output.toString().trim())
+                return ShellResult(exitCode, output.toString().trim())
             } catch (e: Exception) {
                 Log.e("ShellUtils", "Error running command: $command", e)
                 closePersistentShell()
