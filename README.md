@@ -1,4 +1,4 @@
-# Phone Control - The Ultimate Root Utility (Nothing Phone 2a Optimized)
+kja# Phone Control - The Ultimate Root Utility (Nothing Phone 2a Optimized)
 
 **Phone Control** is a professional-grade, root-level optimization suite designed to maximize performance, battery life, and stability. While it works on most rooted devices, it is specifically tuned for the **Nothing Phone (2a)** and its **MediaTek Dimensity 7200 Pro** chipset.
 

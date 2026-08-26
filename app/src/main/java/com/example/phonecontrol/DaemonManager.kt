@@ -124,13 +124,13 @@ object DaemonManager {
 
                 # AI Mode Latency Fix: 
                 # If Screen is OFF, sleep 120s regardless of mode.
-                # If Screen is ON and in Auto mode, check every 5s for speed.
+                # If Screen is ON and in Auto mode, check every 3s for ultra-fast response.
                 current_screen=${'$'}(cat /data/local/tmp/pc_screen 2>/dev/null || echo "on")
                 
                 if [ "${'$'}current_screen" = "off" ]; then
                     sleep 120
                 elif [ ${'$'}(get_pref_bool "${'$'}PREFS" "selected_mode" | grep -q "rbAutomatic") ]; then
-                    sleep 5
+                    sleep 3
                 else
                     sleep 120
                 fi

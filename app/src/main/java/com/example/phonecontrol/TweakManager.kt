@@ -26,27 +26,35 @@ object TweakManager {
                 applyIoOptimization("perf")
                 applyInputBoost(true)
             }
-            // AI Engine Granular Profiles
+            // AI Engine Granular Profiles (Tuned for Fluid 120Hz)
             "AI_Sleeping" -> {
-                applyBatterySaver()
-                setClusterParking(true) // Park only Big Cores
+                // Use schedutil instead of powersave to avoid 'stuck' feeling
+                for (i in 0..7) ShellUtils.fastCmd("echo schedutil > /sys/devices/system/cpu/cpufreq/policy$i/scaling_governor 2>/dev/null")
+                setClusterParking(true) // Park Big Cores
                 applyCpuTuning("power")
-                // Minimum boost to keep UI from sticking
-                ShellUtils.fastCmd("echo 40 > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null")
+                // Minimum touch response
+                ShellUtils.fastCmd("echo 1 > /sys/module/cpu_boost/parameters/input_boost_enabled 2>/dev/null")
+                ShellUtils.fastCmd("echo 0:1326000 > /sys/module/cpu_boost/parameters/input_boost_freq 2>/dev/null")
+                ShellUtils.fastCmd("echo 200 > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null")
             }
             "AI_Daily" -> {
                 applyBalance()
-                setClusterParking(false) // All cores online
+                setClusterParking(false) 
                 applyCpuTuning("balance")
-                applyInputBoost(false) // Light boost
+                // Improved touch response for reels
+                ShellUtils.fastCmd("echo 1 > /sys/module/cpu_boost/parameters/input_boost_enabled 2>/dev/null")
+                ShellUtils.fastCmd("echo 0:1500000 6:1800000 > /sys/module/cpu_boost/parameters/input_boost_freq 2>/dev/null")
+                ShellUtils.fastCmd("echo 600 > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null")
             }
             "AI_Boost" -> {
+                setClusterParking(false) // Ensure all cores are available for boost
                 applyPerformance()
                 applyCpuTuning("perf")
                 applyIoOptimization("perf")
                 applyInputBoost(true) // Fast touch response for reels
             }
             "AI_Extreme" -> {
+                setClusterParking(false) // Ensure max power
                 applyPerformance()
                 ShellUtils.fastCmd("echo 1 > /sys/kernel/gpu/gpu_max_clock 2>/dev/null")
                 applyCpuTuning("perf")
