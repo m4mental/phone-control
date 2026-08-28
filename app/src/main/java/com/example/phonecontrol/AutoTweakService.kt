@@ -25,6 +25,8 @@ class AutoTweakService : Service() {
 
     private var lastForegroundApp = ""
     private var isGameTurboActive = false
+    private var isPerAppActive = false
+    private var isDynamicScalingActive = false
     private var isFloatingWindowActive = false
 
     private lateinit var connectivityManager: ConnectivityManager
@@ -71,10 +73,31 @@ class AutoTweakService : Service() {
     private val batteryThermalReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action == Intent.ACTION_BATTERY_CHANGED) {
+                val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+                
+                // 1. Thermal check
                 val tempTenths = intent.getIntExtra(AndroidBatteryManager.EXTRA_TEMPERATURE, 0)
                 val tempCelsius = tempTenths / 10
                 if (tempCelsius > 0) {
                     ThermalManager.applyAdaptiveThrottling(context, tempCelsius)
+                }
+
+                // 2. Low Battery Auto-Saver Trigger
+                val level = intent.getIntExtra(AndroidBatteryManager.EXTRA_LEVEL, -1)
+                val scale = intent.getIntExtra(AndroidBatteryManager.EXTRA_SCALE, -1)
+                if (level >= 0 && scale > 0) {
+                    val battPct = (level * 100) / scale
+                    val isLowBattTrigger = prefs.getBoolean("batt_low_trigger_enabled", false)
+                    val triggerValue = prefs.getInt("batt_low_trigger_value", 20)
+                    if (isLowBattTrigger && battPct <= triggerValue) {
+                        val currentMode = prefs.getString("selected_mode", "rbBalance")
+                        if (currentMode != "rbPowerSaver") {
+                            Log.d("AutoTweak", "Low Battery Trigger ($battPct% <= $triggerValue%) -> Auto Switching to Power Saver")
+                            prefs.edit().putString("selected_mode", "rbPowerSaver").apply()
+                            TweakManager.applyGlobalMode("Power Saver")
+                            sendBroadcast(Intent("com.example.phonecontrol.UPDATE_UI").setPackage(packageName))
+                        }
+                    }
                 }
             }
         }
@@ -139,8 +162,6 @@ class AutoTweakService : Service() {
         return START_STICKY
     }
 
-    private var isPerAppActive = false
-
     private fun calculateAppAiLoad(pkg: String): Int {
         val lower = pkg.lowercase()
         // 1. Heavy Apps (Camera, Video Editors, Benchmarks, High graphics)
@@ -170,6 +191,25 @@ class AutoTweakService : Service() {
         val turboPrefs = getSharedPreferences("game_turbo_prefs", MODE_PRIVATE)
         val games = turboPrefs.getStringSet("game_packages", emptySet()) ?: emptySet()
         val perAppConfig = PerAppManager.getConfig(this, pkg)
+        
+        // Dynamic Resolution Scaling Whitelist Check
+        val isDynamicScalingEnabled = prefs.getBoolean("dynamic_scaling_enabled", false)
+        val scalingWhitelist = prefs.getStringSet("scaling_whitelist", emptySet()) ?: emptySet()
+
+        if (isDynamicScalingEnabled) {
+            if (scalingWhitelist.contains(pkg)) {
+                if (!isDynamicScalingActive) {
+                    Log.d("AutoTweak", "Dynamic Resolution Scaling -> 720p for $pkg")
+                    TweakManager.setSystemResolution(true)
+                    isDynamicScalingActive = true
+                }
+            } else if (isDynamicScalingActive) {
+                Log.d("AutoTweak", "Dynamic Resolution Scaling -> Reverting to standard resolution")
+                val savedRes = prefs.getString("screen_res", "rbRes1080")
+                TweakManager.setSystemResolution(savedRes == "rbRes720")
+                isDynamicScalingActive = false
+            }
+        }
 
         if (games.contains(pkg)) {
             if (!isGameTurboActive) {
@@ -315,7 +355,12 @@ class AutoTweakService : Service() {
                 SensorManager.setSensorsEnabled(false)
             }
 
-            // 5. Standby Guard - UNIFIED Whitelisting (Checks Standby + Doze + Multitasking lists)
+            // 5. GPS Auto-Saver on Screen OFF
+            if (prefs.getBoolean("gps_auto_saver_enabled", false)) {
+                TweakManager.setLocationEnabled(false)
+            }
+
+            // 6. Standby Guard - UNIFIED Whitelisting (Checks Standby + Doze + Multitasking lists)
             if (prefs.getBoolean("standby_guard_enabled", false)) {
                 val result = ShellUtils.runAsRoot("pm list packages -3 | cut -d ':' -f2")
                 val packages = result.output.split("\n").filter { it.isNotBlank() }
@@ -348,7 +393,7 @@ class AutoTweakService : Service() {
                 ShellUtils.fastCmd("cmd battery-saver set-enabled true")
             }
 
-            // 6. Auto Hibernation
+            // 7. Auto Hibernation
             val freezerPrefs = getSharedPreferences("freezer_prefs", MODE_PRIVATE)
             if (freezerPrefs.getBoolean("auto_freeze_enabled", false)) {
                 val frozenApps = FreezerManager.getFrozenApps(this@AutoTweakService)
@@ -357,7 +402,7 @@ class AutoTweakService : Service() {
                 }
             }
 
-            // 7. AI Sleeping Profile
+            // 8. AI Sleeping Profile
             if (prefs.getString("selected_mode", "rbBalance") == "rbAutomatic") {
                 applyAiTweak(0, "rbFocusDaily")
             }
@@ -388,6 +433,11 @@ class AutoTweakService : Service() {
                 val focus = prefs.getString("selected_focus", "rbFocusDaily") ?: "rbFocusDaily"
                 val load = calculateAppAiLoad(lastForegroundApp)
                 applyAiTweak(load, focus)
+            }
+
+            // GPS Auto-Saver Restore
+            if (prefs.getBoolean("gps_auto_saver_enabled", false)) {
+                TweakManager.setLocationEnabled(true)
             }
 
             val indivBlockActive = prefs.getBoolean("block_gyro", false) || 
