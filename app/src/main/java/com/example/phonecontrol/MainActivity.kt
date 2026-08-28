@@ -144,16 +144,66 @@ class MainActivity : AppCompatActivity() {
         super.onPause()
     }
 
-    private fun updateLiveStats() {
-        if (ShellUtils.isBusy) return // Skip update if a heavy task is running
+    private var lastTotalCpuTime = 0L
+    private var lastIdleCpuTime = 0L
 
+    private fun readKernelCpuUsage(): Int {
+        return try {
+            val reader = java.io.BufferedReader(java.io.FileReader("/proc/stat"))
+            val line = reader.readLine()
+            reader.close()
+            if (line != null && line.startsWith("cpu ")) {
+                val parts = line.trim().split("\\s+".toRegex())
+                if (parts.size >= 5) {
+                    val user = parts[1].toLong()
+                    val nice = parts[2].toLong()
+                    val system = parts[3].toLong()
+                    val idle = parts[4].toLong()
+                    val iowait = if (parts.size > 5) parts[5].toLong() else 0L
+                    val irq = if (parts.size > 6) parts[6].toLong() else 0L
+                    val softirq = if (parts.size > 7) parts[7].toLong() else 0L
+
+                    val total = user + nice + system + idle + iowait + irq + softirq
+                    val active = total - (idle + iowait)
+
+                    val totalDelta = total - lastTotalCpuTime
+                    val activeDelta = active - (lastTotalCpuTime - lastIdleCpuTime)
+
+                    lastTotalCpuTime = total
+                    lastIdleCpuTime = idle + iowait
+
+                    if (totalDelta > 0 && activeDelta >= 0) {
+                        (activeDelta * 100 / totalDelta).toInt().coerceIn(0, 100)
+                    } else {
+                        0
+                    }
+                } else 0
+            } else 0
+        } catch (e: Exception) {
+            0
+        }
+    }
+
+    private fun readKernelMemAvailableGb(): String {
+        return try {
+            var freeKb = 0L
+            java.io.File("/proc/meminfo").forEachLine { line ->
+                if (line.startsWith("MemAvailable:")) {
+                    freeKb = line.filter { it.isDigit() }.toLongOrNull() ?: 0L
+                    return@forEachLine
+                }
+            }
+            String.format("%.1fGB", freeKb / 1024.0 / 1024.0)
+        } catch (e: Exception) {
+            "--GB"
+        }
+    }
+
+    private fun updateLiveStats() {
         kotlin.concurrent.thread {
             val batteryInfo = BatteryManager.getBatteryStats()
-            
-            // Get Free RAM
-            val result = ShellUtils.runAsRoot("cat /proc/meminfo | grep MemAvailable")
-            val ramStr = result.output.filter { it.isDigit() }.toLongOrNull() ?: 0L
-            val freeGb = String.format("%.1fGB", ramStr / 1024.0 / 1024.0)
+            val freeGb = readKernelMemAvailableGb()
+            val cpuUsage = readKernelCpuUsage()
 
             runOnUiThread {
                 if (isFinishing) return@runOnUiThread
@@ -174,35 +224,9 @@ class MainActivity : AppCompatActivity() {
                 tvLiveCpuCap.text = if (activeCap < 100) "${activeCap}%" else "Uncapped"
                 tvLiveCpuCap.setTextColor(if (activeCap < 80) Color.RED else if (activeCap < 100) Color.YELLOW else Color.GREEN)
 
-                // Get CPU Usage
-                val cpuResult = ShellUtils.runAsRoot("top -n 1 -b -m 1 | grep 'CPU' | head -n 1")
-                val cpuUsage = parseCpuUsage(cpuResult.output)
                 tvLiveCpuUsage.text = "$cpuUsage%"
                 tvLiveCpuUsage.setTextColor(if (cpuUsage > 80) Color.RED else if (cpuUsage > 50) Color.YELLOW else Color.WHITE)
             }
-        }
-    }
-
-    private fun parseCpuUsage(output: String): Int {
-        return try {
-            // Typical format: "CPU: 5% usr 2% sys..." or similar
-            // We'll look for numbers followed by %
-            val pattern = "(\\d+)%".toRegex()
-            val matches = pattern.findAll(output)
-            var total = 0
-            for (match in matches) {
-                val value = match.groupValues[1].toInt()
-                // We sum up everything except 'idle' if possible, or just take the first value if it's "Total"
-                // On most Android top: First match is usually User, Second is Sys
-                if (total == 0) total = value
-                else {
-                    total += value
-                    break // Just take User + Sys
-                }
-            }
-            if (total > 100) 100 else total
-        } catch (e: Exception) {
-            0
         }
     }
 
