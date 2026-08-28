@@ -125,6 +125,7 @@ class MainActivity : AppCompatActivity() {
     private val liveHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val liveRunnable = object : Runnable {
         override fun run() {
+            updateDisplayStatus()
             updateLiveStats()
             liveHandler.postDelayed(this, 2500)
         }

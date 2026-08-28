@@ -154,7 +154,9 @@ class AutoTweakService : Service() {
 
         if (prefs.getString("selected_mode", "rbBalance") == "rbAutomatic") {
             val focus = prefs.getString("selected_focus", "rbFocusDaily") ?: "rbFocusDaily"
-            applyAiTweak(25, focus) 
+            val targetPkg = if (lastForegroundApp.isNotBlank()) lastForegroundApp else packageName
+            val load = calculateAppAiLoad(targetPkg)
+            applyAiTweak(load, focus) 
         } else {
             prefs.edit().remove("active_ai_label").apply()
         }
