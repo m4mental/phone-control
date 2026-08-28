@@ -37,7 +37,6 @@ object ThermalManager {
         
         val prefs = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
         if (!prefs.getBoolean("adaptive_thermal_enabled", false)) {
-            // Fallback to old preventive logic
             applyPreventiveThrottling(temp)
             return
         }
@@ -68,11 +67,9 @@ object ThermalManager {
         if (isCooldownActive) return
         
         if (temp >= 48) {
-            // Apply light throttling
             ShellUtils.fastCmd("echo 1 > /sys/devices/virtual/thermal/thermal_message/sconfig 2>/dev/null")
             ShellUtils.fastCmd("echo 50 > /proc/sys/kernel/sched_upmigrate 2>/dev/null")
         } else if (temp < 45) {
-            // Revert light throttling if temp is safe
             ShellUtils.fastCmd("echo 0 > /sys/devices/virtual/thermal/thermal_message/sconfig 2>/dev/null")
         }
     }
@@ -80,6 +77,12 @@ object ThermalManager {
     fun startEmergencyCooldown(context: Context, onComplete: () -> Unit) {
         if (isCooldownActive) return
         isCooldownActive = true
+
+        val prefs = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
+        prefs.edit()
+            .putBoolean("is_cooldown_active", true)
+            .putLong("cooldown_start_timestamp", System.currentTimeMillis())
+            .apply()
 
         // 1. Force Maximum Throttling and Battery Saver
         setThrottlingEnabled(true)
@@ -105,6 +108,27 @@ object ThermalManager {
         }, 120000)
     }
 
+    /**
+     * Recovery check on boot / service launch to ensure airplane mode is never stuck.
+     */
+    fun checkAndRecoverCooldown(context: Context) {
+        val prefs = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
+        val wasActive = prefs.getBoolean("is_cooldown_active", false)
+        val startTime = prefs.getLong("cooldown_start_timestamp", 0L)
+        
+        if (wasActive) {
+            val elapsed = System.currentTimeMillis() - startTime
+            if (elapsed >= 120000) {
+                revertCooldown(context)
+            } else {
+                val remaining = 120000 - elapsed
+                Handler(Looper.getMainLooper()).postDelayed({
+                    revertCooldown(context)
+                }, remaining)
+            }
+        }
+    }
+
     private fun revertCooldown(context: Context) {
         // Restore Networks
         ShellUtils.fastCmd("settings put global airplane_mode_on 0")
@@ -113,10 +137,12 @@ object ThermalManager {
         ShellUtils.fastCmd("svc data enable")
         
         val prefs = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
+        prefs.edit().putBoolean("is_cooldown_active", false).apply()
+        
         val isThrottlingDisabled = prefs.getBoolean("disable_throttling", false)
         setThrottlingEnabled(!isThrottlingDisabled)
         
-        // Re-apply current mode
+        isCooldownActive = false
         val intent = Intent("com.example.phonecontrol.ACTION_COOLDOWN_END")
         context.sendBroadcast(intent)
     }

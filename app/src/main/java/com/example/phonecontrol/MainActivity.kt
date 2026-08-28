@@ -122,14 +122,24 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val liveHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val liveRunnable = object : Runnable {
+        override fun run() {
+            updateLiveStats()
+            liveHandler.postDelayed(this, 2500)
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         updateDisplayStatus()
-        updateLiveStats() // Refresh once on open
+        updateLiveStats()
         updateCardVisibility()
+        liveHandler.postDelayed(liveRunnable, 2500)
     }
     
     override fun onPause() {
+        liveHandler.removeCallbacks(liveRunnable)
         super.onPause()
     }
 

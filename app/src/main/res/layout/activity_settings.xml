@@ -11,7 +11,7 @@
         android:id="@+id/toolbarSettings"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
-        app:title="Master Settings"
+        app:title="Master Settings &amp; Diagnostics"
         app:titleTextColor="@android:color/white"
         app:navigationIcon="@android:drawable/ic_menu_revert"
         app:navigationIconTint="@android:color/white" />
@@ -26,11 +26,275 @@
             android:orientation="vertical"
             android:padding="16dp">
 
-            <!-- Kill Switch Card -->
+            <!-- System Health & Diagnostics Card -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="System Diagnostics &amp; Health"
+                android:textColor="@android:color/white"
+                android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+                android:layout_marginBottom="8dp" />
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="16dp"
+                app:cardBackgroundColor="#121212"
+                app:strokeWidth="1dp"
+                app:strokeColor="#2E7D32">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="14dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/tvDiagRoot"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Root: Checking..."
+                            android:textColor="#00E676"
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/tvDiagSelinux"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="SELinux: Enforcing"
+                            android:textColor="#B0BEC5"
+                            android:textSize="13sp" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginTop="8dp">
+
+                        <TextView
+                            android:id="@+id/tvDiagKernel"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Kernel: MTK Dimensity (EAS+BBR)"
+                            android:textColor="#81D4FA"
+                            android:textSize="13sp" />
+
+                        <TextView
+                            android:id="@+id/tvDiagEventEngine"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="0ms Events: Active"
+                            android:textColor="#FFD54F"
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- 1-Click Master Presets -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="1-Click Master Presets"
+                android:textColor="@android:color/white"
+                android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+                android:layout_marginBottom="8dp" />
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
+                app:cardCornerRadius="16dp"
+                app:cardBackgroundColor="#141414"
+                app:strokeWidth="1dp"
+                app:strokeColor="#333333">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="12dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+                        <Button
+                            android:id="@+id/btnPresetGaming"
+                            android:layout_width="0dp"
+                            android:layout_height="52dp"
+                            android:layout_weight="1"
+                            android:layout_marginEnd="4dp"
+                            android:text="🎮 GAMING"
+                            android:textSize="12sp"
+                            android:textStyle="bold"
+                            android:textColor="@android:color/white"
+                            app:backgroundTint="#8B0000"
+                            app:cornerRadius="10dp" />
+
+                        <Button
+                            android:id="@+id/btnPresetBattery"
+                            android:layout_width="0dp"
+                            android:layout_height="52dp"
+                            android:layout_weight="1"
+                            android:layout_marginStart="4dp"
+                            android:layout_marginEnd="4dp"
+                            android:text="🔋 BATTERY"
+                            android:textSize="12sp"
+                            android:textStyle="bold"
+                            android:textColor="@android:color/white"
+                            app:backgroundTint="#004D40"
+                            app:cornerRadius="10dp" />
+
+                        <Button
+                            android:id="@+id/btnPresetBalance"
+                            android:layout_width="0dp"
+                            android:layout_height="52dp"
+                            android:layout_weight="1"
+                            android:layout_marginStart="4dp"
+                            android:text="⚖️ BALANCE"
+                            android:textSize="12sp"
+                            android:textStyle="bold"
+                            android:textColor="@android:color/white"
+                            app:backgroundTint="#1A237E"
+                            app:cornerRadius="10dp" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Feature Toggles -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Feature Toggles"
+                android:textColor="@android:color/white"
+                android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+                android:layout_marginBottom="8dp" />
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
+                app:cardCornerRadius="16dp"
+                app:cardBackgroundColor="#121212"
+                app:strokeWidth="1dp"
+                app:strokeColor="#333333">
+
+                <LinearLayout
+                    android:id="@+id/layoutToggleContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="8dp" />
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Maintenance, Backup & Share -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Backup &amp; Share Configuration"
+                android:textColor="@android:color/white"
+                android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+                android:layout_marginBottom="8dp" />
+
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="24dp"
+                app:cardCornerRadius="16dp"
+                app:cardBackgroundColor="#121212"
+                app:strokeWidth="1dp"
+                app:strokeColor="#333333">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+                        <Button
+                            android:id="@+id/btnBackup"
+                            android:layout_width="0dp"
+                            android:layout_height="52dp"
+                            android:layout_weight="1"
+                            android:layout_marginEnd="4dp"
+                            android:text="SAVE BACKUP"
+                            app:cornerRadius="12dp"
+                            android:backgroundTint="#1A1A1A"
+                            android:textColor="@android:color/white"
+                            app:strokeWidth="1dp"
+                            app:strokeColor="#444444" />
+
+                        <Button
+                            android:id="@+id/btnRestore"
+                            android:layout_width="0dp"
+                            android:layout_height="52dp"
+                            android:layout_weight="1"
+                            android:layout_marginStart="4dp"
+                            android:text="RESTORE"
+                            app:cornerRadius="12dp"
+                            android:backgroundTint="#1A1A1A"
+                            android:textColor="@android:color/white"
+                            app:strokeWidth="1dp"
+                            app:strokeColor="#444444" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginTop="8dp">
+
+                        <Button
+                            android:id="@+id/btnShareConfig"
+                            android:layout_width="0dp"
+                            android:layout_height="52dp"
+                            android:layout_weight="1"
+                            android:layout_marginEnd="4dp"
+                            android:text="📤 SHARE CONFIG"
+                            app:cornerRadius="12dp"
+                            android:backgroundTint="#1A1A1A"
+                            android:textColor="#81D4FA"
+                            app:strokeWidth="1dp"
+                            app:strokeColor="#37474F" />
+
+                        <Button
+                            android:id="@+id/btnImportConfig"
+                            android:layout_width="0dp"
+                            android:layout_height="52dp"
+                            android:layout_weight="1"
+                            android:layout_marginStart="4dp"
+                            android:text="📥 IMPORT CONFIG"
+                            app:cornerRadius="12dp"
+                            android:backgroundTint="#1A1A1A"
+                            android:textColor="#C8E6C9"
+                            app:strokeWidth="1dp"
+                            app:strokeColor="#37474F" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Kill Switch Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="32dp"
                 app:cardCornerRadius="16dp"
                 app:cardBackgroundColor="#2D0000"
                 app:strokeWidth="2dp"
@@ -46,9 +310,9 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="KILL SWITCH"
+                        android:text="KILL SWITCH &amp; RESET"
                         android:textColor="#FF0000"
-                        android:textSize="20sp"
+                        android:textSize="18sp"
                         android:textStyle="bold" />
 
                     <TextView
@@ -63,8 +327,8 @@
                     <Button
                         android:id="@+id/btnKillSwitch"
                         android:layout_width="match_parent"
-                        android:layout_height="56dp"
-                        android:layout_marginTop="16dp"
+                        android:layout_height="52dp"
+                        android:layout_marginTop="14dp"
                         android:text="REVERT ALL MODIFICATIONS"
                         android:textColor="@android:color/white"
                         app:backgroundTint="#FF0000"
@@ -73,7 +337,7 @@
                     <Button
                         android:id="@+id/btnSafeUninstall"
                         android:layout_width="match_parent"
-                        android:layout_height="56dp"
+                        android:layout_height="52dp"
                         android:layout_marginTop="8dp"
                         android:text="SAFE UNINSTALL"
                         android:textColor="#FF0000"
@@ -81,79 +345,6 @@
                         app:strokeWidth="1dp"
                         app:strokeColor="#FF0000"
                         app:cornerRadius="12dp" />
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Feature Toggles"
-                android:textColor="@android:color/white"
-                android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
-                android:layout_marginBottom="12dp" />
-
-            <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                app:cardCornerRadius="16dp"
-                app:cardBackgroundColor="#121212"
-                app:strokeWidth="1dp"
-                app:strokeColor="#333333">
-
-                <LinearLayout
-                    android:id="@+id/layoutToggleContainer"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="8dp" />
-            </com.google.android.material.card.MaterialCardView>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Maintenance &amp; Backup"
-                android:textColor="@android:color/white"
-                android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
-                android:layout_marginTop="24dp"
-                android:layout_marginBottom="12dp" />
-
-            <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="32dp"
-                app:cardCornerRadius="16dp"
-                app:cardBackgroundColor="#121212"
-                app:strokeWidth="1dp"
-                app:strokeColor="#333333">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
-
-                    <Button
-                        android:id="@+id/btnBackup"
-                        android:layout_width="match_parent"
-                        android:layout_height="56dp"
-                        android:text="BACKUP CONFIGURATION"
-                        app:cornerRadius="12dp"
-                        android:backgroundTint="#1A1A1A"
-                        android:textColor="@android:color/white"
-                        app:strokeWidth="1dp"
-                        app:strokeColor="#444444" />
-
-                    <Button
-                        android:id="@+id/btnRestore"
-                        android:layout_width="match_parent"
-                        android:layout_height="56dp"
-                        android:layout_marginTop="8dp"
-                        android:text="RESTORE CONFIGURATION"
-                        app:cornerRadius="12dp"
-                        android:backgroundTint="#1A1A1A"
-                        android:textColor="@android:color/white"
-                        app:strokeWidth="1dp"
-                        app:strokeColor="#444444" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

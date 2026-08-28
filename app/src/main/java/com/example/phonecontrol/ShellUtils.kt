@@ -11,6 +11,7 @@ object ShellUtils {
     private var reader: BufferedReader? = null
     
     private const val DONE_TOKEN = "---CMD_DONE---"
+    private const val MAX_OUTPUT_LINES = 400
 
     /**
      * Check if the shell is currently busy with a long-running task.
@@ -19,7 +20,8 @@ object ShellUtils {
         private set
 
     /**
-     * Runs a command as root and returns the output.
+     * Runs a command as root and returns the output safely.
+     * Prevents pipe buffer deadlock and OutOfMemoryError.
      */
     fun runAsRoot(command: String): ShellResult {
         if (isBusy && android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
@@ -31,9 +33,6 @@ object ShellUtils {
                 isBusy = true
                 ensureShell()
                 
-                // 1. We append 2>&1 to capture errors
-                // 2. We echo the exit code ($?) so we know if the command actually failed
-                // 3. We use a unique token to mark the end
                 val wrappedCommand = "($command) 2>&1; echo \"_EXIT_CODE_:\$?\"\n"
                 
                 os?.writeBytes(wrappedCommand)
@@ -42,6 +41,8 @@ object ShellUtils {
 
                 val output = StringBuilder()
                 var exitCode = 0
+                var lineCount = 0
+
                 while (true) {
                     val line = reader?.readLine() ?: break
                     if (line == DONE_TOKEN) break
@@ -49,7 +50,10 @@ object ShellUtils {
                     if (line.startsWith("_EXIT_CODE_:")) {
                         exitCode = line.substringAfter(":").toIntOrNull() ?: 0
                     } else {
-                        output.append(line).append("\n")
+                        if (lineCount < MAX_OUTPUT_LINES) {
+                            output.append(line).append("\n")
+                            lineCount++
+                        }
                     }
                 }
                 
@@ -65,13 +69,14 @@ object ShellUtils {
     }
 
     /**
-     * Fast command execution (no output). Reuses the same shell.
+     * Fast command execution (no output). 
+     * Directs stdout/stderr to /dev/null to prevent 64KB Linux pipe buffer overflow.
      */
     @Synchronized
     fun fastCmd(command: String) {
         try {
             ensureShell()
-            os?.writeBytes("$command\n")
+            os?.writeBytes("($command) >/dev/null 2>&1\n")
             os?.flush()
         } catch (e: Exception) {
             Log.e("ShellUtils", "Error in fastCmd", e)

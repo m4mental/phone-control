@@ -2,17 +2,15 @@ package com.example.phonecontrol
 
 import android.content.Context
 import android.content.Intent
-import android.content.ComponentName
 import android.os.Build
 
 object FreezerManager {
 
-    // Track the last launched app to prevent immediate re-freezing
     var lastLaunchedPackage: String? = null
     var lastLaunchTime: Long = 0
 
     /**
-     * Hibernates an app using Kernel-level pausing (am freeze).
+     * Hibernates a single app.
      */
     fun freezeApp(context: Context, packageName: String) {
         if (packageName == lastLaunchedPackage && (System.currentTimeMillis() - lastLaunchTime) < 10000) {
@@ -20,52 +18,80 @@ object FreezerManager {
         }
 
         if (isSpecialFreeze(context, packageName)) {
-            // Special Freeze: Force Stop + Suspend
-            ShellUtils.fastCmd("am force-stop $packageName")
-            ShellUtils.fastCmd("pm suspend $packageName")
+            ShellUtils.fastCmd("am force-stop $packageName; pm suspend $packageName")
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            ShellUtils.fastCmd("am freeze $packageName")
-        } else {
-            val pids = getPids(packageName)
-            for (pid in pids) {
-                ShellUtils.fastCmd("kill -STOP $pid")
-            }
-        }
+        val script = """
+            am freeze "$packageName" 2>/dev/null
+            am set-standby-bucket "$packageName" restricted 2>/dev/null
+            for p in $(pidof "$packageName"); do
+                echo 900 > /proc/${'$'}p/oom_score_adj 2>/dev/null
+            done
+        """.trimIndent()
+        ShellUtils.fastCmd(script)
+    }
 
-        setOomScore(packageName, 900)
-        ShellUtils.fastCmd("am set-standby-bucket $packageName restricted")
+    /**
+     * Batch Hibernates multiple apps in a single ultra-fast shell execution (0ms UI lag).
+     */
+    fun freezeMultipleApps(context: Context, packages: Collection<String>) {
+        if (packages.isEmpty()) return
+        val pkgList = packages.filter { it != lastLaunchedPackage }.joinToString(" ")
+        if (pkgList.isBlank()) return
+
+        val script = """
+            for pkg in $pkgList; do
+                am freeze "${'$'}pkg" 2>/dev/null
+                am set-standby-bucket "${'$'}pkg" restricted 2>/dev/null
+                for p in ${'$'}(pidof "${'$'}pkg"); do
+                    echo 900 > /proc/${'$'}p/oom_score_adj 2>/dev/null
+                done
+            done
+        """.trimIndent()
+        ShellUtils.fastCmd(script)
     }
 
     /**
      * Resumes an app instantly.
      */
     fun unfreezeApp(packageName: String) {
-        ShellUtils.fastCmd("pm enable $packageName")
-        ShellUtils.fastCmd("pm unsuspend $packageName")
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            ShellUtils.fastCmd("am unfreeze $packageName")
-        } else {
-            val pids = getPids(packageName)
-            for (pid in pids) {
-                ShellUtils.fastCmd("kill -CONT $pid")
-            }
-        }
-        
-        setOomScore(packageName, 0)
-        ShellUtils.fastCmd("am set-standby-bucket $packageName active")
+        val script = """
+            pm enable "$packageName" 2>/dev/null
+            pm unsuspend "$packageName" 2>/dev/null
+            am unfreeze "$packageName" 2>/dev/null
+            am set-standby-bucket "$packageName" active 2>/dev/null
+            for p in $(pidof "$packageName"); do
+                echo 0 > /proc/${'$'}p/oom_score_adj 2>/dev/null
+            done
+        """.trimIndent()
+        ShellUtils.fastCmd(script)
+    }
+
+    /**
+     * Batch Unfreezes multiple apps.
+     */
+    fun unfreezeMultipleApps(packages: Collection<String>) {
+        if (packages.isEmpty()) return
+        val pkgList = packages.joinToString(" ")
+        val script = """
+            for pkg in $pkgList; do
+                pm enable "${'$'}pkg" 2>/dev/null
+                pm unsuspend "${'$'}pkg" 2>/dev/null
+                am unfreeze "${'$'}pkg" 2>/dev/null
+                am set-standby-bucket "${'$'}pkg" active 2>/dev/null
+                for p in ${'$'}(pidof "${'$'}pkg"); do
+                    echo 0 > /proc/${'$'}p/oom_score_adj 2>/dev/null
+                done
+            done
+        """.trimIndent()
+        ShellUtils.fastCmd(script)
     }
 
     fun launchApp(context: Context, packageName: String) {
         lastLaunchedPackage = packageName
         lastLaunchTime = System.currentTimeMillis()
 
-        // Reverting to the previous launch logic as requested
         unfreezeApp(packageName)
-        Thread.sleep(300)
-        // Trigger Turbo Launch Boost
         TweakManager.triggerTurboBoost()
         
         val intent = context.packageManager.getLaunchIntentForPackage(packageName)
@@ -75,30 +101,13 @@ object FreezerManager {
         }
     }
 
-    private fun setOomScore(packageName: String, score: Int) {
-        val pids = getPids(packageName)
-        for (pid in pids) {
-            ShellUtils.fastCmd("echo $score > /proc/$pid/oom_score_adj 2>/dev/null")
-        }
-    }
-
-    private fun getPids(packageName: String): List<String> {
-        val result = ShellUtils.runAsRoot("pidof $packageName")
-        return result.output.split(" ").filter { it.isNotBlank() }
-    }
-
     /**
-     * Corrected status logic:
-     * If no process -> HIBERNATING (Safe)
-     * If process + frozen -> HIBERNATING
-     * If process + NOT frozen -> ACTIVE
+     * Fast check: returns active packages among a set in 1 single command.
      */
-    fun isAppTrulyActive(packageName: String): Boolean {
-        val pids = getPids(packageName)
-        if (pids.isEmpty()) return false
-        
-        val result = ShellUtils.runAsRoot("dumpsys activity process $packageName | grep 'frozen='")
-        return !result.output.contains("true")
+    fun getActivePackages(packages: Set<String>): Set<String> {
+        if (packages.isEmpty()) return emptySet()
+        val runningOutput = ShellUtils.runAsRoot("ps -A -o NAME").output
+        return packages.filter { runningOutput.contains(it) }.toSet()
     }
 
     fun getFrozenApps(context: Context): Set<String> {

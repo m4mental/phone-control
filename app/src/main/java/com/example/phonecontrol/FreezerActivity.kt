@@ -1,5 +1,6 @@
 package com.example.phonecontrol
 
+import android.app.ProgressDialog
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -61,9 +62,18 @@ class FreezerActivity : AppCompatActivity() {
         }
 
         thread {
-            cachedAppsList = pm.getInstalledApplications(0)
-                .filter { pm.getLaunchIntentForPackage(it.packageName) != null }
-                .sortedBy { pm.getApplicationLabel(it).toString().lowercase() }
+            cachedAppsList = getInstalledAppsList()
+        }
+    }
+
+    private fun getInstalledAppsList(): List<ApplicationInfo> {
+        return try {
+            val all = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+            all.filter {
+                (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 || pm.getLaunchIntentForPackage(it.packageName) != null
+            }.sortedBy { pm.getApplicationLabel(it).toString().lowercase() }
+        } catch (e: Exception) {
+            emptyList()
         }
     }
 
@@ -88,14 +98,12 @@ class FreezerActivity : AppCompatActivity() {
         }
 
         thread {
-            val statusMap = mutableMapOf<String, Boolean>()
-            for (pkg in frozenApps) {
-                statusMap[pkg] = FreezerManager.isAppTrulyActive(pkg)
-            }
+            val activeSet = FreezerManager.getActivePackages(frozenApps)
 
             runOnUiThread {
+                if (isFinishing) return@runOnUiThread
                 for (pkg in frozenApps) {
-                    addAppView(pkg, statusMap[pkg] ?: false)
+                    addAppView(pkg, activeSet.contains(pkg))
                 }
             }
         }
@@ -152,12 +160,19 @@ class FreezerActivity : AppCompatActivity() {
         val apps = FreezerManager.getFrozenApps(this)
         if (apps.isEmpty()) return
 
-        Toast.makeText(this, "Hibernating all apps...", Toast.LENGTH_SHORT).show()
+        val progress = ProgressDialog(this).apply {
+            setMessage("Hibernating ${apps.size} apps...")
+            setCancelable(false)
+            show()
+        }
+
         thread {
-            for (pkg in apps) {
-                FreezerManager.freezeApp(this, pkg)
+            FreezerManager.freezeMultipleApps(this, apps)
+            runOnUiThread {
+                progress.dismiss()
+                Toast.makeText(this, "All apps hibernated!", Toast.LENGTH_SHORT).show()
+                refreshList()
             }
-            runOnUiThread { refreshList() }
         }
     }
 
@@ -168,22 +183,25 @@ class FreezerActivity : AppCompatActivity() {
             .setTitle(appName)
             .setItems(options) { _, which ->
                 when (which) {
-                    0 -> { // Special Freeze Toggle
+                    0 -> {
                         val newVal = !FreezerManager.isSpecialFreeze(this, pkg)
                         FreezerManager.setSpecialFreeze(this, pkg, newVal)
-                        // Re-apply freeze to apply new settings immediately
-                        if (!FreezerManager.isAppTrulyActive(pkg)) {
+                        thread {
                             FreezerManager.freezeApp(this, pkg)
+                            runOnUiThread {
+                                refreshList()
+                                Toast.makeText(this, "Special Freeze ${if(newVal) "Enabled" else "Disabled"}", Toast.LENGTH_SHORT).show()
+                            }
                         }
-                        refreshList()
-                        Toast.makeText(this, "Special Freeze ${if(newVal) "Enabled" else "Disabled"}", Toast.LENGTH_SHORT).show()
                     }
-                    1 -> { // Remove
+                    1 -> {
                         val current = FreezerManager.getFrozenApps(this).toMutableSet()
                         current.remove(pkg)
-                        FreezerManager.unfreezeApp(pkg)
-                        FreezerManager.saveFrozenApps(this, current)
-                        refreshList()
+                        thread {
+                            FreezerManager.unfreezeApp(pkg)
+                            FreezerManager.saveFrozenApps(this, current)
+                            runOnUiThread { refreshList() }
+                        }
                     }
                     2 -> enterEditMode(pkg)
                 }
@@ -223,14 +241,20 @@ class FreezerActivity : AppCompatActivity() {
             .setTitle("Unfreeze Selected?")
             .setMessage("Stop hibernation for ${selectedToRemove.size} apps?")
             .setPositiveButton("Yes") { _, _ ->
+                val count = selectedToRemove.size
+                val toRemove = selectedToRemove.toSet()
                 val current = FreezerManager.getFrozenApps(this).toMutableSet()
-                for (pkg in selectedToRemove) {
-                    current.remove(pkg)
-                    FreezerManager.unfreezeApp(pkg)
-                }
+                current.removeAll(toRemove)
                 FreezerManager.saveFrozenApps(this, current)
-                FreezerWidgetProvider.updateAllWidgets(this)
-                exitEditMode()
+                
+                thread {
+                    FreezerManager.unfreezeMultipleApps(toRemove)
+                    runOnUiThread {
+                        FreezerWidgetProvider.updateAllWidgets(this)
+                        exitEditMode()
+                        Toast.makeText(this, "Unfroze $count apps", Toast.LENGTH_SHORT).show()
+                    }
+                }
             }
             .setNegativeButton("No", null)
             .show()
@@ -243,9 +267,7 @@ class FreezerActivity : AppCompatActivity() {
         val cbSelectAll = dialogView.findViewById<CheckBox>(R.id.cbSelectAll)
         val listView = dialogView.findViewById<ListView>(R.id.lvApps)
 
-        val allApps = cachedAppsList ?: pm.getInstalledApplications(0)
-            .filter { pm.getLaunchIntentForPackage(it.packageName) != null }
-            .sortedBy { pm.getApplicationLabel(it).toString().lowercase() }
+        val allApps = cachedAppsList ?: getInstalledAppsList()
 
         val filterOptions = arrayOf("User Apps", "System Apps")
         spinnerFilter.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, filterOptions).apply {
@@ -307,18 +329,33 @@ class FreezerActivity : AppCompatActivity() {
         listView.setOnItemClickListener { _, _, position, _ ->
             val pkg = filteredApps[position].packageName
             if (selectedPackages.contains(pkg)) selectedPackages.remove(pkg) else selectedPackages.add(pkg)
-            cbSelectAll.isChecked = filteredApps.all { selectedPackages.contains(it.packageName) }
+            cbSelectAll.isChecked = filteredApps.isNotEmpty() && filteredApps.all { selectedPackages.contains(it.packageName) }
             adapter.notifyDataSetChanged()
         }
 
         val dialog = AlertDialog.Builder(this)
             .setView(dialogView)
             .setPositiveButton("Add to Hibernation") { _, _ ->
+                val count = selectedPackages.size
                 val current = FreezerManager.getFrozenApps(this).toMutableSet()
-                selectedPackages.forEach { current.add(it); FreezerManager.freezeApp(this, it) }
+                current.addAll(selectedPackages)
                 FreezerManager.saveFrozenApps(this, current)
-                FreezerWidgetProvider.updateAllWidgets(this)
-                refreshList()
+                
+                val progress = ProgressDialog(this).apply {
+                    setMessage("Freezing $count apps...")
+                    setCancelable(false)
+                    show()
+                }
+
+                thread {
+                    FreezerManager.freezeMultipleApps(this, selectedPackages)
+                    runOnUiThread {
+                        progress.dismiss()
+                        FreezerWidgetProvider.updateAllWidgets(this)
+                        Toast.makeText(this, "$count apps added to hibernation!", Toast.LENGTH_SHORT).show()
+                        refreshList()
+                    }
+                }
             }
             .setNegativeButton("Cancel", null)
             .create()

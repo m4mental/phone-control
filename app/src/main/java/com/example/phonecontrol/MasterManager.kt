@@ -6,7 +6,8 @@ import android.content.Intent
 object MasterManager {
 
     /**
-     * Reverts all system modifications and resets all preferences to default.
+     * 100% Comprehensive Reversion of all system modifications, hardware nodes,
+     * network rules, modem tower locks, and resets all preferences to factory defaults.
      */
     fun revertAll(context: Context) {
         val prefs = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
@@ -15,93 +16,94 @@ object MasterManager {
         TweakManager.setSystemResolution(false)
         TweakManager.setRefreshRate("Default")
         
-        // 2. Revert Thermal & CPU Changes
+        // 2. Revert Thermal, CPU & GPU Changes
         TweakManager.limitCpuFrequency(100)
-        TweakManager.setClusterParking(false)
+        TweakManager.setClusterParking(false, deep = true)
         ThermalManager.setThrottlingEnabled(true)
+        TweakManager.applyInputBoost(false)
+        TweakManager.applyEntropyTuning(false)
+        TweakManager.applyGlobalMode("Balance")
         
-        // 3. Revert Log & System Suppression
+        // 3. Revert Log, Sensors & System Power State
         TweakManager.setSilentSystem(false)
         TweakManager.setLocationEnabled(true)
         SensorManager.setSensorsEnabled(true)
+        TweakManager.applyWakelockBlocker(false)
         ShellUtils.fastCmd("svc nfc enable")
         ShellUtils.fastCmd("svc data enable")
+        ShellUtils.fastCmd("settings put global master_sync_enabled 1")
+        ShellUtils.fastCmd("cmd battery-saver set-enabled false")
         
-        // 4. Revert RAM & I/O
+        // 4. Revert Battery & Charging Engine
+        BatteryManager.setBypassEnabled(false)
+        BatteryManager.setChargingEnabled(true)
+        BatteryManager.setChargeCurrent(3000)
+        BatteryManager.setUsbFastCharge(false)
+        BatteryManager.setForceDoze(false)
+        
+        // 5. Revert RAM & Storage I/O
         TweakManager.applyRamSettings("rbZram4G", "rbProfileBalance")
         StorageManager.applyStorageBoost(false)
 
-        // 4.1 Flush Firewall rules
+        // 6. Flush All Firewall & QoS Mangle Rules
         ShellUtils.runAsRoot("iptables -F OUTPUT")
+        ShellUtils.runAsRoot("iptables -t mangle -F OUTPUT")
         
-        // 5. Unfreeze all apps and clear freezer
+        // 7. Reset Network & Private DNS
+        ShellUtils.fastCmd("settings put global private_dns_mode off")
+        ShellUtils.fastCmd("settings delete global private_dns_specifier")
+        ShellUtils.fastCmd("sysctl -w net.ipv4.tcp_congestion_control=cubic 2>/dev/null")
+        ShellUtils.fastCmd("sysctl -w net.ipv6.conf.all.disable_ipv6=0 2>/dev/null")
+
+        // 8. Release Cellular Modem Hard-Lock (AT+ECELL=0) & 5G Anti-Sleep
+        ShellUtils.runAsRoot("echo -e \"AT+ECELL=0\\r\\n\" > /dev/radio/pttycmd1")
+        ShellUtils.runAsRoot("echo -e \"AT+E5GSWITCH=0\\r\\n\" > /dev/radio/pttycmd1")
+        ShellUtils.runAsRoot("echo -e \"AT+EPOWERCONF=1\\r\\n\" > /dev/radio/pttycmd1")
+        
+        // 9. Unfreeze all apps and restore App Standby Buckets
         val freezerPrefs = context.getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE)
         val frozenApps = freezerPrefs.getStringSet("frozen_packages", emptySet()) ?: emptySet()
         for (pkg in frozenApps) {
             FreezerManager.unfreezeApp(pkg)
         }
-        freezerPrefs.edit().clear().apply()
-
-        // 6. Reset all Category toggles (Hides dashboard cards)
-        prefs.edit().apply {
-            putBoolean("adaptive_thermal_enabled", false)
-            putBoolean("network_priority_enabled", false)
-            putBoolean("storage_boost_enabled", false)
-            putBoolean("optimization_enabled", false)
-            putBoolean("resolution_enabled", false)
-            putBoolean("ram_manager_enabled", false)
-            putBoolean("bloatware_enabled", false)
-            putBoolean("adb_enabled", false)
-            putBoolean("vault_enabled", false)
-            putBoolean("data_guard_enabled", false)
-            putBoolean("smart_switch_enabled", false)
-            putBoolean("tower_lock_enabled", false)
-            putBoolean("automation_enabled", false)
-            
-            // Sub-features
-            putBoolean("silent_system_enabled", false)
-            putBoolean("daily_deep_opt_enabled", false)
-            putBoolean("standby_guard_enabled", false)
-            putBoolean("gps_auto_saver_enabled", false)
-            putBoolean("batt_low_trigger_enabled", false)
-            putBoolean("batt_power_save_screen_off", false)
-            putBoolean("batt_data_saver_screen_off", false)
-            putBoolean("batt_limit_enabled", false)
-            putBoolean("core_parking_enabled", false)
-            putBoolean("sensor_firewall_enabled", false)
-            
-            // Sensor Shield
-            putBoolean("block_gyro", false)
-            putBoolean("block_mag", false)
-            putBoolean("block_light", false)
-            putBoolean("block_motion", false)
-            putBoolean("block_nfc", false)
-
-            putString("selected_mode", "rbBalance")
-            putString("screen_res", "rbRes1080")
-            putInt("active_cpu_cap", 100)
-            apply()
+        
+        // Restore all 3rd-party apps from Standby restricted mode
+        val packagesResult = ShellUtils.runAsRoot("pm list packages -3 | cut -d ':' -f2")
+        val packages = packagesResult.output.split("\n").filter { it.isNotBlank() }
+        for (pkg in packages) {
+            ShellUtils.fastCmd("am set-standby-bucket $pkg active")
         }
 
-        // 6.1 Kill Xposed Monitor if active
-        val intent = Intent("com.example.phonecontrol.TOGGLE_MONITOR")
-        intent.putExtra("enabled", false)
-        intent.addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
-        context.sendBroadcast(intent)
+        // 10. Clean up System Whitelist and Accessibility Service Hook
+        ShellUtils.runAsRoot("dumpsys deviceidle whitelist -${context.packageName}")
+        val serviceComponent = "${context.packageName}/${AppEventService::class.java.canonicalName}"
+        val currentServices = ShellUtils.runAsRoot("settings get secure enabled_accessibility_services").output.trim()
+        if (currentServices.contains(serviceComponent)) {
+            val cleaned = currentServices.split(":").filter { it != serviceComponent }.joinToString(":")
+            ShellUtils.fastCmd("settings put secure enabled_accessibility_services '$cleaned'")
+        }
 
-        // 6.2 Restore default Network/Kernel values
-        ShellUtils.fastCmd("sysctl -w net.ipv4.tcp_congestion_control=cubic 2>/dev/null")
+        // 11. Delete Temporary Files
+        ShellUtils.runAsRoot("rm -f /data/local/tmp/pc_screen /data/local/tmp/last_trim")
 
-        // 6.3 Clear all sub-prefs
+        // 12. Clear all sub-preferences cleanly
         context.getSharedPreferences("firewall_prefs", Context.MODE_PRIVATE).edit().clear().apply()
         context.getSharedPreferences("multitasking_prefs", Context.MODE_PRIVATE).edit().clear().apply()
         context.getSharedPreferences("tower_prefs", Context.MODE_PRIVATE).edit().clear().apply()
         context.getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE).edit().clear().apply()
         context.getSharedPreferences("game_turbo_prefs", Context.MODE_PRIVATE).edit().clear().apply()
         context.getSharedPreferences("super_doze_prefs", Context.MODE_PRIVATE).edit().clear().apply()
+        context.getSharedPreferences("vault_prefs", Context.MODE_PRIVATE).edit().clear().apply()
+        context.getSharedPreferences("per_app_prefs", Context.MODE_PRIVATE).edit().clear().apply()
 
-        // 7. Stop Background Logic
+        // 13. Reset Main Settings
+        prefs.edit().clear().apply()
+
+        // 14. Stop Background Daemons & Services
         DaemonManager.stopDaemon()
         context.stopService(Intent(context, AutoTweakService::class.java))
+        
+        // 15. Cleanly close persistent SU process
+        ShellUtils.closePersistentShell()
     }
 }

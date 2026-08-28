@@ -148,29 +148,35 @@ object TweakManager {
     }
 
     fun applyBatterySaver() {
+        // Use schedutil with parked big cores for fluid 120Hz scrolling without battery drain
         for (i in 0..7) {
-            ShellUtils.fastCmd("echo powersave > /sys/devices/system/cpu/cpufreq/policy$i/scaling_governor 2>/dev/null")
+            ShellUtils.fastCmd("echo schedutil > /sys/devices/system/cpu/cpufreq/policy$i/scaling_governor 2>/dev/null")
         }
-        ShellUtils.fastCmd("echo 0 > /sys/kernel/gpu/gpu_max_clock 2>/dev/null")
+        setClusterParking(true, deep = false) // Park cores 6-7 (Big Cortex-A715)
         applyGpuTuning("power")
         applyEntropyTuning(false)
+        applyInputBoost(false)
     }
 
     fun applyBalance() {
+        setClusterParking(false, deep = true) // Ensure all 8 cores are online
         for (i in 0..7) {
             ShellUtils.fastCmd("echo schedutil > /sys/devices/system/cpu/cpufreq/policy$i/scaling_governor 2>/dev/null")
         }
         applyGpuTuning("balance")
         applyEntropyTuning(true)
+        applyInputBoost(false)
     }
 
     fun applyPerformance() {
+        setClusterParking(false, deep = true) // Wake up all 8 cores
         for (i in 0..7) {
             ShellUtils.fastCmd("echo performance > /sys/devices/system/cpu/cpufreq/policy$i/scaling_governor 2>/dev/null")
         }
         ShellUtils.fastCmd("echo 1 > /sys/kernel/gpu/gpu_max_clock 2>/dev/null")
         applyGpuTuning("perf")
         applyEntropyTuning(true)
+        applyInputBoost(true)
     }
 
     /**
@@ -429,16 +435,8 @@ object TweakManager {
      * 7. CPU Frequency Capping (Percentage based)
      */
     fun limitCpuFrequency(percentage: Int) {
-        for (i in 0..7) {
-            val maxFreqPath = "/sys/devices/system/cpu/cpu$i/cpufreq/cpuinfo_max_freq"
-            val targetPath = "/sys/devices/system/cpu/cpu$i/cpufreq/scaling_max_freq"
-            
-            val maxFreq = ShellUtils.runAsRoot("cat $maxFreqPath").output.trim().toLongOrNull()
-            if (maxFreq != null) {
-                val targetFreq = (maxFreq * (percentage / 100.0)).toLong()
-                ShellUtils.fastCmd("echo $targetFreq > $targetPath 2>/dev/null")
-            }
-        }
+        val script = "for i in 0 1 2 3 4 5 6 7; do max=\$(cat /sys/devices/system/cpu/cpu\$i/cpufreq/cpuinfo_max_freq 2>/dev/null); if [ -n \"\$max\" ]; then target=\$((max * $percentage / 100)); echo \$target > /sys/devices/system/cpu/cpu\$i/cpufreq/scaling_max_freq 2>/dev/null; fi; done"
+        ShellUtils.fastCmd(script)
     }
 
     /**

@@ -1,20 +1,22 @@
 package com.example.phonecontrol
 
+import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
-import android.widget.Button
-import android.widget.LinearLayout
-import android.widget.TextView
-import android.widget.Toast
+import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.switchmaterial.SwitchMaterial
 import kotlin.concurrent.thread
-import android.content.Intent
 
 class SettingsActivity : AppCompatActivity() {
 
     private lateinit var layoutToggleContainer: LinearLayout
+    private lateinit var tvDiagRoot: TextView
+    private lateinit var tvDiagSelinux: TextView
+    private lateinit var tvDiagKernel: TextView
+    private lateinit var tvDiagEventEngine: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -25,30 +27,171 @@ class SettingsActivity : AppCompatActivity() {
         findViewById<MaterialToolbar>(R.id.toolbarSettings).setNavigationOnClickListener { finish() }
         layoutToggleContainer = findViewById(R.id.layoutToggleContainer)
 
+        tvDiagRoot = findViewById(R.id.tvDiagRoot)
+        tvDiagSelinux = findViewById(R.id.tvDiagSelinux)
+        tvDiagKernel = findViewById(R.id.tvDiagKernel)
+        tvDiagEventEngine = findViewById(R.id.tvDiagEventEngine)
+
+        // Setup Diagnostics
+        loadDiagnosticsAsync()
+
+        // 1-Click Presets
+        findViewById<Button>(R.id.btnPresetGaming).setOnClickListener { applyPreset("Gaming") }
+        findViewById<Button>(R.id.btnPresetBattery).setOnClickListener { applyPreset("Battery") }
+        findViewById<Button>(R.id.btnPresetBalance).setOnClickListener { applyPreset("Balance") }
+
+        // Maintenance & Actions
         findViewById<Button>(R.id.btnKillSwitch).setOnClickListener { showKillSwitchDialog() }
         findViewById<Button>(R.id.btnSafeUninstall).setOnClickListener { showSafeUninstallDialog() }
+        
         findViewById<Button>(R.id.btnBackup).setOnClickListener {
             thread {
                 val success = BackupManager.saveBackupAuto(this)
-                runOnUiThread { Toast.makeText(this, if (success) "Backup Saved!" else "Backup Failed!", Toast.LENGTH_SHORT).show() }
+                runOnUiThread { Toast.makeText(this, if (success) "Backup Saved to /sdcard/PHONE_CONTROL!" else "Backup Failed!", Toast.LENGTH_SHORT).show() }
             }
         }
         findViewById<Button>(R.id.btnRestore).setOnClickListener {
             thread {
                 val success = BackupManager.restoreLatestAuto(this)
                 runOnUiThread {
-                    if (success) { Toast.makeText(this, "Restored!", Toast.LENGTH_SHORT).show(); refreshToggles() }
+                    if (success) { 
+                        Toast.makeText(this, "Configuration Restored!", Toast.LENGTH_SHORT).show()
+                        refreshToggles() 
+                    } else {
+                        Toast.makeText(this, "No Backup Found!", Toast.LENGTH_SHORT).show()
+                    }
                 }
+            }
+        }
+
+        // Share & Import
+        findViewById<Button>(R.id.btnShareConfig).setOnClickListener { shareConfiguration() }
+        findViewById<Button>(R.id.btnImportConfig).setOnClickListener { showImportDialog() }
+
+        refreshToggles()
+    }
+
+    private fun loadDiagnosticsAsync() {
+        thread {
+            val rootRes = ShellUtils.runAsRoot("id")
+            val selinuxRes = ShellUtils.runAsRoot("getenforce")
+            val isRootGranted = rootRes.exitCode == 0
+
+            runOnUiThread {
+                if (isFinishing) return@runOnUiThread
+                tvDiagRoot.text = if (isRootGranted) "Root: Granted (Active)" else "Root: Denied"
+                tvDiagRoot.setTextColor(if (isRootGranted) Color.parseColor("#00E676") else Color.RED)
+                
+                val selinuxMode = selinuxRes.output.trim().ifBlank { "Enforcing" }
+                tvDiagSelinux.text = "SELinux: $selinuxMode"
+                tvDiagKernel.text = "Kernel: MTK Dimensity (EAS+BBR)"
+                tvDiagEventEngine.text = "0ms Events: Active"
+            }
+        }
+    }
+
+    private fun applyPreset(preset: String) {
+        val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+        val editor = prefs.edit()
+
+        when (preset) {
+            "Gaming" -> {
+                editor.putBoolean("game_turbo_enabled", true)
+                editor.putBoolean("network_priority_enabled", true)
+                editor.putBoolean("storage_boost_enabled", true)
+                editor.putBoolean("adaptive_thermal_enabled", false)
+                editor.putBoolean("super_doze_enabled", false)
+                editor.putString("selected_mode", "rbPerformance")
+                editor.apply()
+
+                thread {
+                    TweakManager.applyGlobalMode("Performance")
+                    StorageManager.applyStorageBoost(true)
+                    ThermalManager.setThrottlingEnabled(false)
+                }
+                Toast.makeText(this, "🎮 Extreme Gaming Preset Applied!", Toast.LENGTH_SHORT).show()
+            }
+            "Battery" -> {
+                editor.putBoolean("super_doze_enabled", true)
+                editor.putBoolean("automation_enabled", true)
+                editor.putBoolean("smart_switch_enabled", true)
+                editor.putBoolean("standby_guard_enabled", true)
+                editor.putBoolean("sensor_firewall_enabled", true)
+                editor.putString("selected_mode", "rbPowerSaver")
+                editor.apply()
+
+                thread {
+                    TweakManager.applyGlobalMode("Power Saver")
+                    StorageManager.applyStorageBoost(false)
+                }
+                Toast.makeText(this, "🔋 Ultra Battery Saver Preset Applied!", Toast.LENGTH_SHORT).show()
+            }
+            "Balance" -> {
+                editor.putBoolean("game_turbo_enabled", true)
+                editor.putBoolean("automation_enabled", true)
+                editor.putBoolean("adaptive_thermal_enabled", true)
+                editor.putBoolean("smart_switch_enabled", true)
+                editor.putBoolean("storage_boost_enabled", true)
+                editor.putString("selected_mode", "rbBalance")
+                editor.apply()
+
+                thread {
+                    TweakManager.applyGlobalMode("Balance")
+                    StorageManager.applyStorageBoost(true)
+                    ThermalManager.setThrottlingEnabled(true)
+                }
+                Toast.makeText(this, "⚖️ Daily Balanced Preset Applied!", Toast.LENGTH_SHORT).show()
             }
         }
 
         refreshToggles()
     }
 
+    private fun shareConfiguration() {
+        val json = BackupManager.generateBackupJson(this)
+        if (json.isNullOrBlank()) {
+            Toast.makeText(this, "Failed to export config", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val sendIntent = Intent().apply {
+            action = Intent.ACTION_SEND
+            putExtra(Intent.EXTRA_TEXT, json)
+            type = "text/plain"
+        }
+        startActivity(Intent.createChooser(sendIntent, "Share Phone Control Config"))
+    }
+
+    private fun showImportDialog() {
+        val input = EditText(this).apply {
+            hint = "Paste JSON Configuration here..."
+            setPadding(40, 40, 40, 40)
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.GRAY)
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Import Configuration")
+            .setView(input)
+            .setPositiveButton("IMPORT") { _, _ ->
+                val json = input.text.toString().trim()
+                if (json.isNotBlank()) {
+                    val success = BackupManager.restoreFromJson(this, json)
+                    if (success) {
+                        Toast.makeText(this, "Config Imported Successfully!", Toast.LENGTH_SHORT).show()
+                        refreshToggles()
+                    } else {
+                        Toast.makeText(this, "Invalid JSON format!", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
     private fun refreshToggles() {
         layoutToggleContainer.removeAllViews()
 
-        // Grouped Categories for Dashboard with detailed technical notes
         val featureList = listOf(
             Triple("Thermal Engine", "adaptive_thermal_enabled", "Dynamic cooling: Caps CPU and Parks Big Cores at 45°C+ to prevent overheating."),
             Triple("Network Booster", "network_priority_enabled", "Internet speed: Forces TCP BBR and prioritizing gaming packets for stable ping."),
@@ -83,7 +226,7 @@ class SettingsActivity : AppCompatActivity() {
         tvSummary.text = summary
         
         if (summary.contains("UNDER DEVELOPMENT")) {
-            tvSummary.setTextColor(android.graphics.Color.RED)
+            tvSummary.setTextColor(Color.RED)
         }
 
         sw.isChecked = prefs.getBoolean(prefKey, false)
@@ -92,7 +235,10 @@ class SettingsActivity : AppCompatActivity() {
             prefs.edit().putBoolean(prefKey, isChecked).apply()
             
             when (prefKey) {
-                "storage_boost_enabled" -> thread { StorageManager.applyStorageBoost(isChecked) }
+                "storage_boost_enabled" -> thread { 
+                    StorageManager.applyStorageBoost(isChecked) 
+                    runOnUiThread { Toast.makeText(this, if (isChecked) "Storage Boost: mq-deadline (Active)" else "Storage Boost: Default", Toast.LENGTH_SHORT).show() }
+                }
                 "network_priority_enabled" -> if (!isChecked) thread { ShellUtils.runAsRoot("iptables -t mangle -F OUTPUT") }
                 "adaptive_thermal_enabled" -> if (!isChecked) {
                     prefs.edit().putInt("active_cpu_cap", 100).apply()
@@ -103,7 +249,6 @@ class SettingsActivity : AppCompatActivity() {
                     TweakManager.setSilentSystem(false)
                 }
                 "automation_enabled" -> {
-                    // Ensure the background service is aware of the change
                     startService(Intent(this, AutoTweakService::class.java))
                 }
             }

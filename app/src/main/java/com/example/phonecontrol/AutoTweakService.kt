@@ -9,21 +9,18 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import android.os.BatteryManager as AndroidBatteryManager
 import android.os.IBinder
 import android.util.Log
 
 /**
- * Modernized AutoTweakService: Now an Event-Driven Listener.
- * No infinite loops here. It only reacts to system broadcasts.
+ * 100% Event-Driven AutoTweakService with unified whitelisting & complete Doze synchronization.
  */
 class AutoTweakService : Service() {
 
-    private val gameWatcherHandler = android.os.Handler(android.os.Looper.getMainLooper())
-    private val gameWatcherRunnable = object : Runnable {
-        override fun run() {
-            checkForegroundApp()
-            gameWatcherHandler.postDelayed(this, 3000)
-        }
+    companion object {
+        const val ACTION_FOREGROUND_APP_CHANGED = "com.example.phonecontrol.ACTION_FOREGROUND_APP_CHANGED"
+        const val EXTRA_PACKAGE_NAME = "extra_package_name"
     }
 
     private var lastForegroundApp = ""
@@ -39,7 +36,6 @@ class AutoTweakService : Service() {
             val caps = connectivityManager.getNetworkCapabilities(network)
             if (caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true) {
                 Log.d("AutoTweak", "WiFi Connected - Auto-disabling Mobile Data")
-                // Save current state: 1 means it was ON
                 val dataState = ShellUtils.runAsRoot("settings get global mobile_data").output
                 if (dataState == "1") {
                     prefs.edit().putBoolean("data_was_on_before_wifi", true).apply()
@@ -52,7 +48,6 @@ class AutoTweakService : Service() {
             val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
             if (!prefs.getBoolean("smart_switch_enabled", false)) return
 
-            // If we turned it off, turn it back on
             if (prefs.getBoolean("data_was_on_before_wifi", false)) {
                 Log.d("AutoTweak", "WiFi Lost - Restoring Mobile Data")
                 ShellUtils.fastCmd("svc data enable")
@@ -73,119 +68,152 @@ class AutoTweakService : Service() {
         }
     }
 
+    private val batteryThermalReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == Intent.ACTION_BATTERY_CHANGED) {
+                val tempTenths = intent.getIntExtra(AndroidBatteryManager.EXTRA_TEMPERATURE, 0)
+                val tempCelsius = tempTenths / 10
+                if (tempCelsius > 0) {
+                    ThermalManager.applyAdaptiveThrottling(context, tempCelsius)
+                }
+            }
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         
-        val filter = IntentFilter().apply {
+        val screenFilter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(Intent.ACTION_SCREEN_OFF)
         }
-        registerReceiver(screenReceiver, filter)
-        gameWatcherHandler.post(gameWatcherRunnable)
+        registerReceiver(screenReceiver, screenFilter)
+
+        val battFilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+        registerReceiver(batteryThermalReceiver, battFilter)
         
-        // Register Network Monitor
         val networkRequest = NetworkRequest.Builder()
             .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
             .build()
         connectivityManager.registerNetworkCallback(networkRequest, networkCallback)
+
+        AppEventService.enableViaRoot(packageName)
+        ThermalManager.checkAndRecoverCooldown(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
 
-        // Handle AI Update Signal from Daemon
+        // 1. Instant 0ms Foreground App Event
+        if (intent?.action == ACTION_FOREGROUND_APP_CHANGED) {
+            val pkg = intent.getStringExtra(EXTRA_PACKAGE_NAME) ?: ""
+            if (pkg.isNotBlank() && pkg != lastForegroundApp) {
+                lastForegroundApp = pkg
+                handleForegroundAppEvent(pkg)
+            }
+            return START_STICKY
+        }
+
+        // 2. AI Update Signal
         if (intent?.action == "com.example.phonecontrol.ACTION_AI_TICK") {
             val load = intent.getIntExtra("load", 0)
             val focus = prefs.getString("selected_focus", "rbFocusDaily")
             applyAiTweak(load, focus ?: "rbFocusDaily")
         }
 
-        // Ensure storage structure is ready
         BackupManager.ensureStorageStructure()
-        
-        // Ensure Native Daemon is running
         DaemonManager.startDaemon(this)
 
-        // Initial setup for boot/first launch
         if (prefs.getBoolean("silent_system_enabled", false)) {
             TweakManager.setSilentSystem(true)
         }
 
-        // Force an immediate AI Profile sync if in Automatic mode
         if (prefs.getString("selected_mode", "rbBalance") == "rbAutomatic") {
             val focus = prefs.getString("selected_focus", "rbFocusDaily") ?: "rbFocusDaily"
             applyAiTweak(25, focus) 
         } else {
-            // Clear AI label if not in AI mode
             prefs.edit().remove("active_ai_label").apply()
         }
 
         return START_STICKY
     }
 
-    private fun checkForegroundApp() {
-        val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
-        
-        kotlin.concurrent.thread {
-            // Nothing OS Native Floating Window Detection:
-            // We check for 'mResumedActivity' count and 'isFreeform' status in dumpsys
-            val stackResult = ShellUtils.runAsRoot("dumpsys activity containers | grep -E 'mResumedActivity|windowingMode=freeform'")
-            val output = stackResult.output
-            
-            val resumedCount = output.split("\n").filter { it.contains("mResumedActivity") }.size
-            val hasFloatingWindow = output.contains("windowingMode=freeform") || resumedCount > 1
-            
-            // Extract the main package (first resumed activity)
-            val pkg = extractPackageName(output.substringBefore("\n"))
-            
-            if (pkg != lastForegroundApp || hasFloatingWindow) {
-                lastForegroundApp = pkg
-                handleForegroundAppChange(pkg, hasFloatingWindow)
-            }
+    private var isPerAppActive = false
+
+    private fun calculateAppAiLoad(pkg: String): Int {
+        val lower = pkg.lowercase()
+        // 1. Heavy Apps (Camera, Video Editors, Benchmarks, High graphics)
+        if (lower.contains("camera") || lower.contains("video") || lower.contains("editor") ||
+            lower.contains("capcut") || lower.contains("kinemaster") || lower.contains("antutu") ||
+            lower.contains("geekbench") || lower.contains("3dmark") || lower.contains("genshin") ||
+            lower.contains("pubg") || lower.contains("cod") || lower.contains("bgmi") ||
+            lower.contains("lightroom") || lower.contains("photoshop") || lower.contains("speedtest")) {
+            return 60
         }
+        
+        // 2. Daily Fluent / Media / Social
+        if (lower.contains("chrome") || lower.contains("browser") || lower.contains("youtube") ||
+            lower.contains("instagram") || lower.contains("whatsapp") || lower.contains("telegram") ||
+            lower.contains("twitter") || lower.contains("x.android") || lower.contains("tiktok") ||
+            lower.contains("spotify") || lower.contains("netflix") || lower.contains("amazon") ||
+            lower.contains("flipkart")) {
+            return 25
+        }
+        
+        // 3. System / Light / Launcher
+        return 10
     }
 
-    private fun extractPackageName(line: String): String {
-        return try {
-            val parts = line.split(" ")
-            for (part in parts) {
-                if (part.contains("/")) return part.substringBefore("/")
-            }
-            ""
-        } catch (e: Exception) { "" }
-    }
-
-    private fun handleForegroundAppChange(pkg: String, hasFloatingWindow: Boolean) {
+    private fun handleForegroundAppEvent(pkg: String) {
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
         val turboPrefs = getSharedPreferences("game_turbo_prefs", MODE_PRIVATE)
         val games = turboPrefs.getStringSet("game_packages", emptySet()) ?: emptySet()
-        
-        // Update Floating Window State for AI Engine
-        isFloatingWindowActive = hasFloatingWindow
-
-        // Nothing OS Native Floating Window Priority logic moved to applyAiTweak (Adaptive)
-        if (hasFloatingWindow && prefs.getString("selected_mode", "rbBalance") == "rbAutomatic") {
-             Log.d("AutoTweak", "Nothing Floating Window Detected - Adaptive 6-Core Priority Active")
-             // We don't force 80% anymore. The next AI_TICK will handle it adaptively.
-             return
-        }
+        val perAppConfig = PerAppManager.getConfig(this, pkg)
 
         if (games.contains(pkg)) {
             if (!isGameTurboActive) {
-                Log.d("AutoTweak", "Game Detected: $pkg - Activating Turbo")
+                Log.d("AutoTweak", "Instant Game Event: $pkg - Activating Turbo")
                 if (turboPrefs.getBoolean("auto_perf_enabled", true)) TweakManager.applyGlobalMode("Performance")
                 if (turboPrefs.getBoolean("auto_ping_enabled", true)) TweakManager.setNetworkPriority(this, pkg, true)
                 if (turboPrefs.getBoolean("auto_thermal_enabled", false)) ThermalManager.setThrottlingEnabled(false)
                 isGameTurboActive = true
+                isPerAppActive = false
             }
+        } else if (perAppConfig != null && perAppConfig.mode != "Auto") {
+            Log.d("AutoTweak", "Instant Per-App Event: $pkg -> Mode: ${perAppConfig.mode}, FPS: ${perAppConfig.fps}")
+            TweakManager.applyGlobalMode(perAppConfig.mode)
+            TweakManager.setRefreshRate(perAppConfig.fps)
+            if (perAppConfig.thermal == "Disabled") ThermalManager.setThrottlingEnabled(false) else ThermalManager.setThrottlingEnabled(true)
+            if (perAppConfig.touch == "On") TweakManager.applyInputBoost(true)
+            if (perAppConfig.mode == "Performance") TweakManager.applyProcessPriority(pkg, true)
+            isPerAppActive = true
+            isGameTurboActive = false
         } else {
-            if (isGameTurboActive) {
-                Log.d("AutoTweak", "Game Closed - Deactivating Turbo")
-                val globalMode = getSharedPreferences("prefs", MODE_PRIVATE).getString("selected_mode", "rbBalance")
-                TweakManager.applyGlobalMode(if (globalMode == "rbAutomatic") "Balance" else "Balance")
+            val isAutomaticMode = prefs.getString("selected_mode", "rbBalance") == "rbAutomatic"
+            
+            if (isGameTurboActive || isPerAppActive) {
+                Log.d("AutoTweak", "Instant Exit Event - Restoring User's Selected Mode")
+                val savedModeKey = prefs.getString("selected_mode", "rbBalance") ?: "rbBalance"
+                when (savedModeKey) {
+                    "rbPowerSaver" -> TweakManager.applyGlobalMode("Power Saver")
+                    "rbPerformance" -> TweakManager.applyGlobalMode("Performance")
+                    "rbAutomatic" -> {
+                        val focus = prefs.getString("selected_focus", "rbFocusDaily") ?: "rbFocusDaily"
+                        val load = calculateAppAiLoad(pkg)
+                        applyAiTweak(load, focus)
+                    }
+                    else -> TweakManager.applyGlobalMode("Balance")
+                }
                 ThermalManager.setThrottlingEnabled(true)
+                TweakManager.setRefreshRate("Default")
                 isGameTurboActive = false
+                isPerAppActive = false
+            } else if (isAutomaticMode) {
+                // Dynamic 0ms AI load adaptation on every app transition
+                val focus = prefs.getString("selected_focus", "rbFocusDaily") ?: "rbFocusDaily"
+                val load = calculateAppAiLoad(pkg)
+                applyAiTweak(load, focus)
             }
         }
     }
@@ -193,11 +221,7 @@ class AutoTweakService : Service() {
     private var lastAiMode = ""
 
     private fun applyAiTweak(load: Int, focus: String) {
-        // Adaptive Load Balancing:
-        // If floating window is active, we prioritize the 6 Efficiency Cores (Cortex-A510)
-        // unless the load is genuinely high (>50%).
         val adjustedLoad = if (isFloatingWindowActive && load < 50) {
-            // Keep it in 'Daily' range to avoid waking up BIG cores prematurely
             if (load > 25) 25 else load 
         } else {
             load
@@ -231,9 +255,6 @@ class AutoTweakService : Service() {
         if (targetMode != lastAiMode) {
             TweakManager.applyGlobalMode(targetMode)
             
-            // FORCED OVERRIDE: 6-Core Priority for Floating Windows
-            // If we are in Daily or Sleeping mode while floating is active, 
-            // ensure the 2 Big Cores (6-7) are parked to save battery on 5G.
             if (isFloatingWindowActive && adjustedLoad < 50 && (targetMode == "AI_Daily" || targetMode == "AI_Sleeping")) {
                 Log.d("AutoTweak", "Floating Active - Enforcing 6-Core Efficiency Priority")
                 TweakManager.setClusterParking(true) 
@@ -241,7 +262,6 @@ class AutoTweakService : Service() {
 
             lastAiMode = targetMode
             
-            // Save state for UI dashboard
             val displayLabel = when(targetMode) {
                 "AI_Sleeping" -> "AI: Sleeping"
                 "AI_Daily" -> "AI: Daily Fluent"
@@ -250,22 +270,18 @@ class AutoTweakService : Service() {
                 else -> "AI: Active"
             }
             getSharedPreferences("prefs", MODE_PRIVATE).edit().putString("active_ai_label", displayLabel).apply()
-            
-            // Notify UI to refresh label
             sendBroadcast(Intent("com.example.phonecontrol.UPDATE_UI").setPackage(packageName))
         }
     }
 
     private fun onScreenOff(prefs: android.content.SharedPreferences) {
-        Log.d("AutoTweak", "Screen OFF - Ultra Fast Transition")
-        
-        // IMMEDIATE: Tell Daemon to slow down
+        Log.d("AutoTweak", "Screen OFF Event - Transitioning to Ultra Deep Sleep")
         ShellUtils.fastCmd("echo 'off' > /data/local/tmp/pc_screen")
         
-        // Move heavy root logic to background thread to avoid locking SystemUI/PowerManager
         kotlin.concurrent.thread {
             val superDozePrefs = getSharedPreferences("super_doze_prefs", MODE_PRIVATE)
             val isSuperDoze = prefs.getBoolean("super_doze_enabled", false)
+            val isForceDoze = prefs.getBoolean("batt_force_doze_enabled", false)
 
             // 1. Core Parking
             if (isSuperDoze && superDozePrefs.getBoolean("deep_parking_enabled", true)) {
@@ -274,9 +290,14 @@ class AutoTweakService : Service() {
                 TweakManager.setClusterParking(true, deep = false)
             }
 
-            // 2. Super Doze Extras
-            if (isSuperDoze) {
-                if (superDozePrefs.getBoolean("sync_off_enabled", true)) ShellUtils.fastCmd("settings put global master_sync_enabled 0")
+            // 2. Super Doze & Force Doze Deep Idle
+            if (isSuperDoze || isForceDoze) {
+                if (isSuperDoze && superDozePrefs.getBoolean("sync_off_enabled", true)) {
+                    ShellUtils.fastCmd("settings put global master_sync_enabled 0")
+                }
+                if (isSuperDoze && superDozePrefs.getBoolean("radio_off_enabled", false)) {
+                    ShellUtils.fastCmd("svc data disable")
+                }
                 ShellUtils.fastCmd("dumpsys deviceidle force-idle deep")
             }
 
@@ -294,13 +315,31 @@ class AutoTweakService : Service() {
                 SensorManager.setSensorsEnabled(false)
             }
 
-            // 5. Standby Guard (WhatsApp ONLY Notification Safe-List)
+            // 5. Standby Guard - UNIFIED Whitelisting (Checks Standby + Doze + Multitasking lists)
             if (prefs.getBoolean("standby_guard_enabled", false)) {
                 val result = ShellUtils.runAsRoot("pm list packages -3 | cut -d ':' -f2")
                 val packages = result.output.split("\n").filter { it.isNotBlank() }
-                val safeList = listOf("com.whatsapp")
+                
+                val userWhitelist = MultitaskingManager.getUserWhitelist(this@AutoTweakService)
+                val dozeWhitelist = prefs.getStringSet("doze_whitelist", emptySet()) ?: emptySet()
+                
+                val defaultSafeList = setOf(
+                    "com.whatsapp",
+                    "org.telegram.messenger",
+                    "com.google.android.gm",
+                    "com.google.android.dialer",
+                    "com.android.phone",
+                    "com.google.android.apps.messaging",
+                    "com.truecaller",
+                    "com.google.android.apps.nbu.paisa.user",
+                    "net.one97.paytm",
+                    "com.phonepe.app",
+                    "in.org.npci.upiapp"
+                )
+                val allSafeApps = defaultSafeList + userWhitelist + dozeWhitelist + MultitaskingManager.protectedApps
+
                 for (pkg in packages) {
-                    if (!safeList.contains(pkg)) {
+                    if (!allSafeApps.contains(pkg)) {
                         ShellUtils.fastCmd("am set-standby-bucket $pkg restricted")
                     } else {
                         ShellUtils.fastCmd("am set-standby-bucket $pkg active")
@@ -317,21 +356,38 @@ class AutoTweakService : Service() {
                     FreezerManager.freezeApp(this@AutoTweakService, pkg)
                 }
             }
+
+            // 7. AI Sleeping Profile
+            if (prefs.getString("selected_mode", "rbBalance") == "rbAutomatic") {
+                applyAiTweak(0, "rbFocusDaily")
+            }
         }
-        
-        gameWatcherHandler.removeCallbacks(gameWatcherRunnable)
     }
 
     private fun onScreenOn(prefs: android.content.SharedPreferences) {
-        Log.d("AutoTweak", "Screen ON - Instant Recovery")
+        Log.d("AutoTweak", "Screen ON Event - Instant Recovery")
         
-        // IMMEDIATE CORE UNPARK: Must happen first and on background thread to not block UI
         kotlin.concurrent.thread {
+            val superDozePrefs = getSharedPreferences("super_doze_prefs", MODE_PRIVATE)
+            val isSuperDoze = prefs.getBoolean("super_doze_enabled", false)
+
             TweakManager.setClusterParking(false, deep = true) 
             ShellUtils.fastCmd("echo 'on' > /data/local/tmp/pc_screen")
 
-            if (prefs.getBoolean("super_doze_enabled", false)) {
-                ShellUtils.fastCmd("settings put global master_sync_enabled 1")
+            if (isSuperDoze) {
+                if (superDozePrefs.getBoolean("sync_off_enabled", true)) {
+                    ShellUtils.fastCmd("settings put global master_sync_enabled 1")
+                }
+                if (superDozePrefs.getBoolean("radio_off_enabled", false)) {
+                    ShellUtils.fastCmd("svc data enable")
+                }
+            }
+
+            // Restore Automatic AI Profile for Foreground App
+            if (prefs.getString("selected_mode", "rbBalance") == "rbAutomatic") {
+                val focus = prefs.getString("selected_focus", "rbFocusDaily") ?: "rbFocusDaily"
+                val load = calculateAppAiLoad(lastForegroundApp)
+                applyAiTweak(load, focus)
             }
 
             val indivBlockActive = prefs.getBoolean("block_gyro", false) || 
@@ -349,14 +405,12 @@ class AutoTweakService : Service() {
                 ShellUtils.fastCmd("cmd battery-saver set-enabled false")
             }
         }
-        
-        gameWatcherHandler.post(gameWatcherRunnable)
     }
 
     override fun onDestroy() {
         unregisterReceiver(screenReceiver)
+        unregisterReceiver(batteryThermalReceiver)
         try { connectivityManager.unregisterNetworkCallback(networkCallback) } catch (e: Exception) {}
-        gameWatcherHandler.removeCallbacks(gameWatcherRunnable)
         ShellUtils.closePersistentShell()
         super.onDestroy()
     }

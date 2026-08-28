@@ -13,6 +13,7 @@ class BootReceiver : BroadcastReceiver() {
             kotlin.concurrent.thread {
                 // Aggressive root-level activation
                 ShellUtils.runAsRoot("dumpsys deviceidle whitelist +com.example.phonecontrol")
+                AppEventService.enableViaRoot(context.packageName)
                 
                 // Re-apply Kernel Mode Settings
                 val prefs = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)

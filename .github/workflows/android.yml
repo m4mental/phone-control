@@ -14,10 +14,10 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: set up JDK 17
+    - name: set up JDK 21
       uses: actions/setup-java@v4
       with:
-        java-version: '17'
+        java-version: '21'
         distribution: 'temurin'
         cache: gradle
 
@@ -36,11 +36,11 @@ jobs:
       with:
         tag_name: ${{ steps.get_version.outputs.VERSION }}
         name: Release ${{ steps.get_version.outputs.VERSION }}
-        files: app/build/outputs/apk/release/app-release.apk
+        files: app/build/outputs/apk/release/*.apk
         body: |
           Automatic build of Phone Control.
           Built with AI assistance.
-          Target: Nothing Phone 2a (Android 16)
+          Target: Nothing Phone 2a (Android 16 / SDK 37)
         draft: false
         prerelease: false
       env:

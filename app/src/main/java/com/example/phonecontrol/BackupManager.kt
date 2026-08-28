@@ -6,7 +6,18 @@ import java.io.File
 
 object BackupManager {
 
-    private val PREF_FILES = listOf("prefs", "freezer_prefs", "multitasking_prefs", "firewall_prefs", "vault_prefs")
+    private val PREF_FILES = listOf(
+        "prefs",
+        "freezer_prefs",
+        "multitasking_prefs",
+        "firewall_prefs",
+        "vault_prefs",
+        "game_turbo_prefs",
+        "super_doze_prefs",
+        "tower_prefs",
+        "per_app_prefs"
+    )
+    
     private const val ROOT_DIR = "/sdcard/PHONE_CONTROL"
     private const val CONFIG_DIR = "$ROOT_DIR/Config_Backups"
     private const val VAULT_DIR = "$ROOT_DIR/App_Vault"
@@ -115,7 +126,7 @@ object BackupManager {
                 }
                 editor.apply()
             }
-            // Restart daemon to pick up new settings
+            // Restart daemon and auto tweak service to apply restored configuration
             DaemonManager.startDaemon(context)
             true
         } catch (e: Exception) {

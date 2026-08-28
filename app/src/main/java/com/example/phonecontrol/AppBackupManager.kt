@@ -98,7 +98,8 @@ object AppBackupManager {
 
             // 2. Data Backup (tar.gz)
             if (includeData) {
-                onProgress(40, "Compressing app data...")
+                onProgress(40, "Flushing and compressing app data...")
+                ShellUtils.runAsRoot("am force-stop ${info.packageName} && sync")
                 val dataPath = "/data/data/${info.packageName}"
                 val dataOutput = "$backupDir/data.tar.gz"
                 
@@ -107,7 +108,7 @@ object AppBackupManager {
                 val tarResult = ShellUtils.runAsRoot(tarCmd)
                 
                 if (tarResult.exitCode != 0) {
-                    onProgress(50, "Data compression failed, trying fallback...")
+                    onProgress(50, "Data compression fallback...")
                     ShellUtils.runAsRoot("cd $dataPath && tar -czf $dataOutput .")
                 }
             }

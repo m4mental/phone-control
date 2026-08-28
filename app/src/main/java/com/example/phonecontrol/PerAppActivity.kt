@@ -31,12 +31,21 @@ class PerAppActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnAddPerApp).setOnClickListener { showPerAppPicker() }
 
         thread {
-            cachedAppsList = pm.getInstalledApplications(0)
-                .filter { pm.getLaunchIntentForPackage(it.packageName) != null }
-                .sortedBy { pm.getApplicationLabel(it).toString().lowercase() }
+            cachedAppsList = getInstalledAppsList()
         }
 
         refreshList()
+    }
+
+    private fun getInstalledAppsList(): List<ApplicationInfo> {
+        return try {
+            val all = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+            all.filter {
+                (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 || pm.getLaunchIntentForPackage(it.packageName) != null
+            }.sortedBy { pm.getApplicationLabel(it).toString().lowercase() }
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
 
     private fun refreshList() {
@@ -184,7 +193,7 @@ class PerAppActivity : AppCompatActivity() {
         dialogView.findViewById<View>(R.id.cbSelectAll).visibility = View.GONE
         val listView = dialogView.findViewById<ListView>(R.id.lvApps)
 
-        val allApps = cachedAppsList ?: emptyList()
+        val allApps = cachedAppsList ?: getInstalledAppsList()
         val filteredApps = allApps.toMutableList()
         val adapter = object : ArrayAdapter<ApplicationInfo>(this, R.layout.item_app_picker, filteredApps) {
             override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
@@ -202,7 +211,7 @@ class PerAppActivity : AppCompatActivity() {
         etSearch.addTextChangedListener(object : TextWatcher {
             override fun afterTextChanged(s: Editable?) {
                 filteredApps.clear()
-                filteredApps.addAll(allApps.filter { pm.getApplicationLabel(it).toString().lowercase().contains(s.toString().lowercase()) })
+                filteredApps.addAll(allApps.filter { pm.getApplicationLabel(it).toString().lowercase().contains(s.toString().lowercase()) || it.packageName.lowercase().contains(s.toString().lowercase()) })
                 adapter.notifyDataSetChanged()
             }
             override fun beforeTextChanged(s: CharSequence?, p1: Int, p2: Int, p3: Int) {}
