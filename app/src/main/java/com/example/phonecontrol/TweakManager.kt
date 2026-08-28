@@ -26,16 +26,28 @@ object TweakManager {
                 applyIoOptimization("perf")
                 applyInputBoost(true)
             }
-            // AI Engine Granular Profiles (Tuned for Fluid 120Hz)
+            // AI Engine Granular Profiles (Tuned for Fluid 120Hz & High Battery Efficiency)
             "AI_Sleeping" -> {
                 // Use schedutil instead of powersave to avoid 'stuck' feeling
                 for (i in 0..7) ShellUtils.fastCmd("echo schedutil > /sys/devices/system/cpu/cpufreq/policy$i/scaling_governor 2>/dev/null")
-                setClusterParking(true) // Park Big Cores
+                setClusterParking(true) // Park Big Cores during Screen OFF
                 applyCpuTuning("power")
                 // Minimum touch response
                 ShellUtils.fastCmd("echo 1 > /sys/module/cpu_boost/parameters/input_boost_enabled 2>/dev/null")
                 ShellUtils.fastCmd("echo 0:1326000 > /sys/module/cpu_boost/parameters/input_boost_freq 2>/dev/null")
                 ShellUtils.fastCmd("echo 200 > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null")
+            }
+            "AI_EcoActive" -> {
+                // Keep all 8 cores online when Screen is ON (Zero UI ANR / Zero Lag)
+                setClusterParking(false, deep = true)
+                for (i in 0..7) ShellUtils.fastCmd("echo schedutil > /sys/devices/system/cpu/cpufreq/policy$i/scaling_governor 2>/dev/null")
+                applyGpuTuning("power")
+                applyCpuTuning("power")
+                applyIoOptimization("power")
+                // Gentle touch boost to keep UI at 120Hz/60Hz without battery drain
+                ShellUtils.fastCmd("echo 1 > /sys/module/cpu_boost/parameters/input_boost_enabled 2>/dev/null")
+                ShellUtils.fastCmd("echo 0:1200000 6:1500000 > /sys/module/cpu_boost/parameters/input_boost_freq 2>/dev/null")
+                ShellUtils.fastCmd("echo 300 > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null")
             }
             "AI_Daily" -> {
                 applyBalance()
@@ -237,14 +249,32 @@ object TweakManager {
     }
 
     /**
+     * Dedicated Temporary Wakeup Boost on Screen-On / Unlock (2-3 seconds)
+     * Spikes all 8 cores and touch responsiveness for immediate 0ms fingerprint & keyguard render.
+     */
+    fun triggerTemporaryWakeupBoost() {
+        // 1. Immediately unpark all 8 cores & set responsive governor
+        setClusterParking(false, deep = true)
+        for (i in 0..7) {
+            ShellUtils.fastCmd("echo schedutil > /sys/devices/system/cpu/cpufreq/policy$i/scaling_governor 2>/dev/null")
+        }
+        // 2. High responsiveness boost for critical unlock window
+        ShellUtils.fastCmd("echo 1 > /sys/module/cpu_boost/parameters/input_boost_enabled 2>/dev/null")
+        ShellUtils.fastCmd("echo 0:1500000 6:2000000 > /sys/module/cpu_boost/parameters/input_boost_freq 2>/dev/null")
+        ShellUtils.fastCmd("echo 1000 > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null")
+        ShellUtils.fastCmd("echo 1 > /proc/touchpanel/game_switch_enable 2>/dev/null")
+        ShellUtils.fastCmd("echo 1 > /sys/devices/virtual/touchpanel/smart_wake/touch_responsiveness 2>/dev/null")
+    }
+
+    /**
      * 1. CPU & EAS Tuning
      * Adjusts scheduling latencies and migration thresholds.
      */
     fun applyCpuTuning(mode: String) {
         val latency = when(mode) {
             "perf" -> "4000000" // 4ms
-            "power" -> "20000000" // 20ms
-            else -> "10000000" // 10ms (default)
+            "power" -> "10000000" // 10ms (safe limit for 120Hz/60Hz UI rendering without ANR)
+            else -> "8000000" // 8ms (default)
         }
         
         ShellUtils.fastCmd("echo $latency > /proc/sys/kernel/sched_latency_ns 2>/dev/null")

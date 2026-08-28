@@ -28,6 +28,8 @@ class AutoTweakService : Service() {
     private var isPerAppActive = false
     private var isDynamicScalingActive = false
     private var isFloatingWindowActive = false
+    @Volatile private var isScreenOn = true
+    @Volatile private var isWakeupBoosting = false
 
     private lateinit var connectivityManager: ConnectivityManager
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
@@ -269,35 +271,36 @@ class AutoTweakService : Service() {
             load
         }
 
-        val targetMode = when (focus) {
-            "rbFocusBattery" -> {
-                when {
-                    adjustedLoad > 40 -> "AI_Boost"  
-                    adjustedLoad > 20 -> "AI_Daily"
-                    else -> "AI_Sleeping"
+        val targetMode = if (!isScreenOn) {
+            "AI_Sleeping"
+        } else {
+            when (focus) {
+                "rbFocusBattery" -> {
+                    // Dynamic scaling based on actual usage during Screen ON:
+                    when {
+                        adjustedLoad > 40 -> "AI_Boost"
+                        adjustedLoad > 10 -> "AI_Daily"
+                        else -> "AI_EcoActive" // Light / Idle active usage: 8 cores online, low power, schedutil, 0 UI lag
+                    }
                 }
-            }
-            "rbFocusDaily" -> {
-                when {
-                    adjustedLoad > 35 -> "AI_Boost"
-                    adjustedLoad > 10 -> "AI_Daily"
-                    else -> "AI_Sleeping"
+                "rbFocusDaily" -> {
+                    if (adjustedLoad > 35) "AI_Boost" else "AI_Daily"
                 }
-            }
-            "rbFocusMultitasking" -> {
-                when {
-                    adjustedLoad > 30 -> "AI_Extreme"
-                    adjustedLoad > 15 -> "AI_Boost"
-                    else -> "AI_Daily"
+                "rbFocusMultitasking" -> {
+                    when {
+                        adjustedLoad > 30 -> "AI_Extreme"
+                        adjustedLoad > 15 -> "AI_Boost"
+                        else -> "AI_Daily"
+                    }
                 }
+                else -> "AI_Daily"
             }
-            else -> "AI_Daily"
         }
 
         if (targetMode != lastAiMode) {
             TweakManager.applyGlobalMode(targetMode)
             
-            if (isFloatingWindowActive && adjustedLoad < 50 && (targetMode == "AI_Daily" || targetMode == "AI_Sleeping")) {
+            if (isFloatingWindowActive && adjustedLoad < 50 && (targetMode == "AI_Daily" || targetMode == "AI_Sleeping" || targetMode == "AI_EcoActive")) {
                 Log.d("AutoTweak", "Floating Active - Enforcing 6-Core Efficiency Priority")
                 TweakManager.setClusterParking(true) 
             }
@@ -306,6 +309,7 @@ class AutoTweakService : Service() {
             
             val displayLabel = when(targetMode) {
                 "AI_Sleeping" -> "AI: Sleeping"
+                "AI_EcoActive" -> "AI: Eco Active"
                 "AI_Daily" -> "AI: Daily Fluent"
                 "AI_Boost" -> "AI: Multi-Boost"
                 "AI_Extreme" -> "AI: Extreme"
@@ -318,6 +322,8 @@ class AutoTweakService : Service() {
 
     private fun onScreenOff(prefs: android.content.SharedPreferences) {
         Log.d("AutoTweak", "Screen OFF Event - Transitioning to Ultra Deep Sleep")
+        isScreenOn = false
+        isWakeupBoosting = false
         ShellUtils.fastCmd("echo 'off' > /data/local/tmp/pc_screen")
         
         kotlin.concurrent.thread {
@@ -412,7 +418,10 @@ class AutoTweakService : Service() {
     }
 
     private fun onScreenOn(prefs: android.content.SharedPreferences) {
-        Log.d("AutoTweak", "Screen ON Event - Instant Recovery")
+        Log.d("AutoTweak", "Screen ON Event - Instant 2.5s Recovery & Wakeup Boost")
+        isScreenOn = true
+        isWakeupBoosting = true
+        TweakManager.triggerTemporaryWakeupBoost()
         
         kotlin.concurrent.thread {
             val superDozePrefs = getSharedPreferences("super_doze_prefs", MODE_PRIVATE)
@@ -428,13 +437,6 @@ class AutoTweakService : Service() {
                 if (superDozePrefs.getBoolean("radio_off_enabled", false)) {
                     ShellUtils.fastCmd("svc data enable")
                 }
-            }
-
-            // Restore Automatic AI Profile for Foreground App
-            if (prefs.getString("selected_mode", "rbBalance") == "rbAutomatic") {
-                val focus = prefs.getString("selected_focus", "rbFocusDaily") ?: "rbFocusDaily"
-                val load = calculateAppAiLoad(lastForegroundApp)
-                applyAiTweak(load, focus)
             }
 
             // GPS Auto-Saver Restore
@@ -455,6 +457,20 @@ class AutoTweakService : Service() {
 
             if (prefs.getBoolean("standby_guard_enabled", false)) {
                 ShellUtils.fastCmd("cmd battery-saver set-enabled false")
+            }
+
+            // Dedicated 2.5-second boost window for smooth fingerprint / keyguard / systemui unlock
+            try {
+                Thread.sleep(2500)
+            } catch (e: InterruptedException) {}
+
+            isWakeupBoosting = false
+
+            // After 2.5s unlock window, smoothly transition to real-time foreground app usage mode
+            if (isScreenOn && prefs.getString("selected_mode", "rbBalance") == "rbAutomatic") {
+                val focus = prefs.getString("selected_focus", "rbFocusDaily") ?: "rbFocusDaily"
+                val load = calculateAppAiLoad(lastForegroundApp)
+                applyAiTweak(load, focus)
             }
         }
     }
