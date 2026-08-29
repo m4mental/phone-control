@@ -27,10 +27,12 @@ object BatteryManager {
         val currRaw = lines.getOrNull(2) ?: "0"
         val cycles = lines.getOrNull(3) ?: "0"
         val health = lines.getOrNull(4) ?: "Good"
-        val full = lines.getOrNull(5)?.toDoubleOrNull() ?: 5000000.0
-        val design = lines.getOrNull(6)?.toDoubleOrNull() ?: 5000000.0
+        var full = lines.getOrNull(5)?.toDoubleOrNull() ?: 5000000.0
+        var design = lines.getOrNull(6)?.toDoubleOrNull() ?: 5000000.0
+        if (design in 1.0..999999.0) design *= 10.0
+        if (full in 1.0..999999.0) full *= 10.0
         
-        val wearLevel = (full / design * 100).toInt().coerceIn(0, 100)
+        val wearLevel = if (design > 0) ((full / design) * 100).toInt().coerceIn(1, 100) else 100
 
         val vV = voltRaw.toDoubleOrNull() ?: 0.0
         val aA = currRaw.toDoubleOrNull() ?: 0.0

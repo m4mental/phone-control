@@ -3,10 +3,12 @@ package com.example.phonecontrol
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
+import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.card.MaterialCardView
 import com.google.android.material.switchmaterial.SwitchMaterial
 import kotlin.concurrent.thread
 
@@ -17,6 +19,20 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var tvDiagSelinux: TextView
     private lateinit var tvDiagKernel: TextView
     private lateinit var tvDiagEventEngine: TextView
+
+    data class SubFeature(
+        val title: String,
+        val prefKey: String,
+        val summary: String,
+        val defaultEnabled: Boolean = true
+    )
+
+    data class MasterCategory(
+        val title: String,
+        val masterKey: String,
+        val accentColor: String,
+        val subFeatures: List<SubFeature>
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -96,86 +112,78 @@ class SettingsActivity : AppCompatActivity() {
 
         when (preset) {
             "Gaming" -> {
+                editor.putBoolean("master_gaming_hub_enabled", true)
                 editor.putBoolean("game_turbo_enabled", true)
+                editor.putBoolean("per_app_enabled", true)
+                editor.putBoolean("master_performance_hub_enabled", true)
+                editor.putBoolean("resolution_enabled", true)
+                editor.putBoolean("ram_manager_enabled", true)
+                editor.putBoolean("adaptive_thermal_enabled", true)
+                editor.putBoolean("master_security_hub_enabled", true)
                 editor.putBoolean("network_priority_enabled", true)
-                editor.putBoolean("storage_boost_enabled", true)
-                editor.putBoolean("adaptive_thermal_enabled", false)
-                editor.putBoolean("super_doze_enabled", false)
-                editor.putString("selected_mode", "rbPerformance")
-                editor.apply()
-
-                thread {
-                    TweakManager.applyGlobalMode("Performance")
-                    StorageManager.applyStorageBoost(true)
-                    ThermalManager.setThrottlingEnabled(false)
-                }
-                Toast.makeText(this, "🎮 Extreme Gaming Preset Applied!", Toast.LENGTH_SHORT).show()
             }
             "Battery" -> {
+                editor.putBoolean("master_battery_hub_enabled", true)
+                editor.putBoolean("battery_lab_enabled", true)
                 editor.putBoolean("super_doze_enabled", true)
-                editor.putBoolean("automation_enabled", true)
                 editor.putBoolean("smart_switch_enabled", true)
-                editor.putBoolean("standby_guard_enabled", true)
                 editor.putBoolean("sensor_firewall_enabled", true)
-                editor.putString("selected_mode", "rbPowerSaver")
-                editor.apply()
-
-                thread {
-                    TweakManager.applyGlobalMode("Power Saver")
-                    StorageManager.applyStorageBoost(false)
-                }
-                Toast.makeText(this, "🔋 Ultra Battery Saver Preset Applied!", Toast.LENGTH_SHORT).show()
+                editor.putBoolean("master_performance_hub_enabled", true)
+                editor.putBoolean("adaptive_thermal_enabled", true)
             }
             "Balance" -> {
-                editor.putBoolean("game_turbo_enabled", true)
-                editor.putBoolean("automation_enabled", true)
-                editor.putBoolean("adaptive_thermal_enabled", true)
-                editor.putBoolean("smart_switch_enabled", true)
+                editor.putBoolean("master_battery_hub_enabled", true)
+                editor.putBoolean("battery_lab_enabled", true)
+                editor.putBoolean("super_doze_enabled", true)
+                editor.putBoolean("master_performance_hub_enabled", true)
+                editor.putBoolean("ram_manager_enabled", true)
                 editor.putBoolean("storage_boost_enabled", true)
-                editor.putString("selected_mode", "rbBalance")
-                editor.apply()
-
-                thread {
-                    TweakManager.applyGlobalMode("Balance")
-                    StorageManager.applyStorageBoost(true)
-                    ThermalManager.setThrottlingEnabled(true)
-                }
-                Toast.makeText(this, "⚖️ Daily Balanced Preset Applied!", Toast.LENGTH_SHORT).show()
+                editor.putBoolean("optimization_enabled", true)
+                editor.putBoolean("adaptive_thermal_enabled", true)
+                editor.putBoolean("master_gaming_hub_enabled", true)
+                editor.putBoolean("game_turbo_enabled", true)
+                editor.putBoolean("per_app_enabled", true)
+                editor.putBoolean("master_security_hub_enabled", true)
+                editor.putBoolean("network_priority_enabled", true)
+                editor.putBoolean("master_tools_hub_enabled", true)
             }
         }
-
+        editor.apply()
+        Toast.makeText(this, "Preset applied: $preset", Toast.LENGTH_SHORT).show()
         refreshToggles()
     }
 
     private fun shareConfiguration() {
-        val json = BackupManager.generateBackupJson(this)
-        if (json.isNullOrBlank()) {
-            Toast.makeText(this, "Failed to export config", Toast.LENGTH_SHORT).show()
-            return
+        thread {
+            val json = BackupManager.generateBackupJson(this)
+            runOnUiThread {
+                if (json != null) {
+                    val sendIntent = Intent().apply {
+                        action = Intent.ACTION_SEND
+                        putExtra(Intent.EXTRA_TEXT, json)
+                        type = "text/plain"
+                    }
+                    startActivity(Intent.createChooser(sendIntent, "Share Phone Control Config"))
+                } else {
+                    Toast.makeText(this, "Failed to generate config JSON", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
-
-        val sendIntent = Intent().apply {
-            action = Intent.ACTION_SEND
-            putExtra(Intent.EXTRA_TEXT, json)
-            type = "text/plain"
-        }
-        startActivity(Intent.createChooser(sendIntent, "Share Phone Control Config"))
     }
 
     private fun showImportDialog() {
         val input = EditText(this).apply {
             hint = "Paste JSON Configuration here..."
-            setPadding(40, 40, 40, 40)
-            setTextColor(Color.WHITE)
-            setHintTextColor(Color.GRAY)
+            isSingleLine = false
+            setLines(6)
         }
 
         AlertDialog.Builder(this)
             .setTitle("Import Configuration")
             .setView(input)
-            .setPositiveButton("IMPORT") { _, _ ->
+            .setPositiveButton("Apply") { _, _ ->
                 val json = input.text.toString().trim()
-                if (json.isNotBlank()) {
+                if (json.isNotEmpty()) {
                     val success = BackupManager.restoreFromJson(this, json)
                     if (success) {
                         Toast.makeText(this, "Config Imported Successfully!", Toast.LENGTH_SHORT).show()
@@ -192,68 +200,166 @@ class SettingsActivity : AppCompatActivity() {
     private fun refreshToggles() {
         layoutToggleContainer.removeAllViews()
 
-        val featureList = listOf(
-            Triple("Thermal Engine", "adaptive_thermal_enabled", "Dynamic cooling: Caps CPU and Parks Big Cores at 45°C+ to prevent overheating."),
-            Triple("Network Booster", "network_priority_enabled", "Internet speed: Forces TCP BBR and prioritizing gaming packets for stable ping."),
-            Triple("Storage Boost", "storage_boost_enabled", "UFS Refresh: Weekly automated FSTRIM and mq-deadline tuning for zero-lag storage."),
-            Triple("Display & Resolution", "resolution_enabled", "Visual tuning: Modify DPI and native resolution to boost GPU performance."),
-            Triple("Memory Manager", "ram_manager_enabled", "ZRAM Power: Compressed Physical RAM for zero-lag switching (Better than slow Virtual RAM)."),
-            Triple("System Optimization", "optimization_enabled", "Silence logs: Suppresses logd and background maintenance for peak CPU focus."),
-            Triple("Bloatware Remover", "bloatware_enabled", "Free storage: Force-disable factory junk and carrier-preinstalled system apps."),
-            Triple("ADB Shell Terminal", "adb_enabled", "Expert console: Directly execute root shell commands inside a secured terminal."),
-            Triple("App & Data Vault", "vault_enabled", "⚠️ [BETA] STILL UNDER DEVELOPMENT: High risk of crashes during backup/restore. Use with caution."),
-            Triple("Home Tower Lock", "tower_lock_enabled", "Modem control: Hard-lock specific PCI/EARFCN to keep 5G stable indoors."),
-            Triple("Smart Data Switcher", "smart_switch_enabled", "Smart Switch: Auto-OFF mobile data on stable WiFi and Auto-ON when out (Zero Polling)."),
-            Triple("Game Turbo Suite", "game_turbo_enabled", "Gaming: Auto-Performance and Ping Guard when games are launched."),
-            Triple("Super Doze Mode", "super_doze_enabled", "Standby: Kernel-level Deep Sleep to achieve 0% battery drop overnight."),
-            Triple("Automation Service", "automation_enabled", "Battery Pro: Auto-Parks big cores and blocks sensors during Screen-OFF standby.")
+        val masterCategories = listOf(
+            MasterCategory(
+                title = "🔋 Battery & Power Hub",
+                masterKey = "master_battery_hub_enabled",
+                accentColor = "#00E676",
+                subFeatures = listOf(
+                    SubFeature("Battery Health & Charge Lab", "battery_lab_enabled", "Direct hardware bypass charging, 80% charge limiter, and USB fast charge.", true),
+                    SubFeature("Super Doze Mode", "super_doze_enabled", "Kernel-level deep sleep engine to minimize overnight standby battery drop to near 0%.", true),
+                    SubFeature("Smart Data Switcher", "smart_switch_enabled", "Automatically turns off mobile data on stable Wi-Fi to eliminate radio drain.", true),
+                    SubFeature("Hardware Sensor Firewall", "sensor_firewall_enabled", "Blocks gyroscope, magnetometer, and motion sensors when screen is off.", true)
+                )
+            ),
+            MasterCategory(
+                title = "🚀 Performance & Display Hub",
+                masterKey = "master_performance_hub_enabled",
+                accentColor = "#00E5FF",
+                subFeatures = listOf(
+                    SubFeature("Display & Resolution Scaling", "resolution_enabled", "Modify display resolution (720p/1080p) and DPI scaling for higher framerates.", true),
+                    SubFeature("Memory & ZRAM Manager", "ram_manager_enabled", "High-speed compressed physical RAM allocation and LMK tuning for fluid multitasking.", true),
+                    SubFeature("UFS Storage Boost", "storage_boost_enabled", "Automated weekly FSTRIM maintenance and mq-deadline I/O scheduler tuning.", true),
+                    SubFeature("Adaptive Thermal Engine", "adaptive_thermal_enabled", "Monitors battery and CPU temperatures to prevent hardware overheating.", true),
+                    SubFeature("Deep System Optimization", "optimization_enabled", "Suppresses background logd overhead and cleans caches for peak responsiveness.", true)
+                )
+            ),
+            MasterCategory(
+                title = "🎮 Gaming & App Turbo Hub",
+                masterKey = "master_gaming_hub_enabled",
+                accentColor = "#FFD600",
+                subFeatures = listOf(
+                    SubFeature("Game Turbo Suite", "game_turbo_enabled", "High-priority CPU/GPU scheduling and network packet prioritization during games.", true),
+                    SubFeature("Per-App Profiles", "per_app_enabled", "Set custom refresh rates, touch sampling rates, and CPU power modes per application.", true)
+                )
+            ),
+            MasterCategory(
+                title = "🛡️ Security & Network Hub",
+                masterKey = "master_security_hub_enabled",
+                accentColor = "#00C853",
+                subFeatures = listOf(
+                    SubFeature("Network Booster (TCP BBR)", "network_priority_enabled", "Enables TCP BBR congestion control and prioritizes low-latency traffic.", true),
+                    SubFeature("Per-App Data Firewall", "firewall_enabled", "Restricts background network access for selected applications.", true),
+                    SubFeature("Home 5G Tower Lock", "tower_lock_enabled", "Locks modem to specific carrier frequency bands to stabilize 5G reception indoors.", true)
+                )
+            ),
+            MasterCategory(
+                title = "🧰 System Tools Hub",
+                masterKey = "master_tools_hub_enabled",
+                accentColor = "#FF5252",
+                subFeatures = listOf(
+                    SubFeature("App Freezer & Hibernation", "freezer_enabled", "Freeze unused applications with a single tap to reclaim 100% background RAM.", true),
+                    SubFeature("Bloatware Remover", "bloatware_enabled", "Force-disable carrier-preinstalled bloatware and unnecessary background telemetry.", true),
+                    SubFeature("App & Data Vault", "vault_enabled", "⚠️ [BETA] Local offline encrypted backup and restore utility for apps.", false),
+                    SubFeature("Root Shell Terminal", "adb_enabled", "Directly execute and test root Linux commands inside a secured terminal.", true)
+                )
+            )
         )
 
-        for (feature in featureList) {
-            addToggleView(feature.first, feature.second, feature.third)
+        for (category in masterCategories) {
+            addCategoryCardView(category)
         }
     }
 
-    private fun addToggleView(title: String, prefKey: String, summary: String) {
+    private fun addCategoryCardView(category: MasterCategory) {
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
-        val view = layoutInflater.inflate(R.layout.item_setting_toggle, layoutToggleContainer, false)
+        val cardView = layoutInflater.inflate(R.layout.item_setting_category_card, layoutToggleContainer, false) as MaterialCardView
         
-        val tvTitle = view.findViewById<TextView>(R.id.tvToggleTitle)
-        val tvSummary = view.findViewById<TextView>(R.id.tvToggleSummary)
-        val sw = view.findViewById<SwitchMaterial>(R.id.switchFeature)
+        val tvTitle = cardView.findViewById<TextView>(R.id.tvCategoryTitle)
+        val tvSubtitle = cardView.findViewById<TextView>(R.id.tvCategorySubtitle)
+        val swMaster = cardView.findViewById<SwitchMaterial>(R.id.switchCategoryMaster)
+        val containerSub = cardView.findViewById<LinearLayout>(R.id.layoutSubFeaturesContainer)
 
-        tvTitle.text = title
-        tvSummary.text = summary
+        tvTitle.text = category.title
+        tvTitle.setTextColor(Color.parseColor(category.accentColor))
         
-        if (summary.contains("UNDER DEVELOPMENT")) {
-            tvSummary.setTextColor(Color.RED)
+        val isMasterOn = prefs.getBoolean(category.masterKey, true)
+        swMaster.isChecked = isMasterOn
+        containerSub.visibility = if (isMasterOn) View.VISIBLE else View.GONE
+
+        // Master Switch Listener
+        swMaster.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean(category.masterKey, isChecked).apply()
+            containerSub.visibility = if (isChecked) View.VISIBLE else View.GONE
+            
+            // Cascade enable/disable and revert all sub-features under this category
+            val editor = prefs.edit()
+            for (sub in category.subFeatures) {
+                editor.putBoolean(sub.prefKey, isChecked)
+                if (!isChecked) {
+                    revertSpecificFeature(sub.prefKey)
+                }
+            }
+            editor.apply()
+            
+            // Refresh sub-views inside container
+            renderSubFeatures(category, containerSub, isChecked)
         }
 
-        sw.isChecked = prefs.getBoolean(prefKey, false)
+        renderSubFeatures(category, containerSub, isMasterOn)
+        layoutToggleContainer.addView(cardView)
+    }
 
-        sw.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit().putBoolean(prefKey, isChecked).apply()
-            
+    private fun renderSubFeatures(category: MasterCategory, container: LinearLayout, isCategoryEnabled: Boolean) {
+        container.removeAllViews()
+        val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+
+        for (sub in category.subFeatures) {
+            val subView = layoutInflater.inflate(R.layout.item_setting_toggle, container, false)
+            val tvSubTitle = subView.findViewById<TextView>(R.id.tvToggleTitle)
+            val tvSubSummary = subView.findViewById<TextView>(R.id.tvToggleSummary)
+            val swSub = subView.findViewById<SwitchMaterial>(R.id.switchFeature)
+
+            tvSubTitle.text = sub.title
+            tvSubSummary.text = sub.summary
+
+            if (sub.summary.contains("BETA")) {
+                tvSubSummary.setTextColor(Color.parseColor("#FFAB40"))
+            }
+
+            val isSubOn = prefs.getBoolean(sub.prefKey, sub.defaultEnabled && isCategoryEnabled)
+            swSub.isChecked = isSubOn
+            swSub.isEnabled = isCategoryEnabled
+
+            swSub.setOnCheckedChangeListener { _, isChecked ->
+                prefs.edit().putBoolean(sub.prefKey, isChecked).apply()
+                if (!isChecked) {
+                    revertSpecificFeature(sub.prefKey)
+                }
+            }
+
+            container.addView(subView)
+        }
+    }
+
+    private fun revertSpecificFeature(prefKey: String) {
+        thread {
             when (prefKey) {
-                "storage_boost_enabled" -> thread { 
-                    StorageManager.applyStorageBoost(isChecked) 
-                    runOnUiThread { Toast.makeText(this, if (isChecked) "Storage Boost: mq-deadline (Active)" else "Storage Boost: Default", Toast.LENGTH_SHORT).show() }
+                "resolution_enabled" -> {
+                    ShellUtils.runAsRoot("wm size reset")
+                    ShellUtils.runAsRoot("wm density reset")
                 }
-                "network_priority_enabled" -> if (!isChecked) thread { ShellUtils.runAsRoot("iptables -t mangle -F OUTPUT") }
-                "adaptive_thermal_enabled" -> if (!isChecked) {
-                    prefs.edit().putInt("active_cpu_cap", 100).apply()
-                    thread { TweakManager.limitCpuFrequency(100); ThermalManager.setThrottlingEnabled(true) }
+                "battery_lab_enabled" -> {
+                    BatteryManager.setBypassEnabled(false)
+                    BatteryManager.setChargingEnabled(true)
                 }
-                "optimization_enabled" -> if (!isChecked) {
-                    prefs.edit().putBoolean("silent_system_enabled", false).apply()
+                "adaptive_thermal_enabled" -> {
+                    getSharedPreferences("prefs", MODE_PRIVATE).edit().putInt("active_cpu_cap", 100).apply()
+                    TweakManager.limitCpuFrequency(100)
+                    ThermalManager.setThrottlingEnabled(true)
+                }
+                "storage_boost_enabled" -> {
+                    StorageManager.applyStorageBoost(false)
+                }
+                "network_priority_enabled" -> {
+                    ShellUtils.runAsRoot("iptables -t mangle -F OUTPUT")
+                }
+                "optimization_enabled" -> {
+                    getSharedPreferences("prefs", MODE_PRIVATE).edit().putBoolean("silent_system_enabled", false).apply()
                     TweakManager.setSilentSystem(false)
-                }
-                "automation_enabled" -> {
-                    startService(Intent(this, AutoTweakService::class.java))
                 }
             }
         }
-        layoutToggleContainer.addView(view)
     }
 
     private fun showKillSwitchDialog() {
@@ -272,11 +378,16 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun showSafeUninstallDialog() {
         AlertDialog.Builder(this)
-            .setTitle("Safe Uninstall").setMessage("Revert all changes and uninstall app?").setPositiveButton("UNINSTALL") { _, _ ->
-                thread { MasterManager.revertAll(this); runOnUiThread {
-                    val intent = Intent(Intent.ACTION_DELETE, android.net.Uri.parse("package:${packageName}"))
-                    startActivity(intent)
-                } }
+            .setTitle("SAFE UNINSTALL").setMessage("Revert tweaks and unfreeze all apps before uninstalling?")
+            .setPositiveButton("REVERT & UNINSTALL") { _, _ ->
+                thread {
+                    MasterManager.revertAll(this)
+                    runOnUiThread {
+                        val uri = android.net.Uri.fromParts("package", packageName, null)
+                        val uninstallIntent = Intent(Intent.ACTION_DELETE, uri)
+                        startActivity(uninstallIntent)
+                    }
+                }
             }.setNegativeButton("Cancel", null).show()
     }
 }

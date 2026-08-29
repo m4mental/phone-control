@@ -1,6 +1,7 @@
 package com.example.phonecontrol
 
 import android.app.ProgressDialog
+import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -61,9 +62,34 @@ class FreezerActivity : AppCompatActivity() {
             Toast.makeText(this, if (isChecked) "Auto-Hibernation Active" else "Auto-Hibernation Disabled", Toast.LENGTH_SHORT).show()
         }
 
+        // Sub-feature Card Navigation
+        findViewById<View>(R.id.cardBloatware).setOnClickListener {
+            startActivity(Intent(this, BloatwareActivity::class.java))
+        }
+        findViewById<View>(R.id.cardVault).setOnClickListener {
+            startActivity(Intent(this, VaultActivity::class.java))
+        }
+        findViewById<View>(R.id.cardTerminal).setOnClickListener {
+            startActivity(Intent(this, AdbShellActivity::class.java))
+        }
+
+        updateSubCardVisibility()
+
         thread {
             cachedAppsList = getInstalledAppsList()
         }
+    }
+
+    private fun updateSubCardVisibility() {
+        val masterPrefs = getSharedPreferences("prefs", MODE_PRIVATE)
+        findViewById<View>(R.id.cardBloatware).visibility = 
+            if (masterPrefs.getBoolean("bloatware_enabled", true)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.cardVault).visibility = 
+            if (masterPrefs.getBoolean("vault_enabled", false)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.cardTerminal).visibility = 
+            if (masterPrefs.getBoolean("adb_enabled", true)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.layoutFreezerSection).visibility = 
+            if (masterPrefs.getBoolean("freezer_enabled", true)) View.VISIBLE else View.GONE
     }
 
     private fun getInstalledAppsList(): List<ApplicationInfo> {
@@ -79,6 +105,7 @@ class FreezerActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        updateSubCardVisibility()
         refreshList()
     }
 

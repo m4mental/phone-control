@@ -1,6 +1,8 @@
 package com.example.phonecontrol
 
+import android.content.Intent
 import android.os.Bundle
+import android.view.View
 import android.widget.Button
 import android.widget.RadioButton
 import android.widget.RadioGroup
@@ -22,8 +24,15 @@ class NetworkActivity : AppCompatActivity() {
         val rgDns = findViewById<RadioGroup>(R.id.rgDns)
         val switchTcp = findViewById<SwitchMaterial>(R.id.switchTcp)
         val switchLowLatency = findViewById<SwitchMaterial>(R.id.switchLowLatency)
-        val switchPriority = findViewById<SwitchMaterial>(R.id.switchNetworkPriority)
         val switchSmart = findViewById<SwitchMaterial>(R.id.switchSmartSwitch)
+
+        // Sub-feature Card Navigation
+        findViewById<View>(R.id.cardTowerLock).setOnClickListener {
+            startActivity(Intent(this, HomeTowerLockActivity::class.java))
+        }
+        findViewById<View>(R.id.cardFirewall).setOnClickListener {
+            startActivity(Intent(this, FirewallActivity::class.java))
+        }
         
         // Load Saved States
         val savedDns = prefs.getString("network_dns", "rbDnsDefault")
@@ -32,9 +41,8 @@ class NetworkActivity : AppCompatActivity() {
             "rbDnsGoogle" -> findViewById<RadioButton>(R.id.rbDnsGoogle).isChecked = true
             "rbDnsCloudflare" -> findViewById<RadioButton>(R.id.rbDnsCloudflare).isChecked = true
         }
-        switchTcp.isChecked = prefs.getBoolean("network_tcp_tweaks", false)
+        switchTcp.isChecked = prefs.getBoolean("network_tcp_tweaks", true)
         switchLowLatency.isChecked = prefs.getBoolean("network_low_latency", false)
-        switchPriority.isChecked = prefs.getBoolean("network_priority_enabled", false)
         switchSmart.isChecked = prefs.getBoolean("smart_switch_enabled", false)
 
         findViewById<Button>(R.id.btnApplyNetwork).setOnClickListener {
@@ -45,13 +53,11 @@ class NetworkActivity : AppCompatActivity() {
             }
             val tcpEnabled = switchTcp.isChecked
             val lowLatencyEnabled = switchLowLatency.isChecked
-            val priorityEnabled = switchPriority.isChecked
 
             prefs.edit()
                 .putString("network_dns", dnsKey)
                 .putBoolean("network_tcp_tweaks", tcpEnabled)
                 .putBoolean("network_low_latency", lowLatencyEnabled)
-                .putBoolean("network_priority_enabled", priorityEnabled)
                 .apply()
                 
             applyNetwork(dnsKey, tcpEnabled, lowLatencyEnabled)
@@ -59,21 +65,70 @@ class NetworkActivity : AppCompatActivity() {
 
         switchSmart.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean("smart_switch_enabled", isChecked).apply()
-            // Force service to update callback registration
-            startService(android.content.Intent(this, AutoTweakService::class.java))
+            Toast.makeText(this, if (isChecked) "Smart Switch ON (Auto-off on Wi-Fi)" else "Smart Switch OFF", Toast.LENGTH_SHORT).show()
         }
 
-        findViewById<Button>(R.id.btnManageFirewall).setOnClickListener {
-            startActivity(android.content.Intent(this, FirewallActivity::class.java))
-        }
+        updateSubCardVisibility()
     }
 
-    private fun applyNetwork(dnsKey: String, tcpEnabled: Boolean, lowLatencyEnabled: Boolean) {
-        Toast.makeText(this, "Optimizing Network...", Toast.LENGTH_SHORT).show()
+    override fun onResume() {
+        super.onResume()
+        updateSubCardVisibility()
+    }
+
+    private fun updateSubCardVisibility() {
+        val masterPrefs = getSharedPreferences("prefs", MODE_PRIVATE)
+        findViewById<View>(R.id.cardTowerLock).visibility = 
+            if (masterPrefs.getBoolean("tower_lock_enabled", true)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.cardFirewall).visibility = 
+            if (masterPrefs.getBoolean("firewall_enabled", true)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.cardTcpTweaks).visibility = 
+            if (masterPrefs.getBoolean("network_priority_enabled", true)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.tvNetworkTuningHeader).visibility = 
+            if (masterPrefs.getBoolean("network_priority_enabled", true)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.cardSmartData).visibility = 
+            if (masterPrefs.getBoolean("smart_switch_enabled", true)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.tvSmartDataHeader).visibility = 
+            if (masterPrefs.getBoolean("smart_switch_enabled", true)) View.VISIBLE else View.GONE
+    }
+
+    private fun applyNetwork(dnsKey: String, tcp: Boolean, lowLatency: Boolean) {
+        Toast.makeText(this, "Applying Network Enhancements...", Toast.LENGTH_SHORT).show()
         thread {
-            TweakManager.applyNetworkSettings(dnsKey, tcpEnabled, lowLatencyEnabled)
+            // Apply DNS
+            when (dnsKey) {
+                "rbDnsGoogle" -> {
+                    ShellUtils.runAsRoot("setprop net.dns1 8.8.8.8")
+                    ShellUtils.runAsRoot("setprop net.dns2 8.8.4.4")
+                }
+                "rbDnsCloudflare" -> {
+                    ShellUtils.runAsRoot("setprop net.dns1 1.1.1.1")
+                    ShellUtils.runAsRoot("setprop net.dns2 1.0.0.1")
+                }
+                else -> {
+                    // System Default (Reset)
+                    ShellUtils.runAsRoot("setprop net.dns1 ''")
+                    ShellUtils.runAsRoot("setprop net.dns2 ''")
+                }
+            }
+
+            // Apply TCP BBR
+            if (tcp) {
+                ShellUtils.runAsRoot("sysctl -w net.ipv4.tcp_congestion_control=bbr")
+                ShellUtils.runAsRoot("sysctl -w net.ipv4.tcp_ecn=0")
+            } else {
+                ShellUtils.runAsRoot("sysctl -w net.ipv4.tcp_congestion_control=cubic")
+            }
+
+            // Apply Low Latency Mode (Disable Wi-Fi Roaming scan)
+            if (lowLatency) {
+                ShellUtils.runAsRoot("cmd wifi set-scan-always-available 0")
+            } else {
+                ShellUtils.runAsRoot("cmd wifi set-scan-always-available 1")
+            }
+
             runOnUiThread {
-                Toast.makeText(this, "Network Optimized for Gaming!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Network Configuration Applied!", Toast.LENGTH_SHORT).show()
             }
         }
     }

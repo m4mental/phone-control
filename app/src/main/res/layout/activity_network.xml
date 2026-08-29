@@ -11,87 +11,142 @@
         android:id="@+id/toolbarNetwork"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
-        app:title="Network Booster"
+        app:title="Security &amp; Network Hub"
         app:titleTextColor="@color/color_network"
         app:navigationIcon="@android:drawable/ic_menu_revert"
         app:navigationIconTint="@color/color_network" />
 
-    <ScrollView android:layout_width="match_parent" android:layout_height="match_parent">
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
 
-            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:text="Optimize network latency and DNS settings. Recommended for online gaming to reduce ping and jitter."
-                android:textColor="#AAAAAA" android:textSize="13sp" android:layout_marginBottom="24dp" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
 
-            <!-- DNS Settings -->
+            <!-- Sub-Feature 1: Home 5G Tower Lock -->
             <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="16dp"
-                app:cardCornerRadius="16dp" app:cardBackgroundColor="#121212" app:strokeWidth="1dp" app:strokeColor="#333333">
-                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Gaming DNS" android:textColor="#FFFFFF" android:textStyle="bold" />
-                    <RadioGroup android:id="@+id/rgDns" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp">
-                        <RadioButton android:id="@+id/rbDnsDefault" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="System Default" android:textColor="#FFFFFF" android:buttonTint="@color/color_network" />
-                        <RadioButton android:id="@+id/rbDnsGoogle" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Google DNS (8.8.8.8)" android:textColor="#FFFFFF" android:buttonTint="@color/color_network" />
-                        <RadioButton android:id="@+id/rbDnsCloudflare" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Cloudflare (1.1.1.1)" android:textColor="#FFFFFF" android:buttonTint="@color/color_network" />
-                    </RadioGroup>
+                android:id="@+id/cardTowerLock"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardCornerRadius="16dp"
+                app:cardBackgroundColor="#001815"
+                app:strokeWidth="1dp"
+                app:strokeColor="#00BFA5"
+                android:clickable="true"
+                android:focusable="true">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:padding="16dp"
+                    android:gravity="center_vertical">
+                    <ImageView
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:src="@android:drawable/ic_menu_rotate"
+                        app:tint="#00BFA5" />
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="16dp"
+                        android:orientation="vertical">
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Home 5G Tower Lock"
+                            android:textColor="@android:color/white"
+                            android:textStyle="bold"
+                            android:textSize="15sp" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="Lock modem to primary high-speed cellular bands to eliminate signal switching and ping jitter indoors."
+                            android:textColor="#A7FFEB"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="OPEN →"
+                        android:textColor="#00BFA5"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- TCP Tweaks -->
+            <!-- Sub-Feature 2: Per-App Data Firewall -->
             <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardFirewall"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp"
-                app:cardCornerRadius="16dp" app:cardBackgroundColor="#121212" app:strokeWidth="1dp" app:strokeColor="#333333">
-                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
-
-                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
-                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="TCP BBR Optimization" android:textColor="#FFFFFF" android:textStyle="bold" />
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Google's BBR algorithm: Prevents packet loss and keeps internet speeds stable at high speeds." android:textColor="#888888" android:textSize="11sp" />
-                        </LinearLayout>
-                        <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchTcp" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-                    </LinearLayout>
-
-                    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#222222" android:layout_marginVertical="12dp" />
-
-                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
-                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Low Latency Mode" android:textColor="#FFFFFF" android:textStyle="bold" />
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Stops background Wi-Fi scanning to eliminate ping spikes during online gaming (BGMI/FreeFire)." android:textColor="#888888" android:textSize="11sp" />
-                        </LinearLayout>
-                        <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchLowLatency" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-                    </LinearLayout>
-
-                    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#222222" android:layout_marginVertical="12dp" />
-
-                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
-                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Packet Guard (Priority)" android:textColor="#FFFFFF" android:textStyle="bold" />
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Uses iptables to mark and prioritize data packets for the app you are currently using." android:textColor="#888888" android:textSize="11sp" />
-                        </LinearLayout>
-                        <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchNetworkPriority" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-                    </LinearLayout>
-
-                    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#222222" android:layout_marginVertical="12dp" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnManageFirewall"
-                        android:layout_width="match_parent"
+                app:cardCornerRadius="16dp"
+                app:cardBackgroundColor="#001F08"
+                app:strokeWidth="1dp"
+                app:strokeColor="#00C853"
+                android:clickable="true"
+                android:focusable="true">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:padding="16dp"
+                    android:gravity="center_vertical">
+                    <ImageView
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:src="@android:drawable/ic_lock_lock"
+                        app:tint="#00C853" />
+                    <LinearLayout
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:text="MANAGE DATA GUARD (FIREWALL)"
+                        android:layout_weight="1"
+                        android:layout_marginStart="16dp"
+                        android:orientation="vertical">
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Per-App Data Firewall"
+                            android:textColor="@android:color/white"
+                            android:textStyle="bold"
+                            android:textSize="15sp" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="Block network access for selected apps to prevent background data drain and ad tracking."
+                            android:textColor="#C8E6C9"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="MANAGE →"
+                        android:textColor="#00C853"
                         android:textSize="12sp"
-                        app:cornerRadius="8dp"
-                        android:backgroundTint="#1A1A1A"
-                        android:textColor="@color/color_network"
-                        app:strokeWidth="1dp"
-                        app:strokeColor="@color/color_network" />
-
+                        android:textStyle="bold" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Smart Data Switcher -->
+            <!-- Sub-Feature 3: TCP BBR & Low Latency Section -->
+            <TextView
+                android:id="@+id/tvNetworkTuningHeader"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Network Latency &amp; TCP Tuning"
+                android:textColor="#FFFFFF"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp" />
+
             <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardTcpTweaks"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp"
@@ -99,24 +154,193 @@
                 app:cardBackgroundColor="#121212"
                 app:strokeWidth="1dp"
                 app:strokeColor="#333333">
-                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
-                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
-                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Smart Data Switcher" android:textColor="#FFFFFF" android:textStyle="bold" />
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Auto-OFF mobile data on WiFi to save battery and heat." android:textColor="#888888" android:textSize="11sp" />
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical">
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="TCP BBR Optimization"
+                                android:textColor="#FFFFFF"
+                                android:textStyle="bold" />
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Google BBR algorithm: Minimizes queue delay and stabilizes bandwidth during high network loads."
+                                android:textColor="#888888"
+                                android:textSize="11sp" />
                         </LinearLayout>
-                        <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchSmartSwitch" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchTcp"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content" />
                     </LinearLayout>
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="#222222"
+                        android:layout_marginVertical="12dp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical">
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Low Latency Wi-Fi Mode"
+                                android:textColor="#FFFFFF"
+                                android:textStyle="bold" />
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Stops background Wi-Fi roaming scans to eliminate packet loss during online multiplayer games."
+                                android:textColor="#888888"
+                                android:textSize="11sp" />
+                        </LinearLayout>
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchLowLatency"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Sub-Feature 4: Smart Data Switcher -->
+            <TextView
+                android:id="@+id/tvSmartDataHeader"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Smart Connectivity Automation"
+                android:textColor="#FFFFFF"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp" />
+
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardSmartData"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="16dp"
+                app:cardBackgroundColor="#121212"
+                app:strokeWidth="1dp"
+                app:strokeColor="#333333">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical">
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Smart Data Switcher"
+                                android:textColor="#FFFFFF"
+                                android:textStyle="bold" />
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Automatically disables cellular mobile data when connected to Wi-Fi to save modem power."
+                                android:textColor="#888888"
+                                android:textSize="11sp" />
+                        </LinearLayout>
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchSmartSwitch"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Sub-Feature 5: Gaming DNS Selector -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Gaming DNS Selector"
+                android:textColor="#FFFFFF"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp" />
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="24dp"
+                app:cardCornerRadius="16dp"
+                app:cardBackgroundColor="#121212"
+                app:strokeWidth="1dp"
+                app:strokeColor="#333333">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+                    <RadioGroup
+                        android:id="@+id/rgDns"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content">
+                        <RadioButton
+                            android:id="@+id/rbDnsDefault"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="System Default (ISP DNS)"
+                            android:textColor="#FFFFFF"
+                            android:buttonTint="@color/color_network" />
+                        <RadioButton
+                            android:id="@+id/rbDnsGoogle"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Google DNS (8.8.8.8 - Fast Resolution)"
+                            android:textColor="#FFFFFF"
+                            android:buttonTint="@color/color_network" />
+                        <RadioButton
+                            android:id="@+id/rbDnsCloudflare"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Cloudflare DNS (1.1.1.1 - Lowest Latency)"
+                            android:textColor="#FFFFFF"
+                            android:buttonTint="@color/color_network" />
+                    </RadioGroup>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnApplyNetwork"
-                android:layout_width="match_parent" android:layout_height="64dp"
-                android:layout_marginTop="24dp" android:text="OPTIMIZE NETWORK"
-                android:textColor="@android:color/black" android:textStyle="bold"
-                app:backgroundTint="@color/color_network" app:cornerRadius="8dp" />
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:text="APPLY NETWORK SETTINGS"
+                android:textColor="@android:color/black"
+                android:textStyle="bold"
+                app:backgroundTint="@android:color/white"
+                app:cornerRadius="12dp" />
 
         </LinearLayout>
-    </ScrollView>
+    </androidx.core.widget.NestedScrollView>
 </LinearLayout>

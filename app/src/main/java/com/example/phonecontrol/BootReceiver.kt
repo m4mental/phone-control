@@ -53,10 +53,10 @@ class BootReceiver : BroadcastReceiver() {
                     BatteryManager.setChargeCurrent(mA)
                 }
 
-                // Apply Global Resolution
-                val resKey = prefs.getString("screen_res", "rbRes1080") ?: "rbRes1080"
-                val sizeCmd = if (resKey == "rbRes720") "wm size 720x1600" else "wm size reset"
-                ShellUtils.fastCmd(sizeCmd)
+                // 100% Display Safety: Always reset resolution and density on boot
+                ShellUtils.fastCmd("wm size reset")
+                ShellUtils.fastCmd("wm density reset")
+                prefs.edit().putString("screen_res", "rbRes1080").apply()
                 
                 val serviceIntent = Intent(context, AutoTweakService::class.java).apply {
                     putExtra("delayed_start", true)

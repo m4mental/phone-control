@@ -34,8 +34,28 @@ class GameTurboActivity : AppCompatActivity() {
             pickerLauncher.launch(Intent(this, AppInspectorActivity::class.java))
         }
 
+        // Sub-Feature Navigation
+        findViewById<View>(R.id.cardPerApp).setOnClickListener {
+            startActivity(Intent(this, PerAppActivity::class.java))
+        }
+
         setupToggles()
+        updateSubCardVisibility()
         refreshGameList()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updateSubCardVisibility()
+        refreshGameList()
+    }
+
+    private fun updateSubCardVisibility() {
+        val masterPrefs = getSharedPreferences("prefs", MODE_PRIVATE)
+        findViewById<View>(R.id.cardPerApp).visibility = 
+            if (masterPrefs.getBoolean("per_app_enabled", true)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.layoutGameTurboSection).visibility = 
+            if (masterPrefs.getBoolean("game_turbo_enabled", true)) View.VISIBLE else View.GONE
     }
 
     private fun setupToggles() {

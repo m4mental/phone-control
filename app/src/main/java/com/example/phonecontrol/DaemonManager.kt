@@ -96,7 +96,6 @@ object DaemonManager {
 
             # 3. Clean Event Maintenance Loop (Zero aggressive wakeups)
             while true; do
-                # Recheck persistent settings every 60s without polling CPU
                 sleep 60
                 
                 if [ ${'$'}(get_pref_bool "${'$'}TOWER_PREFS" "is_tower_locked") -eq 0 ]; then
@@ -106,6 +105,21 @@ object DaemonManager {
                 
                 # Check for SIM/Network resets and re-apply TCP BBR
                 sysctl net.ipv4.tcp_congestion_control | grep -v bbr >/dev/null && sysctl -w net.ipv4.tcp_congestion_control=bbr
+
+                # 4. Automated Night Deep Clean (Runs once per day at 03:00 AM)
+                CUR_HR=${'$'}(date +%H)
+                if [ "${'$'}CUR_HR" = "03" ]; then
+                    NIGHT_FILE="/data/local/tmp/last_night_opt"
+                    TODAY=${'$'}(date +%Y%m%d)
+                    LAST_OPT=${'$'}(cat "${'$'}NIGHT_FILE" 2>/dev/null)
+                    if [ "${'$'}TODAY" != "${'$'}LAST_OPT" ]; then
+                        echo "${'$'}TODAY" > "${'$'}NIGHT_FILE"
+                        echo "Running daily 03:00 AM Night Maintenance..." >> "${'$'}LOG"
+                        fstrim -v /data >> "${'$'}LOG" 2>&1
+                        sync
+                        echo 3 > /proc/sys/vm/drop_caches 2>/dev/null
+                    fi
+                fi
             done
         """.trimIndent()
 

@@ -1,5 +1,6 @@
 package com.example.phonecontrol
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.widget.Button
@@ -24,10 +25,8 @@ class OptimizationActivity : AppCompatActivity() {
         findViewById<MaterialToolbar>(R.id.toolbarOpt).setNavigationOnClickListener { finish() }
 
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
-        val switchDaily = findViewById<SwitchMaterial>(R.id.switchDaily)
         val switchSilent = findViewById<SwitchMaterial>(R.id.switchSilent)
         
-        switchDaily.isChecked = prefs.getBoolean("daily_deep_opt_enabled", false)
         switchSilent.isChecked = prefs.getBoolean("silent_system_enabled", false)
         tvStatus.text = "Last run: ${prefs.getString("last_deep_opt", "Never")}"
 
@@ -35,11 +34,18 @@ class OptimizationActivity : AppCompatActivity() {
             runOptimization()
         }
 
-        switchDaily.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit().putBoolean("daily_deep_opt_enabled", isChecked).apply()
-            if (isChecked) {
-                Toast.makeText(this, "Daily optimization scheduled for 3 AM", Toast.LENGTH_SHORT).show()
-            }
+        // Sub-feature Card Navigation
+        findViewById<View>(R.id.cardResolution).setOnClickListener {
+            startActivity(Intent(this, ResolutionActivity::class.java))
+        }
+        findViewById<View>(R.id.cardRam).setOnClickListener {
+            startActivity(Intent(this, RamActivity::class.java))
+        }
+        findViewById<View>(R.id.cardStorage).setOnClickListener {
+            startActivity(Intent(this, StorageActivity::class.java))
+        }
+        findViewById<View>(R.id.cardThrottling).setOnClickListener {
+            startActivity(Intent(this, ThrottlingActivity::class.java))
         }
 
         switchSilent.setOnCheckedChangeListener { _, isChecked ->
@@ -48,6 +54,29 @@ class OptimizationActivity : AppCompatActivity() {
             val msg = if (isChecked) "Silent Mode ON (Logcat Stopped)" else "Silent Mode OFF (Logcat Started)"
             Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         }
+
+        updateSubCardVisibility()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updateSubCardVisibility()
+    }
+
+    private fun updateSubCardVisibility() {
+        val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+        findViewById<View>(R.id.cardResolution).visibility = 
+            if (prefs.getBoolean("resolution_enabled", true)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.cardRam).visibility = 
+            if (prefs.getBoolean("ram_manager_enabled", true)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.cardStorage).visibility = 
+            if (prefs.getBoolean("storage_boost_enabled", true)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.cardThrottling).visibility = 
+            if (prefs.getBoolean("adaptive_thermal_enabled", true)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.cardOptimizationSection).visibility = 
+            if (prefs.getBoolean("optimization_enabled", true)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.btnRunNow).visibility = 
+            if (prefs.getBoolean("optimization_enabled", true)) View.VISIBLE else View.GONE
     }
 
     private fun runOptimization() {

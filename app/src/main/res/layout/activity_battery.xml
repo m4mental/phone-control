@@ -11,7 +11,7 @@
         android:id="@+id/toolbarBattery"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
-        app:title="Battery Control &amp; Health Lab"
+        app:title="Battery &amp; Power Hub"
         app:titleTextColor="@color/color_battery"
         app:navigationIcon="@android:drawable/ic_menu_revert"
         app:navigationIconTint="@color/color_battery" />
@@ -26,13 +26,76 @@
             android:orientation="vertical"
             android:padding="16dp">
 
-            <!-- Health Lab Section -->
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Health Lab (Analytics)" android:textColor="#FFFFFF" android:textStyle="bold" android:layout_marginBottom="8dp" />
-
+            <!-- Super Doze Mode Shortcut Card -->
             <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardSuperDozeShortcut"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="24dp"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="16dp"
+                app:cardBackgroundColor="#1A102F"
+                app:strokeWidth="1dp"
+                app:strokeColor="#7C4DFF"
+                android:clickable="true"
+                android:focusable="true">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:padding="16dp"
+                    android:gravity="center_vertical">
+                    <ImageView
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:src="@android:drawable/ic_menu_recent_history"
+                        app:tint="#B388FF" />
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="16dp"
+                        android:orientation="vertical">
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Super Doze Mode"
+                            android:textColor="@android:color/white"
+                            android:textStyle="bold"
+                            android:textSize="15sp" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="Kernel-level deep sleep, sync suppression, and app standby whitelisting."
+                            android:textColor="#B0BEC5"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="OPEN →"
+                        android:textColor="#B388FF"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Health Lab Section -->
+            <TextView
+                android:id="@+id/tvHealthLabHeader"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Battery Health &amp; Analytics"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                android:textSize="14sp"
+                android:layout_marginBottom="8dp" />
+
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardBatteryAnalytics"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
                 app:cardCornerRadius="16dp"
                 app:cardBackgroundColor="#121212"
                 app:strokeWidth="1dp"
@@ -76,76 +139,211 @@
                 </GridLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Automation on Screen-Off -->
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Automation on Screen-Off" android:textColor="#FFFFFF" android:textSize="14sp" android:textStyle="bold" android:layout_marginBottom="8dp" />
+            <!-- Charging Protection -->
+            <TextView
+                android:id="@+id/tvChargingProtectionHeader"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Charging Protection &amp; Hardware Bypass"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp" />
 
             <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="24dp"
-                app:cardCornerRadius="16dp" app:cardBackgroundColor="#121212" app:strokeWidth="1dp" app:strokeColor="#333333">
-                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
-                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
-                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Power-save mode" android:textColor="#FFFFFF" />
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Automatically enable system battery saver when screen is off." android:textColor="#888888" android:textSize="11sp" />
+                android:id="@+id/cardChargingProtection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="16dp"
+                app:cardBackgroundColor="#121212"
+                app:strokeWidth="1dp"
+                app:strokeColor="#333333">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical">
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Limit Max Charge Level"
+                                android:textColor="#FFFFFF"
+                                android:textStyle="bold" />
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Stop charging at set percentage to prolong battery lifespan."
+                                android:textColor="#888888"
+                                android:textSize="11sp" />
                         </LinearLayout>
-                        <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchPowerSave" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchLimitCharge"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content" />
                     </LinearLayout>
-                    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#222222" android:layout_marginVertical="8dp" />
-                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
-                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Data saver" android:textColor="#FFFFFF" />
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Restrict background apps from using mobile data when screen is off." android:textColor="#888888" android:textSize="11sp" />
-                        </LinearLayout>
-                        <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchDataSaver" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+
+                    <LinearLayout
+                        android:id="@+id/layoutLimitSeek"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:gravity="center_vertical"
+                        android:visibility="gone">
+                        <SeekBar
+                            android:id="@+id/seekbarLimit"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:max="30"
+                            android:progress="10" />
+                        <TextView
+                            android:id="@+id/tvLimitValue"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="80%"
+                            android:textColor="#FFFFFF" />
                     </LinearLayout>
-                    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#222222" android:layout_marginVertical="8dp" />
-                    <LinearLayout android:id="@+id/layoutForceDoze" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:clickable="true" android:focusable="true" android:background="?attr/selectableItemBackground" android:paddingVertical="4dp">
-                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Force Doze mode" android:textColor="#FFFFFF" />
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Enter deep sleep instantly on screen-off (Aggressive)." android:textColor="#AAAAAA" android:textSize="11sp" />
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="#222222"
+                        android:layout_marginVertical="12dp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical">
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Hardware Charging Bypass"
+                                android:textColor="#FFFFFF"
+                                android:textStyle="bold" />
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Power device directly from charger (Reduces heat and battery wear during gaming)."
+                                android:textColor="#888888"
+                                android:textSize="11sp" />
                         </LinearLayout>
-                        <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@android:drawable/ic_media_play" app:tint="#444444" />
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchBypass"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content" />
                     </LinearLayout>
-                    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#222222" android:layout_marginVertical="8dp" />
-                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
-                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Sensor Firewall" android:textColor="#FFFFFF" />
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Completely disable all sensors on screen-off to stop idle drain." android:textColor="#888888" android:textSize="11sp" />
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="#222222"
+                        android:layout_marginVertical="12dp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical">
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="High-Amperage USB Fast Charge"
+                                android:textColor="#FFFFFF"
+                                android:textStyle="bold" />
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Force maximum charge current over standard USB connections."
+                                android:textColor="#888888"
+                                android:textSize="11sp" />
                         </LinearLayout>
-                        <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchSensorFirewall" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-                    </LinearLayout>
-                    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#222222" android:layout_marginVertical="8dp" />
-                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
-                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="GPS Auto-Saver" android:textColor="#FFFFFF" />
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Disable GPS radio on screen-off and restore it on unlock." android:textColor="#888888" android:textSize="11sp" />
-                        </LinearLayout>
-                        <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchGpsSaver" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-                    </LinearLayout>
-                    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#222222" android:layout_marginVertical="8dp" />
-                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
-                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Standby Guard" android:textColor="#FFFFFF" />
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Force background apps to the 'Restricted' bucket to stop CPU wakeups." android:textColor="#888888" android:textSize="11sp" />
-                        </LinearLayout>
-                        <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchStandbyGuard" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-                    </LinearLayout>
-                    <LinearLayout android:id="@+id/layoutStandbyWhitelist" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:clickable="true" android:focusable="true" android:background="?attr/selectableItemBackground" android:paddingVertical="4dp" android:paddingStart="4dp">
-                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Standby Guard Whitelist" android:textColor="#AAAAAA" android:textSize="12sp" />
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Manage apps excluded from Standby Guard." android:textColor="#666666" android:textSize="10sp" />
-                        </LinearLayout>
-                        <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@android:drawable/ic_media_play" app:tint="#333333" />
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchUsbFastCharge"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content" />
                     </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Sensor Shield (On-Screen Control) -->
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Sensor Shield (On-Screen Control)" android:textColor="#FFFFFF" android:textSize="14sp" android:textStyle="bold" android:layout_marginBottom="8dp" />
+            <!-- Hardware Sensor Firewall -->
+            <TextView
+                android:id="@+id/tvSensorFirewallHeader"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Hardware Sensor Firewall"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp" />
+
             <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="24dp"
-                app:cardCornerRadius="16dp" app:cardBackgroundColor="#121212" app:strokeWidth="1dp" app:strokeColor="#333333">
-                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
+                android:id="@+id/cardSensorFirewall"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="16dp"
+                app:cardBackgroundColor="#121212"
+                app:strokeWidth="1dp"
+                app:strokeColor="#333333">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical">
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Enable Sensor Firewall"
+                                android:textColor="#FFFFFF"
+                                android:textStyle="bold" />
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Disable hardware sensors when screen is off to eliminate sensor polling drain."
+                                android:textColor="#888888"
+                                android:textSize="11sp" />
+                        </LinearLayout>
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchSensorFirewall"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content" />
+                    </LinearLayout>
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="#222222"
+                        android:layout_marginVertical="12dp" />
 
                     <!-- Gyroscope -->
                     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
@@ -161,131 +359,62 @@
                     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
                         <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
                             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Block Magnetometer" android:textColor="#FFFFFF" />
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Disable compass sensor used in map apps." android:textColor="#888888" android:textSize="11sp" />
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Disable compass sensor used in map applications." android:textColor="#888888" android:textSize="11sp" />
                         </LinearLayout>
                         <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchBlockMag" android:layout_width="wrap_content" android:layout_height="wrap_content" />
                     </LinearLayout>
-                    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#222222" android:layout_marginVertical="8dp" />
-
-                    <!-- Ambient Light -->
-                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
-                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Block Light Sensor" android:textColor="#FFFFFF" />
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Stops auto-brightness scanning." android:textColor="#888888" android:textSize="11sp" />
-                        </LinearLayout>
-                        <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchBlockLight" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-                    </LinearLayout>
-                    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#222222" android:layout_marginVertical="8dp" />
-
-                    <!-- Motion Sensors -->
-                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
-                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Block Motion Sensors" android:textColor="#FFFFFF" />
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Gravity and Acceleration (Raise-to-wake, etc)." android:textColor="#888888" android:textSize="11sp" />
-                        </LinearLayout>
-                        <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchBlockMotion" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-                    </LinearLayout>
-                    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#222222" android:layout_marginVertical="8dp" />
-
-                    <!-- NFC -->
-                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
-                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Block NFC Radio" android:textColor="#FFFFFF" />
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Disable near-field communication (Payments/Tags)." android:textColor="#888888" android:textSize="11sp" />
-                        </LinearLayout>
-                        <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchBlockNfc" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-                    </LinearLayout>
-
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Smart Power (Auto-Switch) -->
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Smart Power Activation" android:textColor="#FFFFFF" android:textSize="14sp" android:textStyle="bold" android:layout_marginBottom="8dp" />
+            <!-- Automation on Screen-Off -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Standby Power Automation"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp" />
+
             <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="24dp"
-                app:cardCornerRadius="16dp" app:cardBackgroundColor="#121212" app:strokeWidth="1dp" app:strokeColor="#333333">
-                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
-                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
-                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Auto-Saver at low battery" android:textColor="#FFFFFF" />
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Switch to Power Saver and 30Hz below set %." android:textColor="#888888" android:textSize="11sp" />
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="24dp"
+                app:cardCornerRadius="16dp"
+                app:cardBackgroundColor="#121212"
+                app:strokeWidth="1dp"
+                app:strokeColor="#333333">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical">
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Auto Power-Saver on Sleep"
+                                android:textColor="#FFFFFF" />
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Automatically drops CPU and GPU to minimum standby frequencies when screen turns off."
+                                android:textColor="#888888"
+                                android:textSize="11sp" />
                         </LinearLayout>
-                        <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchAutoLowBatt" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchPowerSave"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content" />
                     </LinearLayout>
-                    <LinearLayout android:id="@+id/layoutLowBattSeek" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:gravity="center_vertical" android:visibility="gone">
-                        <SeekBar android:id="@+id/seekbarLowBatt" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:max="25" android:progress="5" />
-                        <TextView android:id="@+id/tvLowBattValue" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="20%" android:textColor="#FFFFFF" />
-                    </LinearLayout>
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- Charging Protection -->
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Charging Protection" android:textColor="#FFFFFF" android:textSize="14sp" android:textStyle="bold" android:layout_marginBottom="8dp" />
-            <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="16dp"
-                app:cardCornerRadius="16dp" app:cardBackgroundColor="#121212" app:strokeWidth="1dp" app:strokeColor="#333333">
-                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
-
-                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
-                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Limit max charge level" android:textColor="#FFFFFF" />
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Stop charging at set % to prolong battery health." android:textColor="#888888" android:textSize="11sp" />
-                        </LinearLayout>
-                        <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchLimitCharge" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-                    </LinearLayout>
-
-                    <LinearLayout android:id="@+id/layoutLimitSeek" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:gravity="center_vertical" android:visibility="gone">
-                        <SeekBar android:id="@+id/seekbarLimit" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:max="30" android:progress="10" />
-                        <TextView android:id="@+id/tvLimitValue" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="80%" android:textColor="#FFFFFF" />
-                    </LinearLayout>
-
-                    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#222222" android:layout_marginVertical="12dp" />
-
-                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
-                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Charging bypass (Direct Power)" android:textColor="#FFFFFF" />
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Power device directly from charger (Reduces heat while gaming)." android:textColor="#888888" android:textSize="11sp" />
-                        </LinearLayout>
-                        <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchBypass" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-                    </LinearLayout>
-
-                    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#222222" android:layout_marginVertical="12dp" />
-
-                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
-                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="USB Fast Charge (Force)" android:textColor="#FFFFFF" />
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Force higher power draw from PC/Car USB ports." android:textColor="#888888" android:textSize="11sp" />
-                        </LinearLayout>
-                        <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchUsbFastCharge" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-                    </LinearLayout>
-
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- Charging Speed Control -->
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Smart Charging Engine" android:textColor="#FFFFFF" android:textSize="14sp" android:textStyle="bold" android:layout_marginBottom="8dp" />
-            <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="24dp"
-                app:cardCornerRadius="16dp" app:cardBackgroundColor="#121212" app:strokeWidth="1dp" app:strokeColor="#333333">
-                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
-
-                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
-                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Smart Speed Control" android:textColor="#FFFFFF" />
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Limit charging current to reduce heat &amp; wear." android:textColor="#888888" android:textSize="11sp" />
-                        </LinearLayout>
-                        <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchChargeSpeed" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-                    </LinearLayout>
-
-                    <LinearLayout android:id="@+id/layoutChargeSpeedOptions" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginTop="12dp" android:visibility="gone">
-                        <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#222222" android:layout_marginBottom="12dp" />
-                        <RadioGroup android:id="@+id/rgChargeSpeed" android:layout_width="match_parent" android:layout_height="wrap_content">
-                            <RadioButton android:id="@+id/rbChargeSlow" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Slow &amp; Cool (500mA)\nBest for overnight, zero heat." android:textColor="#FFFFFF" android:textSize="13sp" android:buttonTint="@color/color_battery" />
-                            <RadioButton android:id="@+id/rbChargeBalanced" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Balanced (1500mA)\nModerate speed with low heat." android:textColor="#FFFFFF" android:textSize="13sp" android:buttonTint="@color/color_battery" />
-                            <RadioButton android:id="@+id/rbChargeDefault" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="System Default (Fast)\nMax speed as per charger." android:textColor="#FFFFFF" android:textSize="13sp" android:buttonTint="@color/color_battery" />
-                        </RadioGroup>
-                    </LinearLayout>
-
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

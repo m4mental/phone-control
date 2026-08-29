@@ -88,6 +88,9 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnSettings).setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
+        findViewById<View>(R.id.btnTerminal).setOnClickListener {
+            startActivity(Intent(this, AdbShellActivity::class.java))
+        }
 
         requestNotificationPermission()
         
@@ -257,20 +260,17 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateCardVisibility() {
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
-        
-        // Advanced Features Mapping (Controlled by Master Settings Categories)
-        findViewById<View>(R.id.cardThrottling).visibility = if (prefs.getBoolean("adaptive_thermal_enabled", false)) View.VISIBLE else View.GONE
-        findViewById<View>(R.id.cardGameTurbo).visibility = if (prefs.getBoolean("game_turbo_enabled", false)) View.VISIBLE else View.GONE
-        findViewById<View>(R.id.cardSuperDoze).visibility = if (prefs.getBoolean("super_doze_enabled", false)) View.VISIBLE else View.GONE
-        findViewById<View>(R.id.cardNetwork).visibility = if (prefs.getBoolean("network_priority_enabled", false)) View.VISIBLE else View.GONE
-        findViewById<View>(R.id.cardStorage).visibility = if (prefs.getBoolean("storage_boost_enabled", false)) View.VISIBLE else View.GONE
-        findViewById<View>(R.id.cardOptimization).visibility = if (prefs.getBoolean("optimization_enabled", false)) View.VISIBLE else View.GONE
-        findViewById<View>(R.id.cardResolution).visibility = if (prefs.getBoolean("resolution_enabled", false)) View.VISIBLE else View.GONE
-        findViewById<View>(R.id.cardRam).visibility = if (prefs.getBoolean("ram_manager_enabled", false)) View.VISIBLE else View.GONE
-        findViewById<View>(R.id.cardVault).visibility = if (prefs.getBoolean("vault_enabled", false)) View.VISIBLE else View.GONE
-        findViewById<View>(R.id.cardTowerLock).visibility = if (prefs.getBoolean("tower_lock_enabled", false)) View.VISIBLE else View.GONE
-        findViewById<View>(R.id.cardBloatware).visibility = if (prefs.getBoolean("bloatware_enabled", false)) View.VISIBLE else View.GONE
-        findViewById<View>(R.id.cardAdb).visibility = if (prefs.getBoolean("adb_enabled", false)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.cardModeControl).visibility = View.VISIBLE
+        findViewById<View>(R.id.cardBattery).visibility = 
+            if (prefs.getBoolean("master_battery_hub_enabled", true)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.cardOptimization).visibility = 
+            if (prefs.getBoolean("master_performance_hub_enabled", true)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.cardGameTurbo).visibility = 
+            if (prefs.getBoolean("master_gaming_hub_enabled", true)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.cardNetwork).visibility = 
+            if (prefs.getBoolean("master_security_hub_enabled", true)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.cardFreezer).visibility = 
+            if (prefs.getBoolean("master_tools_hub_enabled", true)) View.VISIBLE else View.GONE
     }
 
 

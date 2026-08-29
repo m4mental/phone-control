@@ -1,5 +1,6 @@
 package com.example.phonecontrol
 
+import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -12,6 +13,7 @@ import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.switchmaterial.SwitchMaterial
 import kotlin.concurrent.thread
 
 class FirewallActivity : AppCompatActivity() {
@@ -32,11 +34,46 @@ class FirewallActivity : AppCompatActivity() {
             showAppPicker()
         }
 
+        // Sub-Feature Navigation
+        findViewById<View>(R.id.cardTowerLock).setOnClickListener {
+            startActivity(Intent(this, HomeTowerLockActivity::class.java))
+        }
+
+        val swTcpBbr = findViewById<SwitchMaterial>(R.id.switchTcpBbr)
+        val masterPrefs = getSharedPreferences("prefs", MODE_PRIVATE)
+        swTcpBbr.isChecked = masterPrefs.getBoolean("tcp_bbr_active", true)
+        swTcpBbr.setOnCheckedChangeListener { _, isChecked ->
+            masterPrefs.edit().putBoolean("tcp_bbr_active", isChecked).apply()
+            thread {
+                val algo = if (isChecked) "bbr" else "cubic"
+                ShellUtils.runAsRoot("sysctl -w net.ipv4.tcp_congestion_control=$algo")
+            }
+            Toast.makeText(this, if (isChecked) "TCP BBR Booster Active" else "TCP BBR Disabled", Toast.LENGTH_SHORT).show()
+        }
+
+        updateSubCardVisibility()
+
         thread {
             cachedAppsList = getInstalledAppsList()
         }
 
         refreshList()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updateSubCardVisibility()
+        refreshList()
+    }
+
+    private fun updateSubCardVisibility() {
+        val masterPrefs = getSharedPreferences("prefs", MODE_PRIVATE)
+        findViewById<View>(R.id.cardTowerLock).visibility = 
+            if (masterPrefs.getBoolean("tower_lock_enabled", true)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.cardNetworkBooster).visibility = 
+            if (masterPrefs.getBoolean("network_priority_enabled", true)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.layoutFirewallSection).visibility = 
+            if (masterPrefs.getBoolean("firewall_enabled", true)) View.VISIBLE else View.GONE
     }
 
     private fun getInstalledAppsList(): List<ApplicationInfo> {
