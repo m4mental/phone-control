@@ -103,10 +103,10 @@ class MainActivity : AppCompatActivity() {
     private fun checkRootAsync() {
         kotlin.concurrent.thread {
             try {
-                val result = ShellUtils.runAsRoot("id")
+                val isRooted = ShellUtils.checkRootStandalone(3000)
                 runOnUiThread {
                     if (isFinishing) return@runOnUiThread
-                    if (result.exitCode == 0) {
+                    if (isRooted) {
                         tvRootStatus.text = "Root: Granted"; tvRootStatus.setTextColor(Color.GREEN)
                         tvKernelStatus.text = "Kernel Engine: Active (BBR+EAS)"; tvKernelStatus.setTextColor(Color.GREEN)
                     } else {

@@ -4,6 +4,9 @@ import java.io.DataOutputStream
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import android.util.Log
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 
 object ShellUtils {
     private var persistentProcess: Process? = null
@@ -12,6 +15,7 @@ object ShellUtils {
     
     private const val DONE_TOKEN = "---CMD_DONE---"
     private const val MAX_OUTPUT_LINES = 400
+    private val shellExecutor = Executors.newSingleThreadExecutor()
 
     /**
      * Check if the shell is currently busy with a long-running task.
@@ -20,51 +24,82 @@ object ShellUtils {
         private set
 
     /**
-     * Runs a command as root and returns the output safely.
-     * Prevents pipe buffer deadlock and OutOfMemoryError.
+     * Standalone, timeout-guaranteed root checker.
+     * Uses a direct, isolated process so it never hangs or conflicts with the persistent shell.
      */
-    fun runAsRoot(command: String): ShellResult {
+    fun checkRootStandalone(timeoutMs: Long = 3000): Boolean {
+        return try {
+            val future = shellExecutor.submit<Boolean> {
+                val p = Runtime.getRuntime().exec(arrayOf("su", "-c", "id"))
+                val r = BufferedReader(InputStreamReader(p.inputStream))
+                val out = r.readLine() ?: ""
+                p.waitFor()
+                out.contains("uid=0") || p.exitValue() == 0
+            }
+            future.get(timeoutMs, TimeUnit.MILLISECONDS)
+        } catch (e: Exception) {
+            Log.e("ShellUtils", "checkRootStandalone error or timeout: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * Runs a command as root and returns the output safely with a strict 4.0s timeout watchdog.
+     * Prevents pipe buffer deadlock, ANRs, and OutOfMemoryError.
+     */
+    fun runAsRoot(command: String, timeoutMs: Long = 4000): ShellResult {
         if (isBusy && android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
             return ShellResult(-1, "Shell Busy")
         }
         
-        synchronized(this) {
-            try {
-                isBusy = true
-                ensureShell()
-                
-                val wrappedCommand = "($command) 2>&1; echo \"_EXIT_CODE_:\$?\"\n"
-                
-                os?.writeBytes(wrappedCommand)
-                os?.writeBytes("echo $DONE_TOKEN\n")
-                os?.flush()
+        return try {
+            val future = shellExecutor.submit<ShellResult> {
+                synchronized(this@ShellUtils) {
+                    try {
+                        isBusy = true
+                        ensureShell()
+                        
+                        val wrappedCommand = "($command) 2>&1; echo \"_EXIT_CODE_:\$?\"\n"
+                        
+                        os?.writeBytes(wrappedCommand)
+                        os?.writeBytes("echo $DONE_TOKEN\n")
+                        os?.flush()
 
-                val output = StringBuilder()
-                var exitCode = 0
-                var lineCount = 0
+                        val output = StringBuilder()
+                        var exitCode = 0
+                        var lineCount = 0
 
-                while (true) {
-                    val line = reader?.readLine() ?: break
-                    if (line == DONE_TOKEN) break
-                    
-                    if (line.startsWith("_EXIT_CODE_:")) {
-                        exitCode = line.substringAfter(":").toIntOrNull() ?: 0
-                    } else {
-                        if (lineCount < MAX_OUTPUT_LINES) {
-                            output.append(line).append("\n")
-                            lineCount++
+                        while (true) {
+                            val line = reader?.readLine() ?: break
+                            if (line == DONE_TOKEN) break
+                            
+                            if (line.startsWith("_EXIT_CODE_:")) {
+                                exitCode = line.substringAfter(":").toIntOrNull() ?: 0
+                            } else {
+                                if (lineCount < MAX_OUTPUT_LINES) {
+                                    output.append(line).append("\n")
+                                    lineCount++
+                                }
+                            }
                         }
+                        
+                        ShellResult(exitCode, output.toString().trim())
+                    } finally {
+                        isBusy = false
                     }
                 }
-                
-                return ShellResult(exitCode, output.toString().trim())
-            } catch (e: Exception) {
-                Log.e("ShellUtils", "Error running command: $command", e)
-                closePersistentShell()
-                return ShellResult(-1, e.message ?: "Error")
-            } finally {
-                isBusy = false
             }
+            future.get(timeoutMs, TimeUnit.MILLISECONDS)
+        } catch (e: TimeoutException) {
+            Log.e("ShellUtils", "runAsRoot timed out on command: $command")
+            closePersistentShell()
+            isBusy = false
+            ShellResult(-1, "Command Timed Out")
+        } catch (e: Exception) {
+            Log.e("ShellUtils", "Error running command: $command", e)
+            closePersistentShell()
+            isBusy = false
+            ShellResult(-1, e.message ?: "Error")
         }
     }
 
@@ -82,6 +117,16 @@ object ShellUtils {
             Log.e("ShellUtils", "Error in fastCmd", e)
             closePersistentShell()
         }
+    }
+
+    /**
+     * Fast atomic batch execution of multiple commands in a single write.
+     */
+    @Synchronized
+    fun fastBatchCmd(commands: List<String>) {
+        if (commands.isEmpty()) return
+        val joined = commands.joinToString("; ")
+        fastCmd(joined)
     }
 
     @Synchronized

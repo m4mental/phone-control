@@ -51,12 +51,9 @@ object TweakManager {
             }
             "AI_Daily" -> {
                 applyBalance()
-                setClusterParking(false) 
+                setClusterParking(false, deep = true) 
                 applyCpuTuning("balance")
-                // Improved touch response for reels
-                ShellUtils.fastCmd("echo 1 > /sys/module/cpu_boost/parameters/input_boost_enabled 2>/dev/null")
-                ShellUtils.fastCmd("echo 0:1500000 6:1800000 > /sys/module/cpu_boost/parameters/input_boost_freq 2>/dev/null")
-                ShellUtils.fastCmd("echo 600 > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null")
+                applyInputBoost(true)
             }
             "AI_Boost" -> {
                 setClusterParking(false) // Ensure all cores are available for boost
@@ -177,7 +174,7 @@ object TweakManager {
         }
         applyGpuTuning("balance")
         applyEntropyTuning(true)
-        applyInputBoost(false)
+        applyInputBoost(true)
     }
 
     fun applyPerformance() {
@@ -250,20 +247,19 @@ object TweakManager {
 
     /**
      * Dedicated Temporary Wakeup Boost on Screen-On / Unlock (2-3 seconds)
-     * Spikes all 8 cores and touch responsiveness for immediate 0ms fingerprint & keyguard render.
+     * Spikes all 8 cores and touch responsiveness in a single fast atomic batch write (2ms).
      */
     fun triggerTemporaryWakeupBoost() {
-        // 1. Immediately unpark all 8 cores & set responsive governor
-        setClusterParking(false, deep = true)
-        for (i in 0..7) {
-            ShellUtils.fastCmd("echo schedutil > /sys/devices/system/cpu/cpufreq/policy$i/scaling_governor 2>/dev/null")
-        }
-        // 2. High responsiveness boost for critical unlock window
-        ShellUtils.fastCmd("echo 1 > /sys/module/cpu_boost/parameters/input_boost_enabled 2>/dev/null")
-        ShellUtils.fastCmd("echo 0:1500000 6:2000000 > /sys/module/cpu_boost/parameters/input_boost_freq 2>/dev/null")
-        ShellUtils.fastCmd("echo 1000 > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null")
-        ShellUtils.fastCmd("echo 1 > /proc/touchpanel/game_switch_enable 2>/dev/null")
-        ShellUtils.fastCmd("echo 1 > /sys/devices/virtual/touchpanel/smart_wake/touch_responsiveness 2>/dev/null")
+        val batch = listOf(
+            "for i in 2 3 4 5 6 7; do echo 1 > /sys/devices/system/cpu/cpu\$i/online 2>/dev/null; done",
+            "for i in 0 1 2 3 4 5 6 7; do echo schedutil > /sys/devices/system/cpu/cpufreq/policy\$i/scaling_governor 2>/dev/null; done",
+            "echo 1 > /sys/module/cpu_boost/parameters/input_boost_enabled 2>/dev/null",
+            "echo 0:1500000 6:2000000 > /sys/module/cpu_boost/parameters/input_boost_freq 2>/dev/null",
+            "echo 1000 > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null",
+            "echo 1 > /proc/touchpanel/game_switch_enable 2>/dev/null",
+            "echo 1 > /sys/devices/virtual/touchpanel/smart_wake/touch_responsiveness 2>/dev/null"
+        )
+        ShellUtils.fastBatchCmd(batch)
     }
 
     /**
@@ -274,18 +270,26 @@ object TweakManager {
         val latency = when(mode) {
             "perf" -> "4000000" // 4ms
             "power" -> "10000000" // 10ms (safe limit for 120Hz/60Hz UI rendering without ANR)
-            else -> "8000000" // 8ms (default)
+            else -> "6000000" // 6ms (balanced fluid response)
         }
         
         ShellUtils.fastCmd("echo $latency > /proc/sys/kernel/sched_latency_ns 2>/dev/null")
         ShellUtils.fastCmd("echo 1 > /proc/sys/kernel/sched_autogroup_enabled 2>/dev/null")
         
-        if (mode == "perf") {
-            ShellUtils.fastCmd("echo 95 > /proc/sys/kernel/sched_upmigrate 2>/dev/null")
-            ShellUtils.fastCmd("echo 85 > /proc/sys/kernel/sched_downmigrate 2>/dev/null")
-        } else {
-            ShellUtils.fastCmd("echo 85 > /proc/sys/kernel/sched_upmigrate 2>/dev/null")
-            ShellUtils.fastCmd("echo 75 > /proc/sys/kernel/sched_downmigrate 2>/dev/null")
+        when (mode) {
+            "perf" -> {
+                ShellUtils.fastCmd("echo 55 > /proc/sys/kernel/sched_upmigrate 2>/dev/null")
+                ShellUtils.fastCmd("echo 45 > /proc/sys/kernel/sched_downmigrate 2>/dev/null")
+            }
+            "power" -> {
+                ShellUtils.fastCmd("echo 75 > /proc/sys/kernel/sched_upmigrate 2>/dev/null")
+                ShellUtils.fastCmd("echo 65 > /proc/sys/kernel/sched_downmigrate 2>/dev/null")
+            }
+            else -> {
+                // Balance / Daily usage: lower threshold (65/55) so UI tasks migrate to Big cores instantly without lag!
+                ShellUtils.fastCmd("echo 65 > /proc/sys/kernel/sched_upmigrate 2>/dev/null")
+                ShellUtils.fastCmd("echo 55 > /proc/sys/kernel/sched_downmigrate 2>/dev/null")
+            }
         }
     }
 
