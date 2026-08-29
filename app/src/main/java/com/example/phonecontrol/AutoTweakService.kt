@@ -321,12 +321,13 @@ class AutoTweakService : Service() {
     }
 
     private fun onScreenOff(prefs: android.content.SharedPreferences) {
-        Log.d("AutoTweak", "Screen OFF Event - Transitioning to Ultra Deep Sleep")
         isScreenOn = false
         isWakeupBoosting = false
-        ShellUtils.fastCmd("echo 'off' > /data/local/tmp/pc_screen")
         
         kotlin.concurrent.thread {
+            Log.d("AutoTweak", "Screen OFF Event - Transitioning to Deep Sleep (Async)")
+            ShellUtils.fastCmd("echo 'off' > /data/local/tmp/pc_screen")
+
             val superDozePrefs = getSharedPreferences("super_doze_prefs", MODE_PRIVATE)
             val isSuperDoze = prefs.getBoolean("super_doze_enabled", false)
             val isForceDoze = prefs.getBoolean("batt_force_doze_enabled", false)
@@ -338,7 +339,7 @@ class AutoTweakService : Service() {
                 TweakManager.setClusterParking(true, deep = false)
             }
 
-            // 2. Super Doze & Force Doze Deep Idle
+            // 2. Super Doze & Sync Logic (Safe sleep without breaking fingerprint HAL)
             if (isSuperDoze || isForceDoze) {
                 if (isSuperDoze && superDozePrefs.getBoolean("sync_off_enabled", true)) {
                     ShellUtils.fastCmd("settings put global master_sync_enabled 0")
@@ -346,7 +347,6 @@ class AutoTweakService : Service() {
                 if (isSuperDoze && superDozePrefs.getBoolean("radio_off_enabled", false)) {
                     ShellUtils.fastCmd("svc data disable")
                 }
-                ShellUtils.fastCmd("dumpsys deviceidle force-idle deep")
             }
 
             // 3. Block Kernel Wakelocks
@@ -368,7 +368,7 @@ class AutoTweakService : Service() {
                 TweakManager.setLocationEnabled(false)
             }
 
-            // 6. Standby Guard - UNIFIED Whitelisting (Checks Standby + Doze + Multitasking lists)
+            // 6. Standby Guard
             if (prefs.getBoolean("standby_guard_enabled", false)) {
                 val result = ShellUtils.runAsRoot("pm list packages -3 | cut -d ':' -f2")
                 val packages = result.output.split("\n").filter { it.isNotBlank() }
@@ -398,7 +398,6 @@ class AutoTweakService : Service() {
                         ShellUtils.fastCmd("am set-standby-bucket $pkg active")
                     }
                 }
-                ShellUtils.fastCmd("cmd battery-saver set-enabled true")
             }
 
             // 7. Auto Hibernation
@@ -418,17 +417,24 @@ class AutoTweakService : Service() {
     }
 
     private fun onScreenOn(prefs: android.content.SharedPreferences) {
-        Log.d("AutoTweak", "Screen ON Event - Instant 2.5s Recovery & Wakeup Boost")
         isScreenOn = true
-        isWakeupBoosting = true
-        TweakManager.triggerTemporaryWakeupBoost()
         
         kotlin.concurrent.thread {
-            val superDozePrefs = getSharedPreferences("super_doze_prefs", MODE_PRIVATE)
-            val isSuperDoze = prefs.getBoolean("super_doze_enabled", false)
-
+            Log.d("AutoTweak", "Screen ON Event - Instant 0ms Async Wakeup")
+            // 1. Instant 2ms Atomic Wakeup Boost
+            TweakManager.triggerTemporaryWakeupBoost()
             TweakManager.setClusterParking(false, deep = true) 
             ShellUtils.fastCmd("echo 'on' > /data/local/tmp/pc_screen")
+
+            // 2. Restore Automatic AI Profile IMMEDIATELY
+            if (isScreenOn && prefs.getString("selected_mode", "rbBalance") == "rbAutomatic") {
+                val focus = prefs.getString("selected_focus", "rbFocusDaily") ?: "rbFocusDaily"
+                val load = calculateAppAiLoad(lastForegroundApp)
+                applyAiTweak(load, focus)
+            }
+
+            val superDozePrefs = getSharedPreferences("super_doze_prefs", MODE_PRIVATE)
+            val isSuperDoze = prefs.getBoolean("super_doze_enabled", false)
 
             if (isSuperDoze) {
                 if (superDozePrefs.getBoolean("sync_off_enabled", true)) {
@@ -454,24 +460,6 @@ class AutoTweakService : Service() {
             }
 
             TweakManager.applyWakelockBlocker(false)
-
-            if (prefs.getBoolean("standby_guard_enabled", false)) {
-                ShellUtils.fastCmd("cmd battery-saver set-enabled false")
-            }
-
-            // Dedicated 2.5-second boost window for smooth fingerprint / keyguard / systemui unlock
-            try {
-                Thread.sleep(2500)
-            } catch (e: InterruptedException) {}
-
-            isWakeupBoosting = false
-
-            // After 2.5s unlock window, smoothly transition to real-time foreground app usage mode
-            if (isScreenOn && prefs.getString("selected_mode", "rbBalance") == "rbAutomatic") {
-                val focus = prefs.getString("selected_focus", "rbFocusDaily") ?: "rbFocusDaily"
-                val load = calculateAppAiLoad(lastForegroundApp)
-                applyAiTweak(load, focus)
-            }
         }
     }
 

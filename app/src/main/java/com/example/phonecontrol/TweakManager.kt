@@ -28,22 +28,19 @@ object TweakManager {
             }
             // AI Engine Granular Profiles (Tuned for Fluid 120Hz & High Battery Efficiency)
             "AI_Sleeping" -> {
-                // Use schedutil instead of powersave to avoid 'stuck' feeling
+                // Keep all 8 cores online with schedutil to prevent any deadlock on screen off/on
                 for (i in 0..7) ShellUtils.fastCmd("echo schedutil > /sys/devices/system/cpu/cpufreq/policy$i/scaling_governor 2>/dev/null")
-                setClusterParking(true) // Park Big Cores during Screen OFF
+                setClusterParking(false)
                 applyCpuTuning("power")
-                // Minimum touch response
-                ShellUtils.fastCmd("echo 1 > /sys/module/cpu_boost/parameters/input_boost_enabled 2>/dev/null")
-                ShellUtils.fastCmd("echo 0:1326000 > /sys/module/cpu_boost/parameters/input_boost_freq 2>/dev/null")
-                ShellUtils.fastCmd("echo 200 > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null")
             }
             "AI_EcoActive" -> {
                 // Keep all 8 cores online when Screen is ON (Zero UI ANR / Zero Lag)
-                setClusterParking(false, deep = true)
+                setClusterParking(false)
                 for (i in 0..7) ShellUtils.fastCmd("echo schedutil > /sys/devices/system/cpu/cpufreq/policy$i/scaling_governor 2>/dev/null")
                 applyGpuTuning("power")
                 applyCpuTuning("power")
                 applyIoOptimization("power")
+                applyEntropyTuning(true)
                 applyInputBoost(true, aggressive = false)
             }
             "AI_Daily" -> {
@@ -84,10 +81,10 @@ object TweakManager {
                 ShellUtils.fastCmd("echo 1 > /proc/touchpanel/game_switch_enable 2>/dev/null")
                 ShellUtils.fastCmd("echo 1 > /sys/devices/virtual/touchpanel/smart_wake/touch_responsiveness 2>/dev/null")
             } else {
-                // Cool & Efficient Daily Touch Boost (Little cores only for 150ms -> Ice Cold & Smooth)
+                // Fluid & Cool Daily Touch Boost (Little 1.32GHz + Big 1.5GHz for 250ms -> Butter Smooth & 0 Heat)
                 ShellUtils.fastCmd("echo 1 > /sys/module/cpu_boost/parameters/input_boost_enabled 2>/dev/null")
-                ShellUtils.fastCmd("echo 0:1222000 > /sys/module/cpu_boost/parameters/input_boost_freq 2>/dev/null")
-                ShellUtils.fastCmd("echo 150 > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null")
+                ShellUtils.fastCmd("echo 0:1326000 6:1500000 > /sys/module/cpu_boost/parameters/input_boost_freq 2>/dev/null")
+                ShellUtils.fastCmd("echo 250 > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null")
                 ShellUtils.fastCmd("echo 0 > /proc/touchpanel/game_switch_enable 2>/dev/null")
                 ShellUtils.fastCmd("echo 0 > /sys/devices/virtual/touchpanel/smart_wake/touch_responsiveness 2>/dev/null")
             }
@@ -168,7 +165,7 @@ object TweakManager {
         setClusterParking(true, deep = false) // Park cores 6-7 (Big Cortex-A715)
         applyGpuTuning("power")
         applyEntropyTuning(false)
-        applyInputBoost(false)
+        applyInputBoost(true, aggressive = false)
     }
 
     fun applyBalance() {
@@ -206,8 +203,9 @@ object TweakManager {
                 ShellUtils.fastCmd("echo 1 > /proc/gpufreq/gpufreq_var_dump 2>/dev/null")
             }
             "power" -> {
+                // Dynamic On-Demand GPU (Allows smooth 120Hz/60Hz frame rendering, sits at idle when static)
                 ShellUtils.fastCmd("echo 0 > /sys/kernel/gpu/gpu_max_clock 2>/dev/null")
-                ShellUtils.fastCmd("echo powersave > /sys/class/kgsl/kgsl-3d0/devfreq/governor 2>/dev/null")
+                ShellUtils.fastCmd("echo simple_ondemand > /sys/class/kgsl/kgsl-3d0/devfreq/governor 2>/dev/null")
             }
             else -> {
                 ShellUtils.fastCmd("echo simple_ondemand > /sys/class/kgsl/kgsl-3d0/devfreq/governor 2>/dev/null")
@@ -255,11 +253,13 @@ object TweakManager {
      */
     fun triggerTemporaryWakeupBoost() {
         val batch = listOf(
-            "for i in 2 3 4 5 6 7; do echo 1 > /sys/devices/system/cpu/cpu\$i/online 2>/dev/null; done",
+            "for i in 0 1 2 3 4 5 6 7; do echo 1 > /sys/devices/system/cpu/cpu\$i/online 2>/dev/null; done",
             "for i in 0 1 2 3 4 5 6 7; do echo schedutil > /sys/devices/system/cpu/cpufreq/policy\$i/scaling_governor 2>/dev/null; done",
+            "echo 0 > /sys/kernel/gpu/gpu_max_clock 2>/dev/null",
+            "echo simple_ondemand > /sys/class/kgsl/kgsl-3d0/devfreq/governor 2>/dev/null",
             "echo 1 > /sys/module/cpu_boost/parameters/input_boost_enabled 2>/dev/null",
             "echo 0:1326000 6:1800000 > /sys/module/cpu_boost/parameters/input_boost_freq 2>/dev/null",
-            "echo 500 > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null"
+            "echo 400 > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null"
         )
         ShellUtils.fastBatchCmd(batch)
     }
@@ -270,9 +270,9 @@ object TweakManager {
      */
     fun applyCpuTuning(mode: String) {
         val latency = when(mode) {
-            "perf" -> "4000000" // 4ms
-            "power" -> "10000000" // 10ms (safe limit for 120Hz/60Hz UI rendering without ANR)
-            else -> "8000000" // 8ms (balanced fluid response)
+            "perf" -> "3000000" // 3ms
+            "power" -> "5000000" // 5ms (fluid & responsive 120Hz/60Hz without ANR)
+            else -> "4000000" // 4ms (balanced fluid response)
         }
         
         ShellUtils.fastCmd("echo $latency > /proc/sys/kernel/sched_latency_ns 2>/dev/null")
@@ -280,17 +280,16 @@ object TweakManager {
         
         when (mode) {
             "perf" -> {
-                ShellUtils.fastCmd("echo 60 > /proc/sys/kernel/sched_upmigrate 2>/dev/null")
-                ShellUtils.fastCmd("echo 50 > /proc/sys/kernel/sched_downmigrate 2>/dev/null")
+                ShellUtils.fastCmd("echo 55 > /proc/sys/kernel/sched_upmigrate 2>/dev/null")
+                ShellUtils.fastCmd("echo 45 > /proc/sys/kernel/sched_downmigrate 2>/dev/null")
             }
             "power" -> {
-                ShellUtils.fastCmd("echo 80 > /proc/sys/kernel/sched_upmigrate 2>/dev/null")
-                ShellUtils.fastCmd("echo 70 > /proc/sys/kernel/sched_downmigrate 2>/dev/null")
+                ShellUtils.fastCmd("echo 68 > /proc/sys/kernel/sched_upmigrate 2>/dev/null")
+                ShellUtils.fastCmd("echo 58 > /proc/sys/kernel/sched_downmigrate 2>/dev/null")
             }
             else -> {
-                // Balance / Daily usage: 75/65 sweet spot - eliminates thermal buildup while keeping 120Hz fluid!
-                ShellUtils.fastCmd("echo 75 > /proc/sys/kernel/sched_upmigrate 2>/dev/null")
-                ShellUtils.fastCmd("echo 65 > /proc/sys/kernel/sched_downmigrate 2>/dev/null")
+                ShellUtils.fastCmd("echo 65 > /proc/sys/kernel/sched_upmigrate 2>/dev/null")
+                ShellUtils.fastCmd("echo 55 > /proc/sys/kernel/sched_downmigrate 2>/dev/null")
             }
         }
     }
@@ -302,7 +301,7 @@ object TweakManager {
     fun applyIoOptimization(mode: String) {
         val readAhead = when(mode) {
             "perf" -> "2048"
-            "power" -> "128"
+            "power" -> "512"
             else -> "512"
         }
         
@@ -492,17 +491,11 @@ object TweakManager {
      * 9. Cluster Control (Core Parking)
      */
     fun setClusterParking(parkBigCores: Boolean, deep: Boolean = false) {
-        val value = if (parkBigCores) "0" else "1"
-        // Nothing Phone (2a) - Dimensity 7200 Pro:
-        // Cores 0-5: Efficiency (Cortex-A510)
-        // Cores 6-7: Performance (Cortex-A715)
-        
-        if (deep) {
-            // Extreme sleep: leave only 2 efficiency cores online
-            for (i in 2..7) ShellUtils.fastCmd("echo $value > /sys/devices/system/cpu/cpu$i/online 2>/dev/null")
-        } else {
-            // Normal Power Save: park only the 2 performance cores (6-7)
-            for (i in 6..7) ShellUtils.fastCmd("echo $value > /sys/devices/system/cpu/cpu$i/online 2>/dev/null")
+        // Dimensity 7200 Pro EAS architecture:
+        // Always ensure all 8 cores are online to prevent CPU starvation and system freezes.
+        // In power-saving, schedutil governor drops idle cores to 400MHz / hardware C-states safely.
+        for (i in 0..7) {
+            ShellUtils.fastCmd("echo 1 > /sys/devices/system/cpu/cpu$i/online 2>/dev/null")
         }
     }
 

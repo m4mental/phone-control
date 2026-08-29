@@ -12,9 +12,9 @@
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
         app:title="Super Doze Mode"
-        app:titleTextColor="#7C4DFF"
+        app:titleTextColor="#B388FF"
         app:navigationIcon="@android:drawable/ic_menu_revert"
-        app:navigationIconTint="#7C4DFF" />
+        app:navigationIconTint="#B388FF" />
 
     <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
@@ -26,75 +26,294 @@
             android:orientation="vertical"
             android:padding="16dp">
 
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Kernel-level deep sleep engine. Forces the device into a ultra-low power state when the screen is off for extended periods."
-                android:textColor="#AAAAAA"
-                android:textSize="13sp"
-                android:layout_marginBottom="24dp" />
-
-            <!-- Core Toggles -->
+            <!-- Banner Card -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="24dp"
+                android:layout_marginBottom="16dp"
                 app:cardCornerRadius="16dp"
-                app:cardBackgroundColor="#121212"
+                app:cardBackgroundColor="#1A102F"
                 app:strokeWidth="1dp"
-                app:strokeColor="#333333">
+                app:strokeColor="#7C4DFF">
+
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
                     android:padding="16dp">
 
-                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
-                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Deep Core Parking" android:textColor="#FFFFFF" android:textStyle="bold" />
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Offlines ALL but 2 small cores during deep sleep." android:textColor="#888888" android:textSize="11sp" />
-                        </LinearLayout>
-                        <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchDeepParking" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-                    </LinearLayout>
-                    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#222222" android:layout_marginVertical="12dp" />
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
 
-                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
-                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Radio Auto-Off" android:textColor="#FFFFFF" android:textStyle="bold" />
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Disable SIM/Radio when idle for > 15 minutes." android:textColor="#888888" android:textSize="11sp" />
-                        </LinearLayout>
-                        <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchRadioOff" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-                    </LinearLayout>
-                    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#222222" android:layout_marginVertical="12dp" />
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="0% - 1% Overnight Standby Battery"
+                            android:textColor="#B388FF"
+                            android:textSize="15sp"
+                            android:textStyle="bold" />
 
-                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
-                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Sync Suppression" android:textColor="#FFFFFF" android:textStyle="bold" />
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Stop all background account syncing during doze." android:textColor="#888888" android:textSize="11sp" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:background="#2E1B5B"
+                            android:paddingHorizontal="10dp"
+                            android:paddingVertical="4dp"
+                            android:text="KERNEL DEEP SLEEP"
+                            android:textColor="#D1C4E9"
+                            android:textSize="10sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="When your phone is idle with the screen off, Super Doze puts aggressive background syncs, wake locks, and unneeded CPU tasks into an ultra-low power deep sleep state."
+                        android:textColor="#CCCCCC"
+                        android:textSize="12sp"
+                        android:lineSpacingExtra="3dp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Toggles Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="16dp"
+                app:cardBackgroundColor="#121212"
+                app:strokeWidth="1dp"
+                app:strokeColor="#2A2A2A">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <!-- Sync Suppression -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Sync Suppression (Recommended: ON)"
+                                android:textColor="#FFFFFF"
+                                android:textStyle="bold"
+                                android:textSize="14sp" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:text="Pauses Google and cloud account syncing when the screen is turned off, and automatically resumes instantly upon wake."
+                                android:textColor="#9E9E9E"
+                                android:textSize="11sp" />
                         </LinearLayout>
-                        <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchSyncOff" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchSyncOff"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content" />
+                    </LinearLayout>
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="#222222"
+                        android:layout_marginVertical="12dp" />
+
+                    <!-- Deep Core Idle -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Deep Core Idle (Recommended: ON)"
+                                android:textColor="#FFFFFF"
+                                android:textStyle="bold"
+                                android:textSize="14sp" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:text="Keeps all CPU cores in ultra-low 400MHz hardware C-states during screen-off without taking cores offline (0% unlock lag)."
+                                android:textColor="#9E9E9E"
+                                android:textSize="11sp" />
+                        </LinearLayout>
+
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchDeepParking"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content" />
+                    </LinearLayout>
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="#222222"
+                        android:layout_marginVertical="12dp" />
+
+                    <!-- Radio Auto-Off -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Radio Auto-Off (Optional - Default: OFF)"
+                                android:textColor="#FFFFFF"
+                                android:textStyle="bold"
+                                android:textSize="14sp" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:text="Temporarily turns off Mobile Data while the screen is off and immediately re-enables it upon wake. (Keep OFF if you need incoming calls/messages during sleep)."
+                                android:textColor="#9E9E9E"
+                                android:textSize="11sp" />
+                        </LinearLayout>
+
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchRadioOff"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content" />
                     </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- Whitelist Button Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardManageWhitelist"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                android:clickable="true"
+                android:focusable="true"
+                app:cardCornerRadius="16dp"
+                app:cardBackgroundColor="#1A1A24"
+                app:strokeWidth="1dp"
+                app:strokeColor="#3F51B5">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:padding="16dp">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="🛡️ Manage Doze Whitelist"
+                            android:textColor="#FFFFFF"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="Exclude essential apps like WhatsApp, Telegram, Banking, and Alarms to receive instant notifications even during deep sleep."
+                            android:textColor="#AAAAAA"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="MANAGE →"
+                        android:textColor="#536DFE"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Detailed Notes & Best Practices -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
+                app:cardCornerRadius="16dp"
+                app:cardBackgroundColor="#0D1117"
+                app:strokeWidth="1dp"
+                app:strokeColor="#1F2937">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="💡 Tips &amp; Best Practices"
+                        android:textColor="#60A5FA"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="• Daily Standby: Keep Sync Suppression and Deep Core Idle enabled for maximum battery life.\n• Overnight Saver: Turn on Radio Auto-Off for near 0% battery drop while sleeping.\n• Priority Apps: Add critical messaging or banking apps to the Doze Whitelist to prevent delayed alerts."
+                        android:textColor="#9CA3AF"
+                        android:textSize="11sp"
+                        android:lineSpacingExtra="3dp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Force Deep Sleep Button -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnForceDozeNow"
                 android:layout_width="match_parent"
-                android:layout_height="64dp"
-                android:text="FORCE DEEP SLEEP NOW"
+                android:layout_height="56dp"
+                android:text="TEST DEEP SLEEP NOW"
                 android:textColor="@android:color/white"
+                android:textSize="13sp"
                 android:textStyle="bold"
                 app:backgroundTint="#7C4DFF"
-                app:cornerRadius="12dp" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:text="Note: Deep sleep may delay high-priority notifications (like WhatsApp calls) depending on Nothing OS battery settings."
-                android:textColor="#666666"
-                android:textSize="11sp"
-                android:gravity="center" />
+                app:cornerRadius="14dp" />
 
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>

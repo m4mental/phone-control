@@ -1,9 +1,11 @@
 package com.example.phonecontrol
 
+import android.content.Intent
 import android.os.Bundle
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.card.MaterialCardView
 import com.google.android.material.switchmaterial.SwitchMaterial
 
 class SuperDozeActivity : AppCompatActivity() {
@@ -16,9 +18,13 @@ class SuperDozeActivity : AppCompatActivity() {
 
         setupToggles()
 
+        findViewById<MaterialCardView>(R.id.cardManageWhitelist).setOnClickListener {
+            startActivity(Intent(this, DozeWhitelistActivity::class.java))
+        }
+
         findViewById<Button>(R.id.btnForceDozeNow).setOnClickListener {
             ShellUtils.fastCmd("dumpsys deviceidle force-idle deep")
-            Toast.makeText(this, "Device forced into Deep Sleep", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Device Deep Sleep Triggered", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -32,8 +38,14 @@ class SuperDozeActivity : AppCompatActivity() {
         swRadio.isChecked = prefs.getBoolean("radio_off_enabled", false)
         swSync.isChecked = prefs.getBoolean("sync_off_enabled", true)
 
-        swParking.setOnCheckedChangeListener { _, isC -> prefs.edit().putBoolean("deep_parking_enabled", isC).apply() }
-        swRadio.setOnCheckedChangeListener { _, isC -> prefs.edit().putBoolean("radio_off_enabled", isC).apply() }
-        swSync.setOnCheckedChangeListener { _, isC -> prefs.edit().putBoolean("sync_off_enabled", isC).apply() }
+        swParking.setOnCheckedChangeListener { _, isC -> 
+            prefs.edit().putBoolean("deep_parking_enabled", isC).apply() 
+        }
+        swRadio.setOnCheckedChangeListener { _, isC -> 
+            prefs.edit().putBoolean("radio_off_enabled", isC).apply() 
+        }
+        swSync.setOnCheckedChangeListener { _, isC -> 
+            prefs.edit().putBoolean("sync_off_enabled", isC).apply() 
+        }
     }
 }
