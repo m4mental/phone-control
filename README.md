@@ -1,14 +1,24 @@
 # 📱 Phone Control — Advanced Android Root Optimization Suite
 
 [![Android](https://img.shields.io/badge/Android-12%20--%2016-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://android.com)
-[![Kotlin](https://img.shields.io/badge/Kotlin-1.9.0-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white)](https://kotlinlang.org)
+[![Target Device](https://img.shields.io/badge/Target%20Device-Nothing%20Phone%20(2a)-black?style=for-the-badge&logo=nothing&logoColor=white)](https://nothing.tech)
+[![Chipset](https://img.shields.io/badge/Chipset-MediaTek%20Dimensity%207200%20Pro-orange?style=for-the-badge)](https://mediatek.com)
 [![Root](https://img.shields.io/badge/Root-Magisk%20%7C%20KernelSU%20%7C%20APatch-red?style=for-the-badge&logo=superuser&logoColor=white)](https://github.com/topjohnwu/Magisk)
-[![Architecture](https://img.shields.io/badge/Architecture-ARM64%20%7C%20MediaTek%20Dimensity-orange?style=for-the-badge)](https://mediatek.com)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue?style=for-the-badge)](LICENSE)
 
-**Phone Control** is a high-performance, modular system control and tuning suite engineered for rooted Android devices. Built with strict event-driven architecture, it delivers fine-grained kernel control, deep battery conservation, intelligent load-balancing AI modes, hardware-level display management, and network packet optimization without background polling overhead.
+> [!CAUTION]
+> ### 🛑 TARGET HARDWARE & CHIPSET NOTICE
+> **This utility was custom-built, fine-tuned, and tested specifically for the Nothing Phone (2a) powered by the MediaTek Dimensity 7200 Pro chipset.**
+> 
+> * **Hardware-Specific Features:** Deep kernel-level mechanisms — including MediaTek CPUIdle C-States, MTK PPM core cluster parking, Nothing hardware charging bypass nodes (`/sys/class/power_supply/battery/charging_enabled`), and MTK FPSGO / GED rendering schedulers — are explicitly mapped for this device and chipset.
+> * **Other Devices / Chipsets (Snapdragon, Google Tensor, Exynos, Unisoc):** While standard Android framework modules (Force Doze OS Layer, App Standby Buckets Guard, Hardware Sensor Firewall, Google TCP BBR, App Freezer, Resolution & DPI scaling) are universally compatible across ARM64 Android, chipset-specific kernel paths will not function or may cause instability on non-target devices.
+> * **ZERO RESPONSIBILITY DISCLAIMER:** If you choose to install or run this utility on any other device or chipset, you do so **STRICTLY AT YOUR OWN RISK**. The developer assumes **ABSOLUTELY NO RESPONSIBILITY** for bootloops, system freezes, kernel crashes, or hardware malfunctions on unsupported hardware.
 
-While universally compatible with modern ARM64 Android devices (Android 12 to 16), it includes specialized kernel and governor optimizations tailored for **MediaTek Dimensity (e.g., Dimensity 7200 Pro on Nothing Phone 2a)**.
+---
+
+## 📖 Overview
+
+**Phone Control** is a high-performance, modular system control and tuning suite engineered for rooted Android devices. Built with strict event-driven architecture, it delivers fine-grained kernel control, deep battery conservation, intelligent load-balancing AI modes, hardware-level display management, and network packet optimization without background polling overhead.
 
 ---
 
@@ -77,7 +87,7 @@ Engineered to deliver aggressive battery preservation through distinct Android a
   * Protects critical user apps in the permanent `ACTIVE` standby bucket.
   * Includes 1-Click instant action buttons: **`APPLY RESTRICTED BUCKETS NOW`** and **`RESET ALL APPS TO ACTIVE BUCKET`**.
 * 🌙 **Super Doze Deep Sleep [Kernel / CPU Hardware Layer]:**
-  * Activates deep CPU C-States (Core Parking & 400MHz idle frequencies) on MediaTek and Qualcomm chipsets.
+  * Activates deep CPU C-States (Core Parking & 400MHz idle frequencies) on MediaTek Dimensity architecture.
   * Suppresses background Google Cloud master synchronization (`master_sync_enabled 0`).
   * Blocks non-critical kernel wakelocks (`wlan_wake`, `wlan_rx_wake`) to achieve near **0% overnight battery drop**.
 * 🔌 **Charging Protection & Hardware Bypass Lab:**
@@ -226,9 +236,11 @@ Phone Control incorporates a **Hierarchical Master Tweak Architecture**:
 ## 📋 Installation & Requirements
 
 ### Prerequisites
-1. An Android device running **Android 12, 13, 14, 15, or 16**.
-2. Root permissions granted via **Magisk (v24.0+)**, **KernelSU (v0.6.0+)**, or **APatch**.
-3. Storage permission for backup/restore operations.
+1. **Primary Target Device:** **Nothing Phone (2a)** (Model: `AIN142` / `A142`)
+2. **Chipset Architecture:** **MediaTek Dimensity 7200 Pro (MT6886)** (Required for 100% full hardware & kernel feature compatibility).
+3. **Android Version:** **Android 12, 13, 14, 15, or 16** (Nothing OS 2.x / 3.x).
+4. **Root Access:** Superuser permissions granted via **Magisk (v24.0+)**, **KernelSU (v0.6.0+)**, or **APatch**.
+5. **Storage Permissions:** Required for backup/restore operations in App & Data Vault.
 
 ### Installation
 1. Download the latest `app-debug.apk` from the [Releases](https://github.com/m4mental/phone-control/releases) section.
