@@ -3,6 +3,7 @@ package com.example.phonecontrol
 import java.io.DataOutputStream
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import android.os.Build
 import android.util.Log
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -17,6 +18,8 @@ object ShellUtils {
     private const val MAX_OUTPUT_LINES = 400
     private val shellExecutor = Executors.newSingleThreadExecutor()
 
+    @Volatile var isRootGrantedCached: Boolean? = null
+
     /**
      * Check if the shell is currently busy with a long-running task.
      */
@@ -24,22 +27,37 @@ object ShellUtils {
         private set
 
     /**
-     * Standalone, timeout-guaranteed root checker.
-     * Uses a direct, isolated process so it never hangs or conflicts with the persistent shell.
+     * Standalone, isolated root checker.
+     * Executes directly on an independent process so it never gets blocked by the single-thread shellExecutor queue.
      */
-    fun checkRootStandalone(timeoutMs: Long = 3000): Boolean {
+    fun checkRootStandalone(timeoutMs: Long = 4000): Boolean {
+        if (isRootGrantedCached == true) return true
+
         return try {
-            val future = shellExecutor.submit<Boolean> {
-                val p = Runtime.getRuntime().exec(arrayOf("su", "-c", "id"))
-                val r = BufferedReader(InputStreamReader(p.inputStream))
-                val out = r.readLine() ?: ""
+            val p = Runtime.getRuntime().exec(arrayOf("su", "-c", "id"))
+            val r = BufferedReader(InputStreamReader(p.inputStream))
+            val out = r.readLine() ?: ""
+            val exited = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                p.waitFor(timeoutMs, TimeUnit.MILLISECONDS)
+            } else {
                 p.waitFor()
-                out.contains("uid=0") || p.exitValue() == 0
+                true
             }
-            future.get(timeoutMs, TimeUnit.MILLISECONDS)
+            val isRoot = (out.contains("uid=0") || (exited && p.exitValue() == 0))
+            if (isRoot) {
+                isRootGrantedCached = true
+            }
+            isRoot
         } catch (e: Exception) {
-            Log.e("ShellUtils", "checkRootStandalone error or timeout: ${e.message}")
-            false
+            Log.e("ShellUtils", "checkRootStandalone direct exec error: ${e.message}")
+            try {
+                val res = runAsRoot("id", 2000)
+                val isRoot = (res.exitCode == 0 && res.output.contains("uid=0"))
+                if (isRoot) isRootGrantedCached = true
+                isRoot
+            } catch (ignored: Exception) {
+                false
+            }
         }
     }
 

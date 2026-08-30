@@ -107,11 +107,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkRootAsync() {
+        if (ShellUtils.isRootGrantedCached == true) {
+            tvRootStatus.text = "Root: Granted"; tvRootStatus.setTextColor(Color.GREEN)
+            tvKernelStatus.text = "Kernel Engine: Active (BBR+EAS)"; tvKernelStatus.setTextColor(Color.GREEN)
+        }
+
         kotlin.concurrent.thread {
             try {
-                val isRooted = ShellUtils.checkRootStandalone(3000)
+                val isRooted = ShellUtils.checkRootStandalone(4000)
                 runOnUiThread {
-                    if (isFinishing) return@runOnUiThread
+                    if (isFinishing || isDestroyed) return@runOnUiThread
                     if (isRooted) {
                         tvRootStatus.text = "Root: Granted"; tvRootStatus.setTextColor(Color.GREEN)
                         tvKernelStatus.text = "Kernel Engine: Active (BBR+EAS)"; tvKernelStatus.setTextColor(Color.GREEN)
@@ -122,7 +127,7 @@ class MainActivity : AppCompatActivity() {
                 }
             } catch (e: Exception) {
                 runOnUiThread { 
-                    if (!isFinishing) tvRootStatus.text = "Root: Error" 
+                    if (!isFinishing && !isDestroyed) tvRootStatus.text = "Root: Error" 
                 }
             }
         }
@@ -139,6 +144,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        checkRootAsync()
         updateDisplayStatus()
         updateLiveStats()
         updateCardVisibility()
