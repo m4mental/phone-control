@@ -33,6 +33,14 @@ jobs:
       id: get_version
       run: echo "VERSION=v1.0.${{ github.run_number }}" >> $GITHUB_OUTPUT
 
+    - name: Rename Release APK with Version Tag
+      run: |
+        VERSION="${{ steps.get_version.outputs.VERSION }}"
+        cd app/build/outputs/apk/release
+        if [ -f "app-release.apk" ]; then
+          cp app-release.apk "PhoneControl-${VERSION}.apk"
+        fi
+
     - name: Extract Commit Notes
       id: commit_notes
       run: |
@@ -47,7 +55,7 @@ jobs:
         tag_name: ${{ steps.get_version.outputs.VERSION }}
         name: Release ${{ steps.get_version.outputs.VERSION }}
         files: |
-          app/build/outputs/apk/release/*.apk
+          app/build/outputs/apk/release/PhoneControl-*.apk
         body: ${{ env.RELEASE_BODY }}
         draft: false
         prerelease: false
