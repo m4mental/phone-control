@@ -230,13 +230,18 @@ class AutoTweakService : Service() {
             FreezerManager.unfreezeApp(newPkg)
         }
 
-        // 2. SMART RECENTS-AWARE FREEZE (with Media Audio Guard):
-        // Only freeze apps in Freezer list if they are NO LONGER in Recent Apps and NOT actively playing music
+        // 2. SMART RECENTS & VISIBILITY-AWARE FREEZE (with Active Media & Video Player Guard):
+        // Only freeze apps if they are NO LONGER in Recents, NOT visible on screen, NOT playing audio/video, and NOT whitelisted!
         if (frozenApps.isNotEmpty()) {
             val recentPkgs = FreezerManager.getRecentPackages()
             for (pkg in frozenApps) {
-                if (!recentPkgs.contains(pkg) && pkg != newPkg && !allSafeApps.contains(pkg) && !activeAudioApps.contains(pkg)) {
-                    Log.d("AutoTweak", "⚡ Recent Closed -> Freezing App: $pkg")
+                if (pkg != newPkg && 
+                    !recentPkgs.contains(pkg) && 
+                    !allSafeApps.contains(pkg) && 
+                    !activeAudioApps.contains(pkg) && 
+                    !FreezerManager.isAppCurrentlyVisible(pkg)) {
+                    
+                    Log.d("AutoTweak", "⚡ Closed & Inactive -> Freezing App: $pkg")
                     FreezerManager.freezeApp(this, pkg)
                 }
             }

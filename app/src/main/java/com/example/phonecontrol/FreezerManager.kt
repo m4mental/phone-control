@@ -102,7 +102,7 @@ object FreezerManager {
     }
 
     /**
-     * Returns set of packages that are actively playing audio (state = PLAYING).
+     * Returns set of packages that are actively playing audio/video (state = PLAYING or started audio track).
      * Excludes non-playing or paused media sessions.
      */
     fun getActivePlayingAudioPackages(context: Context): Set<String> {
@@ -110,19 +110,46 @@ object FreezerManager {
         try {
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
             if (audioManager?.isMusicActive == true) {
+                // 1. Check MediaSession active players
                 val out = ShellUtils.runAsRoot("""
                     dumpsys media_session | awk '/package=/ {pkg=${'$'}0} /state=PlaybackState/ {if (${'$'}0 ~ /state=3/) print pkg}' | cut -d '=' -f2
                 """.trimIndent()).output
                 val pkgs = out.split("\n").map { it.trim() }.filter { it.isNotBlank() }
-                if (pkgs.isNotEmpty()) {
-                    activePlaying.addAll(pkgs)
-                } else {
+                activePlaying.addAll(pkgs)
+
+                // 2. Check AudioTrack / native players (VLC, MX Player, ExoPlayer, NextPlayer)
+                val audioTracks = ShellUtils.runAsRoot("dumpsys audio | grep -B 2 'state:started' | grep -o 'u/pid:[0-9]*'").output
+                if (audioTracks.isNotBlank()) {
+                    val pids = audioTracks.split("\n").mapNotNull { it.substringAfter("u/pid:").trim().toIntOrNull() }
+                    for (pid in pids) {
+                        val pkg = ShellUtils.runAsRoot("cat /proc/$pid/cmdline 2>/dev/null").output.trim().replace("\u0000", "")
+                        if (pkg.isNotBlank() && pkg != "com.android.server.telecom") {
+                            activePlaying.add(pkg)
+                        }
+                    }
+                }
+
+                // Fallback: If AudioManager says music is active, also add all active media session packages
+                if (activePlaying.isEmpty()) {
                     val allSessions = ShellUtils.runAsRoot("dumpsys media_session | grep 'package=' | cut -d '=' -f2").output
                     activePlaying.addAll(allSessions.split("\n").map { it.trim() }.filter { it.isNotBlank() && it != "com.android.server.telecom" })
                 }
             }
         } catch (e: Exception) {}
         return activePlaying
+    }
+
+    /**
+     * Checks if an app is currently visible on the screen or in focus.
+     */
+    fun isAppCurrentlyVisible(packageName: String): Boolean {
+        if (packageName.isBlank()) return false
+        return try {
+            val out = ShellUtils.runAsRoot("dumpsys window | grep -E 'mCurrentFocus|mFocusedApp'").output
+            out.contains(packageName)
+        } catch (e: Exception) {
+            false
+        }
     }
 
     fun getActivePackages(packages: Collection<String>): Set<String> {

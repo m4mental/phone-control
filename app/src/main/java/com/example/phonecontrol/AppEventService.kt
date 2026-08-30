@@ -7,17 +7,34 @@ import android.view.accessibility.AccessibilityEvent
 
 /**
  * Ultra-Fast 0ms Event-Driven App & Window State Listener.
- * Replaces the old 3000ms dumpsys polling loop with direct OS callbacks.
+ * Filters out system overlays, keyboards, volume bars, and systemui events to prevent fake app-exit triggers.
  */
 class AppEventService : AccessibilityService() {
 
     private var lastDispatchedPkg = ""
+
+    private val ignoredSystemPackages = setOf(
+        "com.android.systemui",
+        "android",
+        "com.google.android.inputmethod.latin",
+        "com.google.android.permissioncontroller",
+        "com.android.permissioncontroller",
+        "com.android.settings.intelligence",
+        "com.samsung.android.honeyboard",
+        "com.touchtype.swiftkey",
+        "com.sohu.inputmethod.sogou",
+        "com.baidu.input"
+    )
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null || event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
 
         val pkgName = event.packageName?.toString() ?: return
         if (pkgName.isBlank() || pkgName == lastDispatchedPkg || pkgName == packageName) return
+        
+        // Ignore system overlays, keyboards, volume sliders, and transient dialogs
+        if (ignoredSystemPackages.contains(pkgName)) return
+
         lastDispatchedPkg = pkgName
 
         // Instant notification to AutoTweakService with zero polling delay
