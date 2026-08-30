@@ -7,137 +7,268 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
-import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import kotlin.concurrent.thread
 
 class BackupService : Service() {
 
-    private val CHANNEL_ID = "backup_service_channel"
-    private val NOTIFICATION_ID = 501
+    companion object {
+        const val ACTION_BACKUP = "ACTION_BACKUP"
+        const val ACTION_RESTORE = "ACTION_RESTORE"
+        const val ACTION_BATCH_BACKUP = "ACTION_BATCH_BACKUP"
+        const val ACTION_BATCH_RESTORE = "ACTION_BATCH_RESTORE"
+        const val ACTION_VAULT_UPDATED = "com.example.phonecontrol.VAULT_UPDATED"
+
+        private const val PROGRESS_CHANNEL_ID = "vault_progress_channel"
+        private const val COMPLETE_CHANNEL_ID = "vault_complete_channel"
+        private const val NOTIFICATION_ID_PROGRESS = 501
+        private const val NOTIFICATION_ID_COMPLETE = 502
+    }
 
     override fun onCreate() {
         super.onCreate()
-        createNotificationChannel()
+        createNotificationChannels()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
-        val appName = intent?.getStringExtra("app_name") ?: "Task"
         
-        // Immediate startForeground to prevent system crash
-        val notification = createNotification("Initializing $appName...")
+        val initialNotif = buildProgressNotification("Vault Task Started", "Preparing queue...", 0, true)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            startForeground(NOTIFICATION_ID_PROGRESS, initialNotif, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         } else {
-            startForeground(NOTIFICATION_ID, notification)
+            startForeground(NOTIFICATION_ID_PROGRESS, initialNotif)
         }
 
-        val packageName = intent?.getStringExtra("package_name") ?: ""
         val masterPath = intent?.getStringExtra("master_path") ?: BackupManager.getAutoVaultPath()
-        val backupPath = intent?.getStringExtra("backup_path") ?: ""
         val notes = intent?.getStringExtra("notes") ?: ""
         val includeApk = intent?.getBooleanExtra("include_apk", true) ?: true
         val includeData = intent?.getBooleanExtra("include_data", true) ?: true
         val includeObb = intent?.getBooleanExtra("include_obb", false) ?: false
 
-        if (action == "ACTION_BACKUP") {
-            startBackup(packageName, appName, masterPath, notes, includeApk, includeData, includeObb)
-        } else if (action == "ACTION_RESTORE") {
-            startRestore(backupPath, appName)
-        } else {
-            // Safety: Always call startForeground if service was started as foreground
-            val notification = createNotification("Service running...")
-            startForeground(NOTIFICATION_ID, notification)
-            stopSelf()
+        val restoreApk = intent?.getBooleanExtra("restore_apk", true) ?: true
+        val restoreData = intent?.getBooleanExtra("restore_data", true) ?: true
+        val restoreObb = intent?.getBooleanExtra("restore_obb", true) ?: true
+
+        when (action) {
+            ACTION_BATCH_BACKUP -> {
+                val packages = intent.getStringArrayListExtra("package_list") ?: arrayListOf()
+                startBatchBackup(packages, masterPath, notes, includeApk, includeData, includeObb)
+            }
+            ACTION_BATCH_RESTORE -> {
+                val backupPaths = intent.getStringArrayListExtra("backup_paths") ?: arrayListOf()
+                startBatchRestore(backupPaths, restoreApk, restoreData, restoreObb)
+            }
+            ACTION_BACKUP -> {
+                val pkg = intent.getStringExtra("package_name") ?: ""
+                startBatchBackup(arrayListOf(pkg), masterPath, notes, includeApk, includeData, includeObb)
+            }
+            ACTION_RESTORE -> {
+                val backupPath = intent.getStringExtra("backup_path") ?: ""
+                startBatchRestore(arrayListOf(backupPath), restoreApk, restoreData, restoreObb)
+            }
+            else -> {
+                stopForeground(true)
+                stopSelf()
+            }
         }
 
         return START_NOT_STICKY
     }
 
-    private fun startBackup(pkg: String, name: String, path: String, notes: String, includeApk: Boolean, includeData: Boolean, includeObb: Boolean) {
+    private fun startBatchBackup(
+        packages: List<String>,
+        path: String,
+        notes: String,
+        includeApk: Boolean,
+        includeData: Boolean,
+        includeObb: Boolean
+    ) {
         thread {
+            var successCount = 0
+            var failCount = 0
+            val total = packages.size
+
             try {
-                updateNotification("Preparing Backup", name, 0)
-                val info = AppBackupManager.getAppInfo(this, pkg)?.copy(notes = notes)
-                if (info != null) {
-                    val success = AppBackupManager.performBackup(this, info, path, includeApk, includeData, includeObb) { progress, status ->
-                        updateNotification("Backing up $name", status, progress)
+                for ((index, pkg) in packages.withIndex()) {
+                    val appNum = index + 1
+                    val info = AppBackupManager.getAppInfo(this, pkg)?.copy(notes = notes)
+                    val appName = info?.appName ?: pkg
+
+                    updateProgress("📦 Backing up ($appNum/$total)", "Processing $appName...", ((appNum - 1) * 100) / total)
+
+                    if (info != null) {
+                        val success = AppBackupManager.performBackup(this, info, path, includeApk, includeData, includeObb) { progress, status ->
+                            val overall = (((appNum - 1) * 100) + progress) / total
+                            updateProgress("📦 Backing up ($appNum/$total): $appName", "$status ($progress%)", overall)
+                        }
+                        if (success) successCount++ else failCount++
+                    } else {
+                        failCount++
                     }
-                    finishService(if (success) "Backup Successful: $name" else "Backup Failed: $name")
+                }
+
+                val sizeOutput = ShellUtils.runAsRoot("du -sh $path 2>/dev/null | tail -n 1 | cut -f1").output.trim()
+                val sizeText = if (sizeOutput.isNotBlank()) " • Total Vault: $sizeOutput" else ""
+
+                if (successCount > 0) {
+                    showCompletionNotification(
+                        title = "🎉 Batch Backup Completed!",
+                        text = "$successCount of $total apps backed up successfully.$sizeText${if (failCount > 0) " ($failCount failed)" else ""}"
+                    )
                 } else {
-                    finishService("Failed to read app info for $pkg")
+                    showFailureNotification("❌ Backup Failed", "Could not backup selected applications.")
                 }
+
+                sendBroadcast(Intent(ACTION_VAULT_UPDATED).setPackage(packageName))
             } catch (e: Exception) {
-                Log.e("BackupService", "Backup crashed", e)
-                finishService("Critical Error: ${e.message}")
+                Log.e("BackupService", "Batch Backup error", e)
+                showFailureNotification("❌ Backup Error", e.localizedMessage ?: "Unknown error occurred.")
+            } finally {
+                stopForeground(true)
+                stopSelf()
             }
         }
     }
 
-    private fun startRestore(path: String, name: String) {
+    private fun startBatchRestore(
+        backupPaths: List<String>,
+        restoreApk: Boolean,
+        restoreData: Boolean,
+        restoreObb: Boolean
+    ) {
         thread {
+            var successCount = 0
+            var failCount = 0
+            val total = backupPaths.size
+
             try {
-                updateNotification("Preparing Restore", name, 0)
-                val success = AppBackupManager.performRestore(this, path) { progress, status ->
-                    updateNotification("Restoring $name", status, progress)
+                for ((index, bPath) in backupPaths.withIndex()) {
+                    val appNum = index + 1
+                    val infoFile = ShellUtils.runAsRoot("cat $bPath/info.json").output
+                    val appName = try {
+                        org.json.JSONObject(infoFile).optString("app_name", "App")
+                    } catch (e: Exception) { "App" }
+
+                    updateProgress("🔄 Restoring ($appNum/$total)", "Verifying $appName...", ((appNum - 1) * 100) / total)
+
+                    val success = AppBackupManager.performRestore(this, bPath, restoreApk, restoreData, restoreObb) { progress, status ->
+                        val overall = (((appNum - 1) * 100) + progress) / total
+                        updateProgress("🔄 Restoring ($appNum/$total): $appName", "$status ($progress%)", overall)
+                    }
+
+                    if (success) successCount++ else failCount++
                 }
-                finishService(if (success) "Restore Successful: $name" else "Restore Failed: $name")
+
+                if (successCount > 0) {
+                    showCompletionNotification(
+                        title = "🎉 Batch Restore Completed!",
+                        text = "$successCount of $total apps restored and permissions synced.${if (failCount > 0) " ($failCount failed)" else ""}"
+                    )
+                } else {
+                    showFailureNotification("❌ Restore Failed", "Could not restore selected backups.")
+                }
+
+                sendBroadcast(Intent(ACTION_VAULT_UPDATED).setPackage(packageName))
             } catch (e: Exception) {
-                Log.e("BackupService", "Restore crashed", e)
-                finishService("Critical Error: ${e.message}")
+                Log.e("BackupService", "Batch Restore error", e)
+                showFailureNotification("❌ Restore Error", e.localizedMessage ?: "Unknown error occurred.")
+            } finally {
+                stopForeground(true)
+                stopSelf()
             }
         }
     }
 
-    private fun createNotification(text: String): Notification {
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("App Vault")
-            .setContentText(text)
-            .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setOngoing(true)
-            .setProgress(100, 0, true)
-            .build()
-    }
+    private fun buildProgressNotification(title: String, text: String, progress: Int, indeterminate: Boolean): Notification {
+        val openIntent = Intent(this, VaultActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, openIntent,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE else PendingIntent.FLAG_UPDATE_CURRENT
+        )
 
-    private fun updateNotification(title: String, text: String, progress: Int) {
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+        return NotificationCompat.Builder(this, PROGRESS_CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(text)
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
-            .setProgress(100, progress, false)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(pendingIntent)
+            .setProgress(100, progress, indeterminate)
+            .setCategory(NotificationCompat.CATEGORY_PROGRESS)
             .build()
-        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(NOTIFICATION_ID, notification)
     }
 
-    private fun finishService(result: String) {
+    private fun updateProgress(title: String, text: String, progress: Int) {
+        val notification = buildProgressNotification(title, text, progress, false)
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Task Finished")
-            .setContentText(result)
+        manager.notify(NOTIFICATION_ID_PROGRESS, notification)
+    }
+
+    private fun showCompletionNotification(title: String, text: String) {
+        val openIntent = Intent(this, AppRestoreListActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this, 1, openIntent,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE else PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val notification = NotificationCompat.Builder(this, COMPLETE_CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .build()
+
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(NOTIFICATION_ID_COMPLETE, notification)
+    }
+
+    private fun showFailureNotification(title: String, text: String) {
+        val notification = NotificationCompat.Builder(this, COMPLETE_CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setSmallIcon(android.R.drawable.stat_notify_error)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .build()
-        
-        stopForeground(true)
-        manager.notify(NOTIFICATION_ID + 1, notification)
-        stopSelf()
+
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(NOTIFICATION_ID_COMPLETE + 1, notification)
     }
 
-    private fun createNotificationChannel() {
+    private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val serviceChannel = NotificationChannel(
-                CHANNEL_ID,
-                "Backup Service Channel",
-                NotificationManager.IMPORTANCE_LOW
-            )
             val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(serviceChannel)
+
+            val progressChannel = NotificationChannel(
+                PROGRESS_CHANNEL_ID,
+                "Vault Task Progress",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Shows live real-time progress for Backup and Restore operations"
+                setSound(null, null)
+                enableVibration(false)
+            }
+            manager.createNotificationChannel(progressChannel)
+
+            val completeChannel = NotificationChannel(
+                COMPLETE_CHANNEL_ID,
+                "Vault Task Completion",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Notifies when Backup or Restore tasks finish successfully"
+                enableVibration(true)
+            }
+            manager.createNotificationChannel(completeChannel)
         }
     }
 

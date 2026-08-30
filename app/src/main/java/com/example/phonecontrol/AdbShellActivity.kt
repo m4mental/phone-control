@@ -5,7 +5,9 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.net.Uri
 import android.os.Bundle
+import android.provider.OpenableColumns
 import android.text.Spannable
 import android.text.SpannableStringBuilder
 import android.text.style.ForegroundColorSpan
@@ -42,6 +44,12 @@ class AdbShellActivity : AppCompatActivity() {
         }
     }
 
+    private val packagePickerLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri != null) {
+            handlePackageInstallation(uri)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_adb_shell)
@@ -65,8 +73,13 @@ class AdbShellActivity : AppCompatActivity() {
             appInspectorLauncher.launch(Intent(this, AppInspectorActivity::class.java))
         }
 
+        findViewById<View>(R.id.btnForceInstallToolbar).setOnClickListener {
+            launchPackagePicker()
+        }
+
         findViewById<ImageButton>(R.id.btnProcessMonitor).setOnClickListener { runSystemSnapshot() }
         findViewById<Chip>(R.id.chipLiveStats).setOnClickListener { runSystemSnapshot() }
+        findViewById<Chip>(R.id.chipForceInstallApp).setOnClickListener { launchPackagePicker() }
 
         findViewById<ImageButton>(R.id.btnSendAdb).setOnClickListener {
             handleCommandSubmission(etInput.text.toString())
@@ -90,6 +103,58 @@ class AdbShellActivity : AppCompatActivity() {
         // Initial prompt
         tvOutput.text = ""
         appendColoredText("root@phonecontrol:~# ", Color.parseColor("#00E676"))
+    }
+
+    private fun launchPackagePicker() {
+        packagePickerLauncher.launch(arrayOf(
+            "application/vnd.android.package-archive",
+            "application/zip",
+            "application/octet-stream",
+            "*/*"
+        ))
+    }
+
+    private fun handlePackageInstallation(uri: Uri) {
+        var fileName = "package.apk"
+        try {
+            contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (nameIndex != -1 && cursor.moveToFirst()) {
+                    fileName = cursor.getString(nameIndex)
+                }
+            }
+        } catch (e: Exception) {}
+
+        appendColoredText("\n📦 [FORCE PACKAGE INSTALLER] Starting: $fileName\n", Color.parseColor("#00E5FF"))
+        Toast.makeText(this, "Installing $fileName...", Toast.LENGTH_SHORT).show()
+
+        thread {
+            val result = PackageInstallerManager.installPackage(this, uri, fileName) { progressText ->
+                runOnUiThread {
+                    appendColoredText("➔ $progressText\n", Color.parseColor("#FFD700"))
+                    scrollOutput.post { scrollOutput.fullScroll(NestedScrollView.FOCUS_DOWN) }
+                }
+            }
+
+            runOnUiThread {
+                if (result.success) {
+                    appendColoredText("🎉 ${result.message}\n", Color.parseColor("#00E676"))
+                    if (result.rawOutput.isNotBlank()) {
+                        appendColoredText(result.rawOutput + "\n", Color.LTGRAY)
+                    }
+                    Toast.makeText(this, "Success: $fileName installed!", Toast.LENGTH_LONG).show()
+                } else {
+                    appendColoredText("❌ ${result.message}\n", Color.parseColor("#FF5252"))
+                    if (result.rawOutput.isNotBlank()) {
+                        appendColoredText(result.rawOutput + "\n", Color.LTGRAY)
+                    }
+                    Toast.makeText(this, "Install Failed: ${result.message}", Toast.LENGTH_LONG).show()
+                }
+
+                appendColoredText("root@phonecontrol:~# ", Color.parseColor("#00E676"))
+                scrollOutput.post { scrollOutput.fullScroll(NestedScrollView.FOCUS_DOWN) }
+            }
+        }
     }
 
     private fun setupHackerBar() {
@@ -121,7 +186,7 @@ class AdbShellActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnKeyGrep).setOnClickListener { insertTextAtCursor("grep ") }
         findViewById<Button>(R.id.btnKeyPs).setOnClickListener { insertTextAtCursor("ps -A ") }
         findViewById<Button>(R.id.btnKeyDumpsys).setOnClickListener { insertTextAtCursor("dumpsys ") }
-        findViewById<Button>(R.id.btnKeyLogcat).setOnClickListener { executeCommand("logcat -d | tail -n 50") }
+        findViewById<Button>(R.id.btnKeyLogcat).setOnClickListener { insertTextAtCursor("logcat -d ") }
         findViewById<Button>(R.id.btnKeyClear).setOnClickListener {
             tvOutput.text = ""
             appendColoredText("root@phonecontrol:~# ", Color.parseColor("#00E676"))
@@ -129,74 +194,66 @@ class AdbShellActivity : AppCompatActivity() {
     }
 
     private fun setupQuickChips() {
-        findViewById<Chip>(R.id.chipGetProp).setOnClickListener { executeCommand("getprop ro.product.model; getprop ro.build.version.release") }
-        findViewById<Chip>(R.id.chipLs).setOnClickListener { executeCommand("ls -la /data/data | head -n 30") }
-        findViewById<Chip>(R.id.chipUptime).setOnClickListener { executeCommand("uptime; cat /proc/loadavg") }
-        
-        findViewById<Chip>(R.id.chipUfs).setOnClickListener { 
-            executeCommand("cat /sys/block/sd*/device/model 2>/dev/null; echo 'Storage Health:'; cat /sys/class/scsi_host/host*/health_index 2>/dev/null || df -h /data") 
+        findViewById<Chip>(R.id.chipGetProp).setOnClickListener {
+            executeCommand("getprop ro.product.model; getprop ro.build.version.release; getprop ro.board.platform")
         }
-        findViewById<Chip>(R.id.chipNet).setOnClickListener { 
-            executeCommand("ip -br addr; echo 'Routing Table:'; ip route | head -n 10") 
+        findViewById<Chip>(R.id.chipLs).setOnClickListener {
+            executeCommand("ls -l /data/data | head -n 20")
         }
-
-        findViewById<Chip>(R.id.chipEnableApp).setOnClickListener { showEnableAppDialog() }
-        findViewById<Chip>(R.id.chipDisableApp).setOnClickListener { showDisableAppDialog() }
-        findViewById<Chip>(R.id.chipDeleteApp).setOnClickListener { showDeleteAppDialog() }
+        findViewById<Chip>(R.id.chipUptime).setOnClickListener {
+            executeCommand("uptime; cat /proc/loadavg")
+        }
+        findViewById<Chip>(R.id.chipEnableApp).setOnClickListener {
+            showEnableAppDialog()
+        }
+        findViewById<Chip>(R.id.chipDisableApp).setOnClickListener {
+            showDisableAppDialog()
+        }
+        findViewById<Chip>(R.id.chipDeleteApp).setOnClickListener {
+            showDeleteAppDialog()
+        }
+        findViewById<Chip>(R.id.chipUfs).setOnClickListener {
+            executeCommand("df -h /data /system /vendor /metadata")
+        }
+        findViewById<Chip>(R.id.chipNet).setOnClickListener {
+            executeCommand("ip route; ping -c 3 8.8.8.8")
+        }
     }
 
     private fun insertTextAtCursor(text: String) {
         val start = etInput.selectionStart.coerceAtLeast(0)
         val end = etInput.selectionEnd.coerceAtLeast(0)
-        etInput.text.replace(start.coerceAtMost(end), start.coerceAtLeast(end), text, 0, text.length)
-        etInput.setSelection(start + text.length)
-        etInput.requestFocus()
+        etInput.text.replace(Math.min(start, end), Math.max(start, end), text, 0, text.length)
     }
 
-    private fun copyOutputToClipboard() {
-        val text = tvOutput.text.toString()
-        if (text.isBlank()) {
-            Toast.makeText(this, "Terminal is empty", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = ClipData.newPlainText("Terminal Output", text)
-        clipboard.setPrimaryClip(clip)
-        Toast.makeText(this, "📋 Terminal output copied to clipboard!", Toast.LENGTH_SHORT).show()
-    }
+    private fun handleCommandSubmission(cmd: String) {
+        val trimmed = cmd.trim()
+        if (trimmed.isEmpty()) return
 
-    private fun shareOutputLog() {
-        val text = tvOutput.text.toString()
-        if (text.isBlank()) {
-            Toast.makeText(this, "Terminal is empty", Toast.LENGTH_SHORT).show()
+        if (trimmed.equals("clear", ignoreCase = true)) {
+            tvOutput.text = ""
+            appendColoredText("root@phonecontrol:~# ", Color.parseColor("#00E676"))
+            etInput.setText("")
             return
         }
-        val sendIntent = Intent().apply {
-            action = Intent.ACTION_SEND
-            putExtra(Intent.EXTRA_TEXT, text)
-            type = "text/plain"
-        }
-        startActivity(Intent.createChooser(sendIntent, "Share Terminal Log"))
+
+        executeCommand(trimmed)
     }
 
     private fun runSystemSnapshot() {
-        appendColoredText("\n📊 [GATHERING LIVE 8-CORE SYSTEM SNAPSHOT...]\n", Color.parseColor("#00E5FF"))
+        appendColoredText("\n⚡ Fetching Live Real-Time System Snapshot...\n", Color.parseColor("#00E5FF"))
         thread {
-            val cpuFreq = ShellUtils.runAsRoot("cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq 2>/dev/null").output.trim()
-            val memInfo = ShellUtils.runAsRoot("free -m").output.trim()
-            val topApps = ShellUtils.runAsRoot("dumpsys cpuinfo | grep -E '[0-9]+% [0-9]+/' | head -n 5").output.trim()
-            val temp = ShellUtils.runAsRoot("cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null").output.trim()
+            val cpuFreq = ShellUtils.runAsRoot("cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq").output
+            val memInfo = ShellUtils.runAsRoot("free -m").output
+            val topApps = ShellUtils.runAsRoot("dumpsys cpuinfo | head -n 8").output
 
             runOnUiThread {
                 appendColoredText("----------------------------------------\n", Color.DKGRAY)
-                val tempC = temp.toIntOrNull()?.let { it / 1000 } ?: 0
-                appendColoredText("🌡️ SoC Temperature: ${tempC}°C\n", if (tempC > 45) Color.RED else Color.GREEN)
-                
-                appendColoredText("⚡ CPU Frequencies (Cores 0-7):\n", Color.YELLOW)
-                val freqs = cpuFreq.split("\n").map { (it.trim().toIntOrNull() ?: 0) / 1000 }
-                freqs.forEachIndexed { index, mhz ->
-                    val coreType = if (index >= 6) "Big Cortex-A715" else "Little Cortex-A510"
-                    appendColoredText("  Core $index ($coreType): ${mhz} MHz\n", Color.CYAN)
+                appendColoredText("📊 CPU CORE FREQUENCIES (kHz):\n", Color.parseColor("#00E5FF"))
+                val lines = cpuFreq.split("\n").filter { it.isNotBlank() }
+                for ((i, f) in lines.withIndex()) {
+                    val mhz = (f.trim().toLongOrNull() ?: 0) / 1000
+                    appendColoredText("  Core #$i: ${mhz} MHz\n", Color.GREEN)
                 }
 
                 appendColoredText("\n🧠 Memory State:\n$memInfo\n", Color.LTGRAY)
@@ -279,16 +336,23 @@ class AdbShellActivity : AppCompatActivity() {
             "reboot recovery" to "Restarts the phone into Recovery mode."
         )
 
-        for (tip in tips) {
-            val tipView = layoutInflater.inflate(R.layout.item_adb_tip, container, false)
-            tipView.findViewById<TextView>(R.id.tvTipCommand).text = tip.first
-            tipView.findViewById<TextView>(R.id.tvTipDesc).text = tip.second
-            tipView.setOnClickListener {
-                etInput.setText(tip.first.substringBefore(" <"))
-                dialog.dismiss()
-                etInput.requestFocus()
+        for ((cmd, desc) in tips) {
+            val tv = TextView(this).apply {
+                text = "⚡ $cmd\n$desc"
+                setTextColor(Color.WHITE)
+                textSize = 13f
+                setPadding(20, 20, 20, 20)
+                setBackgroundColor(Color.parseColor("#1C1C20"))
+                setOnClickListener {
+                    insertTextAtCursor(cmd)
+                    dialog.dismiss()
+                }
             }
-            container.addView(tipView)
+            val params = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(0, 0, 0, 16) }
+            container.addView(tv, params)
         }
 
         dialog.setContentView(view)
@@ -296,54 +360,63 @@ class AdbShellActivity : AppCompatActivity() {
     }
 
     private fun showSecurityCheck() {
-        val executor = ContextCompat.getMainExecutor(this)
-        val biometricPrompt = BiometricPrompt(this, executor, object : BiometricPrompt.AuthenticationCallback() {
-            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                super.onAuthenticationSucceeded(result)
-                runOnUiThread {
+        val prefs = getSharedPreferences("app_security", MODE_PRIVATE)
+        val isBioEnabled = prefs.getBoolean("biometric_terminal", false)
+
+        if (!isBioEnabled) {
+            findViewById<View>(android.R.id.content).visibility = View.VISIBLE
+            return
+        }
+
+        val biometricManager = BiometricManager.from(this)
+        if (biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS) {
+            val executor = ContextCompat.getMainExecutor(this)
+            val prompt = BiometricPrompt(this, executor, object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    super.onAuthenticationSucceeded(result)
                     findViewById<View>(android.R.id.content).visibility = View.VISIBLE
-                    Toast.makeText(this@AdbShellActivity, "Terminal Access Granted", Toast.LENGTH_SHORT).show()
                 }
-            }
 
-            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                super.onAuthenticationError(errorCode, errString)
-                Toast.makeText(this@AdbShellActivity, "Authentication failed: $errString", Toast.LENGTH_LONG).show()
-                finish()
-            }
-        })
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    super.onAuthenticationError(errorCode, errString)
+                    Toast.makeText(this@AdbShellActivity, "Terminal Locked: $errString", Toast.LENGTH_SHORT).show()
+                    finish()
+                }
+            })
 
-        val promptInfo = BiometricPrompt.PromptInfo.Builder()
-            .setTitle("Terminal Security")
-            .setSubtitle("Authenticate fingerprint/PIN to open Root Shell")
-            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL)
-            .build()
+            val promptInfo = BiometricPrompt.PromptInfo.Builder()
+                .setTitle("Root Terminal Security")
+                .setSubtitle("Authenticate fingerprint to access superuser shell")
+                .setNegativeButtonText("Cancel")
+                .build()
 
-        biometricPrompt.authenticate(promptInfo)
+            prompt.authenticate(promptInfo)
+        } else {
+            findViewById<View>(android.R.id.content).visibility = View.VISIBLE
+        }
     }
 
-    private fun handleCommandSubmission(cmd: String) {
-        if (cmd.isBlank()) return
-        
-        val lowerCmd = cmd.lowercase()
-        if (lowerCmd.contains("rm -rf /") || lowerCmd.contains("reboot bootloader") || lowerCmd.contains("dd if=")) {
-            AlertDialog.Builder(this)
-                .setTitle("⚠️ CRITICAL SAFEGUARD")
-                .setMessage("You are about to execute a high-risk destructive command: \"$cmd\"\n\nAre you absolutely certain?")
-                .setPositiveButton("EXECUTE") { _, _ -> executeCommand(cmd) }
-                .setNegativeButton("CANCEL", null)
-                .show()
-        } else {
-            executeCommand(cmd)
+    private fun copyOutputToClipboard() {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = ClipData.newPlainText("Terminal Log", tvOutput.text)
+        clipboard.setPrimaryClip(clip)
+        Toast.makeText(this, "Terminal output copied!", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun shareOutputLog() {
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "PhoneControl Terminal Output")
+            putExtra(Intent.EXTRA_TEXT, tvOutput.text.toString())
         }
+        startActivity(Intent.createChooser(shareIntent, "Share Terminal Log via"))
     }
 
     private fun loadHistory() {
         val prefs = getSharedPreferences("adb_history", MODE_PRIVATE)
         val historySet = prefs.getStringSet("history", emptySet())
         if (historySet != null) {
-            commandHistory.clear()
-            commandHistory.addAll(historySet.toList())
+            commandHistory.addAll(historySet)
         }
     }
 

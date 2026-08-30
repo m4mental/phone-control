@@ -17,6 +17,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.tabs.TabLayout
+import kotlin.concurrent.thread
 
 class AppInspectorActivity : AppCompatActivity() {
 
@@ -25,66 +26,22 @@ class AppInspectorActivity : AppCompatActivity() {
     private lateinit var listView: ListView
     private val appList = mutableListOf<AdbAppItem>()
     private lateinit var allApps: List<ApplicationInfo>
+    private lateinit var pm: PackageManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_app_inspector)
 
+        pm = packageManager
         findViewById<MaterialToolbar>(R.id.toolbarInspector).setNavigationOnClickListener { finish() }
 
         tabLayout = findViewById(R.id.tabLayoutApps)
         etSearch = findViewById(R.id.etSearchApps)
         listView = findViewById(R.id.lvAdbApps)
 
-        val pm = packageManager
         allApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
 
-        fun updateList(isSystem: Boolean, query: String = "") {
-            appList.clear()
-            for (app in allApps) {
-                val sysApp = (app.flags and ApplicationInfo.FLAG_SYSTEM) != 0
-                if (sysApp != isSystem) continue
-                
-                val label = pm.getApplicationLabel(app).toString()
-                val pkg = app.packageName
-                
-                if (query.isNotEmpty() && !label.lowercase().contains(query) && !pkg.lowercase().contains(query)) continue
-
-                // Detect Status
-                var tag = ""
-                val freezerApps = FreezerManager.getFrozenApps(this)
-                
-                if (!app.enabled) tag = "DISABLED"
-                else if (freezerApps.contains(pkg)) {
-                    tag = if (FreezerManager.isSpecialFreeze(this, pkg)) "FROZEN (SPECIAL)" else "FROZEN"
-                } else if ((app.flags and ApplicationInfo.FLAG_STOPPED) != 0) tag = "STOPPED"
-                else if ((app.flags and (1 shl 27)) != 0) tag = "HIDDEN" // FLAG_INSTALLED check (approx)
-
-                appList.add(AdbAppItem(label, pkg, pm.getApplicationIcon(app), tag))
-            }
-            appList.sortBy { it.name.lowercase() }
-            
-            val adapter = object : ArrayAdapter<AdbAppItem>(this, R.layout.item_adb_app, appList) {
-                override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-                    val v = convertView ?: layoutInflater.inflate(R.layout.item_adb_app, parent, false)
-                    val item = getItem(position)!!
-                    v.findViewById<ImageView>(R.id.ivAdbAppIcon).setImageDrawable(item.icon)
-                    v.findViewById<TextView>(R.id.tvAdbAppName).text = item.name
-                    v.findViewById<TextView>(R.id.tvAdbAppPackage).text = item.packageName
-                    val tvTag = v.findViewById<TextView>(R.id.tvAdbAppTag)
-                    if (item.tag.isNotEmpty()) {
-                        tvTag.text = item.tag
-                        tvTag.visibility = View.VISIBLE
-                    } else {
-                        tvTag.visibility = View.GONE
-                    }
-                    return v
-                }
-            }
-            listView.adapter = adapter
-        }
-
-        updateList(false) // Initial: User Apps
+        updateList(false)
 
         tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
             override fun onTabSelected(tab: TabLayout.Tab?) {
@@ -117,8 +74,57 @@ class AppInspectorActivity : AppCompatActivity() {
         }
     }
 
+    private fun updateList(isSystem: Boolean, query: String = "") {
+        appList.clear()
+        allApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+        val freezerApps = FreezerManager.getFrozenApps(this)
+
+        for (app in allApps) {
+            val sysApp = (app.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+            if (sysApp != isSystem) continue
+
+            val label = pm.getApplicationLabel(app).toString()
+            val pkg = app.packageName
+
+            if (query.isNotEmpty() && !label.lowercase().contains(query) && !pkg.lowercase().contains(query)) continue
+
+            var tag = ""
+            if (!app.enabled) {
+                tag = "DISABLED"
+            } else if (freezerApps.contains(pkg)) {
+                tag = if (FreezerManager.isSpecialFreeze(this, pkg)) "FROZEN (SPECIAL)" else "FROZEN"
+            } else if ((app.flags and ApplicationInfo.FLAG_STOPPED) != 0) {
+                tag = "STOPPED"
+            }
+
+            appList.add(AdbAppItem(label, pkg, pm.getApplicationIcon(app), tag, !app.enabled || freezerApps.contains(pkg)))
+        }
+        appList.sortBy { it.name.lowercase() }
+
+        val adapter = object : ArrayAdapter<AdbAppItem>(this, R.layout.item_adb_app, appList) {
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val v = convertView ?: layoutInflater.inflate(R.layout.item_adb_app, parent, false)
+                val item = getItem(position)!!
+                v.findViewById<ImageView>(R.id.ivAdbAppIcon).setImageDrawable(item.icon)
+                v.findViewById<TextView>(R.id.tvAdbAppName).text = item.name
+                v.findViewById<TextView>(R.id.tvAdbAppPackage).text = item.packageName
+                val tvTag = v.findViewById<TextView>(R.id.tvAdbAppTag)
+                if (item.tag.isNotEmpty()) {
+                    tvTag.text = item.tag
+                    tvTag.visibility = View.VISIBLE
+                } else {
+                    tvTag.visibility = View.GONE
+                }
+                return v
+            }
+        }
+        listView.adapter = adapter
+    }
+
     private fun showAppOptions(item: AdbAppItem) {
-        val options = arrayOf("Select for Terminal", "Backup App & Data", "Copy Package Name")
+        val toggleAction = if (item.isDisabledOrFrozen) "✅ Enable / Unfreeze App" else "🛑 Disable / Freeze App"
+        val options = arrayOf("Select for Terminal", toggleAction, "⚡ Force Stop App", "📋 Copy Package Name")
+
         AlertDialog.Builder(this)
             .setTitle(item.name)
             .setItems(options) { _, which ->
@@ -129,43 +135,50 @@ class AppInspectorActivity : AppCompatActivity() {
                         setResult(RESULT_OK, data)
                         finish()
                     }
-                    1 -> showBackupDialog(item)
+                    1 -> {
+                        toggleAppStatus(item)
+                    }
                     2 -> {
+                        thread {
+                            ShellUtils.runAsRoot("am force-stop ${item.packageName}")
+                            runOnUiThread {
+                                Toast.makeText(this, "Force Stopped ${item.name}", Toast.LENGTH_SHORT).show()
+                                updateList(tabLayout.selectedTabPosition == 1, etSearch.text.toString().lowercase())
+                            }
+                        }
+                    }
+                    3 -> {
                         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         val clip = ClipData.newPlainText("Package Name", item.packageName)
                         clipboard.setPrimaryClip(clip)
-                        Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "Copied: ${item.packageName}", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
             .show()
     }
 
-    private fun showBackupDialog(item: AdbAppItem) {
-        val et = EditText(this)
-        et.hint = "Add a custom note (e.g. Stable version)"
-        
-        AlertDialog.Builder(this)
-            .setTitle("Backup ${item.name}")
-            .setMessage("Full APK and Data backup. This may take a while for large apps.")
-            .setView(et)
-            .setPositiveButton("START BACKUP") { _, _ ->
-                val notes = et.text.toString()
-                val masterPath = BackupManager.getAutoVaultPath()
-                
-                val intent = Intent(this, BackupService::class.java).apply {
-                    action = "ACTION_BACKUP"
-                    putExtra("package_name", item.packageName)
-                    putExtra("app_name", item.name)
-                    putExtra("master_path", masterPath)
-                    putExtra("notes", notes)
+    private fun toggleAppStatus(item: AdbAppItem) {
+        thread {
+            if (item.isDisabledOrFrozen) {
+                // Enable & Unfreeze
+                ShellUtils.runAsRoot("pm enable ${item.packageName} 2>/dev/null; pm unsuspend ${item.packageName} 2>/dev/null; am unfreeze ${item.packageName} 2>/dev/null; am set-standby-bucket ${item.packageName} active 2>/dev/null")
+                FreezerManager.unfreezeApp(item.packageName)
+                runOnUiThread {
+                    Toast.makeText(this, "Enabled ${item.name}", Toast.LENGTH_SHORT).show()
+                    updateList(tabLayout.selectedTabPosition == 1, etSearch.text.toString().lowercase())
                 }
-                startForegroundService(intent)
-                Toast.makeText(this, "Backup started in background", Toast.LENGTH_SHORT).show()
+            } else {
+                // Disable & Freeze
+                ShellUtils.runAsRoot("am force-stop ${item.packageName}; pm disable-user --user 0 ${item.packageName} 2>/dev/null; am freeze ${item.packageName} 2>/dev/null")
+                FreezerManager.freezeApp(this, item.packageName)
+                runOnUiThread {
+                    Toast.makeText(this, "Disabled & Frozen ${item.name}", Toast.LENGTH_SHORT).show()
+                    updateList(tabLayout.selectedTabPosition == 1, etSearch.text.toString().lowercase())
+                }
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+        }
     }
 
-    data class AdbAppItem(val name: String, val packageName: String, val icon: Drawable, val tag: String)
+    data class AdbAppItem(val name: String, val packageName: String, val icon: Drawable, val tag: String, val isDisabledOrFrozen: Boolean)
 }

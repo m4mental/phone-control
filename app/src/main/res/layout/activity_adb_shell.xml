@@ -37,6 +37,17 @@
             app:tint="@android:color/white" />
 
         <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnForceInstallToolbar"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end"
+            android:text="INSTALL"
+            android:textColor="#00E676"
+            app:icon="@android:drawable/stat_sys_download"
+            app:iconTint="#00E676" />
+
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnAppList"
             style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="wrap_content"
@@ -324,6 +335,17 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:orientation="horizontal">
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chipForceInstallApp"
+                style="@style/Widget.Material3.Chip.Assist"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="📦 Force Install Package"
+                android:textColor="#00E676"
+                app:chipIcon="@android:drawable/stat_sys_download"
+                app:chipIconTint="#00E676"
+                android:layout_marginEnd="6dp" />
 
             <com.google.android.material.chip.Chip
                 android:id="@+id/chipLiveStats"

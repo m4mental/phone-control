@@ -58,7 +58,7 @@ object AppBackupManager {
                 info.versionName ?: "Unknown",
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) info.longVersionCode else info.versionCode.toLong(),
                 date,
-                "", // Notes added later
+                "",
                 hasData = true,
                 hasApk = true
             )
@@ -85,7 +85,7 @@ object AppBackupManager {
 
             // 1. APK Backup
             if (includeApk) {
-                onProgress(10, "Extracting APK files...")
+                onProgress(15, "Extracting base APK...")
                 val apkPath = ShellUtils.runAsRoot("pm path ${info.packageName}").output
                     .split("\n")
                     .firstOrNull { it.startsWith("package:") }
@@ -98,28 +98,26 @@ object AppBackupManager {
 
             // 2. Data Backup (tar.gz)
             if (includeData) {
-                onProgress(40, "Flushing and compressing app data...")
+                onProgress(45, "Flushing and archiving app data...")
                 ShellUtils.runAsRoot("am force-stop ${info.packageName} && sync")
                 val dataPath = "/data/data/${info.packageName}"
                 val dataOutput = "$backupDir/data.tar.gz"
                 
-                // We use 'tar' with '--exclude' for cache to save space
                 val tarCmd = "tar -czf $dataOutput -C $dataPath . --exclude='cache' --exclude='code_cache'"
                 val tarResult = ShellUtils.runAsRoot(tarCmd)
                 
                 if (tarResult.exitCode != 0) {
-                    onProgress(50, "Data compression fallback...")
+                    onProgress(55, "Data compression fallback...")
                     ShellUtils.runAsRoot("cd $dataPath && tar -czf $dataOutput .")
                 }
             }
 
             // 3. OBB Backup
             if (includeObb) {
-                onProgress(70, "Compressing OBB data...")
+                onProgress(75, "Compressing OBB game data...")
                 val obbPath = "/sdcard/Android/obb/${info.packageName}"
                 val obbOutput = "$backupDir/obb.tar.gz"
                 
-                // Check if OBB directory exists
                 if (ShellUtils.runAsRoot("ls -d $obbPath").exitCode == 0) {
                     ShellUtils.runAsRoot("tar -czf $obbOutput -C $obbPath .")
                 }
@@ -144,11 +142,14 @@ object AppBackupManager {
     }
 
     /**
-     * Restore Engine: Restores APK and Data.
+     * Restore Engine: Granularly restores APK, Data, and/or OBB based on user selection.
      */
     fun performRestore(
         context: Context,
         backupPath: String,
+        restoreApk: Boolean = true,
+        restoreData: Boolean = true,
+        restoreObb: Boolean = true,
         onProgress: (Int, String) -> Unit
     ): Boolean {
         try {
@@ -159,34 +160,35 @@ object AppBackupManager {
             val hasData = infoJson.optBoolean("has_data", true)
             val hasObb = infoJson.optBoolean("has_obb", false)
 
-            // 1. Install APK if exists and requested
-            if (hasApk && ShellUtils.runAsRoot("ls $backupPath/base.apk").exitCode == 0) {
+            // 1. Install APK if selected & available
+            if (restoreApk && hasApk && ShellUtils.runAsRoot("ls $backupPath/base.apk").exitCode == 0) {
                 onProgress(20, "Installing APK...")
                 ShellUtils.runAsRoot("pm install -r $backupPath/base.apk")
             }
 
-            // 2. Restore Data
-            if (hasData && ShellUtils.runAsRoot("ls $backupPath/data.tar.gz").exitCode == 0) {
-                onProgress(50, "Restoring data folders...")
+            // 2. Restore Data if selected & available
+            if (restoreData && hasData && ShellUtils.runAsRoot("ls $backupPath/data.tar.gz").exitCode == 0) {
+                onProgress(50, "Restoring app data folders...")
                 ShellUtils.runAsRoot("am force-stop $pkg")
                 
                 val dataPath = "/data/data/$pkg"
-                // Check if directory exists (app must be installed)
                 if (ShellUtils.runAsRoot("ls -d $dataPath").exitCode == 0) {
                     ShellUtils.runAsRoot("find $dataPath -mindepth 1 -delete")
                     ShellUtils.runAsRoot("tar -xzf $backupPath/data.tar.gz -C $dataPath")
 
-                    // 3. Fix Permissions
-                    onProgress(70, "Fixing data permissions...")
-                    val uid = context.packageManager.getApplicationInfo(pkg, 0).uid
-                    ShellUtils.runAsRoot("chown -R $uid:$uid $dataPath")
-                    ShellUtils.runAsRoot("restorecon -R $dataPath")
+                    // Fix UID Permissions & SELinux Context
+                    onProgress(70, "Fixing data permissions & SELinux...")
+                    try {
+                        val uid = context.packageManager.getApplicationInfo(pkg, 0).uid
+                        ShellUtils.runAsRoot("chown -R $uid:$uid $dataPath")
+                        ShellUtils.runAsRoot("restorecon -R $dataPath")
+                    } catch (e: Exception) {}
                 }
             }
 
-            // 3. Restore OBB
-            if (hasObb && ShellUtils.runAsRoot("ls $backupPath/obb.tar.gz").exitCode == 0) {
-                onProgress(85, "Restoring OBB data...")
+            // 3. Restore OBB if selected & available
+            if (restoreObb && hasObb && ShellUtils.runAsRoot("ls $backupPath/obb.tar.gz").exitCode == 0) {
+                onProgress(85, "Restoring OBB media data...")
                 val obbPath = "/sdcard/Android/obb/$pkg"
                 ShellUtils.runAsRoot("mkdir -p $obbPath")
                 ShellUtils.runAsRoot("find $obbPath -mindepth 1 -delete")
