@@ -245,7 +245,7 @@ class AdbShellActivity : AppCompatActivity() {
         thread {
             val cpuFreq = ShellUtils.runAsRoot("cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq").output
             val memInfo = ShellUtils.runAsRoot("free -m").output
-            val topApps = ShellUtils.runAsRoot("dumpsys cpuinfo | head -n 8").output
+            val topApps = ShellUtils.runAsRoot("top -b -n 1 -m 6").output
 
             runOnUiThread {
                 appendColoredText("----------------------------------------\n", Color.DKGRAY)
@@ -257,7 +257,7 @@ class AdbShellActivity : AppCompatActivity() {
                 }
 
                 appendColoredText("\n🧠 Memory State:\n$memInfo\n", Color.LTGRAY)
-                appendColoredText("\n🔥 Top 5 CPU Hungry Apps:\n$topApps\n", Color.parseColor("#FFD700"))
+                appendColoredText("\n🔥 Live Real-Time Top Processes:\n$topApps\n", Color.parseColor("#FFD700"))
                 appendColoredText("----------------------------------------\n", Color.DKGRAY)
                 appendColoredText("root@phonecontrol:~# ", Color.parseColor("#00E676"))
 

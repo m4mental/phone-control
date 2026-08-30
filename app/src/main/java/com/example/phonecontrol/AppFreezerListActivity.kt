@@ -111,7 +111,7 @@ class AppFreezerListActivity : AppCompatActivity() {
                 val isSpecial = FreezerManager.isSpecialFreeze(this, pkg)
                 val isActive = activeSet.contains(pkg)
                 FrozenDisplayItem(pkg, name, icon, isSpecial, isActive)
-            }
+            }.sortedBy { it.name.lowercase() }
 
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
@@ -309,14 +309,17 @@ class AppFreezerListActivity : AppCompatActivity() {
         var adapter: AppPickerAdapter? = null
 
         val dialog = AlertDialog.Builder(this)
-            .setTitle("Select Apps to Hibernate")
+            .setTitle("Add Apps to Hibernate")
             .setView(dialogView)
-            .setPositiveButton("Save") { _, _ ->
+            .setPositiveButton("Add") { _, _ ->
                 val newlySelected = allApps.filter { it.isChecked }.map { it.info.packageName }.toSet()
-                FreezerManager.saveFrozenApps(this, newlySelected)
-                refreshList()
-                FreezerWidgetProvider.updateAllWidgets(this)
-                Toast.makeText(this, "Updated Hibernation list (${newlySelected.size} apps)", Toast.LENGTH_SHORT).show()
+                if (newlySelected.isNotEmpty()) {
+                    val updatedSet = currentFrozen.toMutableSet().apply { addAll(newlySelected) }
+                    FreezerManager.saveFrozenApps(this, updatedSet)
+                    refreshList()
+                    FreezerWidgetProvider.updateAllWidgets(this)
+                    Toast.makeText(this, "Added ${newlySelected.size} apps to Hibernation list", Toast.LENGTH_SHORT).show()
+                }
             }
             .setNegativeButton("Cancel", null)
             .create()
@@ -333,11 +336,18 @@ class AppFreezerListActivity : AppCompatActivity() {
         }
 
         thread {
-            allApps = cachedAppsList ?: getInstalledAppsList()
-            cachedAppsList = allApps
+            val availableApps = getInstalledAppsList().filter { !currentFrozen.contains(it.info.packageName) }
             
+            if (availableApps.isEmpty()) {
+                runOnUiThread {
+                    Toast.makeText(this, "All installed apps are already added!", Toast.LENGTH_SHORT).show()
+                }
+                return@thread
+            }
+
+            allApps = availableApps
             for (app in allApps) {
-                app.isChecked = currentFrozen.contains(app.info.packageName)
+                app.isChecked = false
             }
             filteredApps = allApps
 

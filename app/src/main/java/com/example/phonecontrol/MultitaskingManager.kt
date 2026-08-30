@@ -8,15 +8,6 @@ object MultitaskingManager {
      * Default core apps that must NEVER be killed or restricted during sleep/standby.
      */
     val protectedApps = listOf(
-        "com.whatsapp",
-        "org.telegram.messenger",
-        "com.instagram.android",
-        "com.facebook.katana",
-        "com.snapchat.android",
-        "com.android.chrome",
-        "com.brave.browser",
-        "org.mozilla.firefox",
-        "com.google.android.youtube",
         "io.github.sds100.keymapper",
         "io.github.sds100.keymapper.debug",
         "com.keymapper"

@@ -17,7 +17,7 @@ import kotlin.concurrent.thread
 
 /**
  * 100% Event-Driven, Fully Asynchronous AutoTweakService (ANR-Proof).
- * All shell operations and profile evaluations execute on dedicated background executors.
+ * Handles smart Recents-Aware Auto-Hibernation, Active Media/Audio Playback Guard, Real-time Profile Adaptation, and Smart Doze.
  */
 class AutoTweakService : Service() {
 
@@ -148,13 +148,14 @@ class AutoTweakService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
 
-        // 1. Instant Foreground App Event (Offload to async executor)
+        // 1. Instant Foreground App Event
         if (action == ACTION_FOREGROUND_APP_CHANGED) {
             val pkg = intent.getStringExtra(EXTRA_PACKAGE_NAME) ?: ""
             if (pkg.isNotBlank() && pkg != lastForegroundApp) {
+                val previousApp = lastForegroundApp
                 lastForegroundApp = pkg
                 tweakExecutor.execute {
-                    handleForegroundAppEvent(pkg)
+                    handleForegroundAppTransition(previousApp, pkg)
                 }
             }
             return START_STICKY
@@ -171,7 +172,7 @@ class AutoTweakService : Service() {
             return START_STICKY
         }
 
-        // 3. Service Startup Checks (Offload to async executor)
+        // 3. Service Startup Checks
         tweakExecutor.execute {
             val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
             BackupManager.ensureStorageStructure()
@@ -196,7 +197,7 @@ class AutoTweakService : Service() {
 
     private fun calculateAppAiLoad(pkg: String): Int {
         val lower = pkg.lowercase()
-        // 1. Heavy Apps (Camera, Video Editors, Benchmarks, High graphics)
+        // 1. Heavy Apps
         if (lower.contains("camera") || lower.contains("video") || lower.contains("editor") ||
             lower.contains("capcut") || lower.contains("kinemaster") || lower.contains("antutu") ||
             lower.contains("geekbench") || lower.contains("3dmark") || lower.contains("genshin") ||
@@ -216,6 +217,33 @@ class AutoTweakService : Service() {
         
         // 3. System / Light / Launcher
         return 10
+    }
+
+    private fun handleForegroundAppTransition(previousPkg: String, newPkg: String) {
+        val frozenApps = FreezerManager.getFrozenApps(this)
+        val allSafeApps = MultitaskingManager.getUserWhitelist(this) + MultitaskingManager.protectedApps
+        val activeAudioApps = FreezerManager.getActivePlayingAudioPackages(this)
+
+        // 1. INSTANT APP-ENTER UNFREEZE: If entering an app in Freezer list, resume it immediately!
+        if (frozenApps.contains(newPkg)) {
+            Log.d("AutoTweak", "⚡ Instant App-Enter Auto Unfreeze -> $newPkg")
+            FreezerManager.unfreezeApp(newPkg)
+        }
+
+        // 2. SMART RECENTS-AWARE FREEZE (with Media Audio Guard):
+        // Only freeze apps in Freezer list if they are NO LONGER in Recent Apps and NOT actively playing music
+        if (frozenApps.isNotEmpty()) {
+            val recentPkgs = FreezerManager.getRecentPackages()
+            for (pkg in frozenApps) {
+                if (!recentPkgs.contains(pkg) && pkg != newPkg && !allSafeApps.contains(pkg) && !activeAudioApps.contains(pkg)) {
+                    Log.d("AutoTweak", "⚡ Recent Closed -> Freezing App: $pkg")
+                    FreezerManager.freezeApp(this, pkg)
+                }
+            }
+        }
+
+        // 3. Perform Tweak & Profile Adaptations for new app
+        handleForegroundAppEvent(newPkg)
     }
 
     private fun handleForegroundAppEvent(pkg: String) {
@@ -412,13 +440,18 @@ class AutoTweakService : Service() {
             }
         }
 
-        // 8. Auto Hibernation
+        // 8. Auto Hibernation on Screen OFF (Targeted Media Guard)
         val freezerPrefs = getSharedPreferences("freezer_prefs", MODE_PRIVATE)
         if (freezerPrefs.getBoolean("auto_freeze_enabled", false)) {
             val frozenApps = FreezerManager.getFrozenApps(this@AutoTweakService)
+            val activeAudioApps = FreezerManager.getActivePlayingAudioPackages(this@AutoTweakService)
+
             for (pkg in frozenApps) {
-                if (!allSafeApps.contains(pkg)) {
+                // EXEMPT ONLY the active music player; hibernate all other apps immediately!
+                if (!allSafeApps.contains(pkg) && !activeAudioApps.contains(pkg)) {
                     FreezerManager.freezeApp(this@AutoTweakService, pkg)
+                } else if (activeAudioApps.contains(pkg)) {
+                    Log.d("AutoTweak", "🎵 Smart Media Guard: Exempting active music app '$pkg' from Screen-Off freeze")
                 }
             }
         }
