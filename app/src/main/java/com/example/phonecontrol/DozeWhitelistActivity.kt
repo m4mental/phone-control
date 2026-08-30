@@ -2,6 +2,7 @@ package com.example.phonecontrol
 
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -11,7 +12,6 @@ import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.appbar.MaterialToolbar
-import com.google.android.material.switchmaterial.SwitchMaterial
 import kotlin.concurrent.thread
 
 class DozeWhitelistActivity : AppCompatActivity() {
@@ -26,16 +26,9 @@ class DozeWhitelistActivity : AppCompatActivity() {
 
         pm = packageManager
         layoutDozeWhitelist = findViewById(R.id.layoutDozeWhitelist)
-        val switchEnabled = findViewById<SwitchMaterial>(R.id.switchForceDozeEnabled)
 
         findViewById<MaterialToolbar>(R.id.toolbarDoze).setNavigationOnClickListener { finish() }
         findViewById<Button>(R.id.btnAddDozeWhitelist).setOnClickListener { showAppPicker() }
-
-        val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
-        switchEnabled.isChecked = prefs.getBoolean("batt_force_doze_enabled", false)
-        switchEnabled.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit().putBoolean("batt_force_doze_enabled", isChecked).apply()
-        }
 
         thread {
             cachedAppsList = getInstalledAppsList()
@@ -57,8 +50,19 @@ class DozeWhitelistActivity : AppCompatActivity() {
 
     private fun refreshList() {
         layoutDozeWhitelist.removeAllViews()
-        val whitelist = getWhitelist()
+        val whitelist = MultitaskingManager.getUserWhitelist(this)
         
+        if (whitelist.isEmpty()) {
+            val tv = TextView(this).apply {
+                text = "No custom apps whitelisted.\nTap button above to protect Key Mapper, WhatsApp, or any essential app."
+                setTextColor(Color.GRAY)
+                gravity = android.view.Gravity.CENTER
+                setPadding(0, 50, 0, 0)
+            }
+            layoutDozeWhitelist.addView(tv)
+            return
+        }
+
         for (pkg in whitelist) {
             val view = layoutInflater.inflate(R.layout.item_app_picker, layoutDozeWhitelist, false)
             view.findViewById<CheckBox>(R.id.cbSelect).visibility = View.GONE
@@ -78,9 +82,9 @@ class DozeWhitelistActivity : AppCompatActivity() {
 
             view.setOnLongClickListener {
                 AlertDialog.Builder(this).setTitle("Remove from Whitelist")
-                    .setMessage("Remove $pkg from Doze Whitelist?")
+                    .setMessage("Remove $pkg from Universal Protected Whitelist?")
                     .setPositiveButton("Remove") { _, _ ->
-                        removeFromWhitelist(pkg)
+                        MultitaskingManager.removeAppFromWhitelist(this, pkg)
                         refreshList()
                     }
                     .setNegativeButton("Cancel", null).show()
@@ -88,27 +92,6 @@ class DozeWhitelistActivity : AppCompatActivity() {
             }
             layoutDozeWhitelist.addView(view)
         }
-    }
-
-    private fun getWhitelist(): Set<String> {
-        val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
-        return prefs.getStringSet("doze_whitelist", emptySet()) ?: emptySet()
-    }
-
-    private fun addToWhitelist(pkg: String) {
-        val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
-        val current = prefs.getStringSet("doze_whitelist", emptySet())?.toMutableSet() ?: mutableSetOf()
-        current.add(pkg)
-        prefs.edit().putStringSet("doze_whitelist", current).apply()
-        ShellUtils.runAsRoot("dumpsys deviceidle whitelist +$pkg")
-    }
-
-    private fun removeFromWhitelist(pkg: String) {
-        val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
-        val current = prefs.getStringSet("doze_whitelist", emptySet())?.toMutableSet() ?: mutableSetOf()
-        current.remove(pkg)
-        prefs.edit().putStringSet("doze_whitelist", current).apply()
-        ShellUtils.runAsRoot("dumpsys deviceidle whitelist -$pkg")
     }
 
     private fun showAppPicker() {
@@ -145,7 +128,8 @@ class DozeWhitelistActivity : AppCompatActivity() {
 
         val dialog = AlertDialog.Builder(this).setView(dialogView).create()
         listView.setOnItemClickListener { _, _, pos, _ -> 
-            addToWhitelist(filteredApps[pos].packageName)
+            val pkg = filteredApps[pos].packageName
+            MultitaskingManager.addAppToWhitelist(this, pkg)
             refreshList()
             dialog.dismiss() 
         }

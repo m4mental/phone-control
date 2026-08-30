@@ -20,8 +20,11 @@ class MainActivity : AppCompatActivity() {
     
     private lateinit var tvLiveTemp: TextView
     private lateinit var tvLiveWatts: TextView
+    private lateinit var tvLiveVolt: TextView
+    private lateinit var tvLiveHealth: TextView
+    private lateinit var tvLiveCycles: TextView
+    private lateinit var tvLiveWear: TextView
     private lateinit var tvLiveRam: TextView
-    private lateinit var tvLiveGpu: TextView
     private lateinit var tvLiveCpuCap: TextView
     private lateinit var tvLiveCpuUsage: TextView
 
@@ -50,8 +53,11 @@ class MainActivity : AppCompatActivity() {
         
         tvLiveTemp = findViewById(R.id.tvLiveTemp)
         tvLiveWatts = findViewById(R.id.tvLiveWatts)
+        tvLiveVolt = findViewById(R.id.tvLiveVolt)
+        tvLiveHealth = findViewById(R.id.tvLiveHealth)
+        tvLiveCycles = findViewById(R.id.tvLiveCycles)
+        tvLiveWear = findViewById(R.id.tvLiveWear)
         tvLiveRam = findViewById(R.id.tvLiveRam)
-        tvLiveGpu = findViewById(R.id.tvLiveGpu)
         tvLiveCpuCap = findViewById(R.id.tvLiveCpuCap)
         tvLiveCpuUsage = findViewById(R.id.tvLiveCpuUsage)
 
@@ -87,9 +93,6 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<View>(R.id.btnSettings).setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
-        }
-        findViewById<View>(R.id.btnTerminal).setOnClickListener {
-            startActivity(Intent(this, AdbShellActivity::class.java))
         }
 
         requestNotificationPermission()
@@ -212,17 +215,13 @@ class MainActivity : AppCompatActivity() {
                 if (isFinishing) return@runOnUiThread
                 tvLiveTemp.text = batteryInfo.temp
                 tvLiveWatts.text = batteryInfo.wattage
+                tvLiveVolt.text = batteryInfo.voltage
+                tvLiveHealth.text = batteryInfo.health
+                tvLiveCycles.text = if (batteryInfo.cycles.isNotBlank() && batteryInfo.cycles != "0") "${batteryInfo.cycles} cyc" else "Good"
+                tvLiveWear.text = batteryInfo.wear
                 tvLiveRam.text = freeGb
                 
-                // Fetch Active Kernel Mode from engine state
                 val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
-                val activeMode = prefs.getString("active_kernel_mode", "Balance")
-                tvLiveGpu.text = when(activeMode) {
-                    "Performance" -> "Gaming"
-                    "Power Saver" -> "PowerSave"
-                    else -> "Balanced"
-                }
-
                 val activeCap = prefs.getInt("active_cpu_cap", 100)
                 tvLiveCpuCap.text = if (activeCap < 100) "${activeCap}%" else "Uncapped"
                 tvLiveCpuCap.setTextColor(if (activeCap < 80) Color.RED else if (activeCap < 100) Color.YELLOW else Color.GREEN)

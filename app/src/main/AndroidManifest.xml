@@ -64,6 +64,51 @@
             android:theme="@style/Theme.PhoneControl" />
 
         <activity
+            android:name=".BatteryHealthActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PhoneControl" />
+
+        <activity
+            android:name=".ChargingProtectionActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PhoneControl" />
+
+        <activity
+            android:name=".SensorFirewallActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PhoneControl" />
+
+        <activity
+            android:name=".GameTurboSuiteActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PhoneControl" />
+
+        <activity
+            android:name=".AppFreezerListActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PhoneControl" />
+
+        <activity
+            android:name=".RefreshRateActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PhoneControl" />
+
+        <activity
+            android:name=".ForceDozeActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PhoneControl" />
+
+        <activity
+            android:name=".StandbyGuardActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PhoneControl" />
+
+        <activity
+            android:name=".TcpBbrActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PhoneControl" />
+
+        <activity
             android:name=".OptimizationActivity"
             android:exported="false"
             android:theme="@style/Theme.PhoneControl" />

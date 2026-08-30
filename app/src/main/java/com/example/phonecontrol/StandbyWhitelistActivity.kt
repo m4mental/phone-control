@@ -12,6 +12,7 @@ import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.switchmaterial.SwitchMaterial
 import kotlin.concurrent.thread
 
 class StandbyWhitelistActivity : AppCompatActivity() {
@@ -28,6 +29,16 @@ class StandbyWhitelistActivity : AppCompatActivity() {
         layoutContainer = findViewById(R.id.layoutWhitelistContainer)
         findViewById<MaterialToolbar>(R.id.toolbarWhitelist).setNavigationOnClickListener { finish() }
         
+        val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+        val swStandbyGuard = findViewById<SwitchMaterial>(R.id.switchStandbyGuard)
+        if (swStandbyGuard != null) {
+            swStandbyGuard.isChecked = prefs.getBoolean("standby_guard_enabled", false)
+            swStandbyGuard.setOnCheckedChangeListener { _, isChecked ->
+                prefs.edit().putBoolean("standby_guard_enabled", isChecked).apply()
+                Toast.makeText(this, if (isChecked) "Standby Bucket Guard Enabled" else "Standby Guard Disabled", Toast.LENGTH_SHORT).show()
+            }
+        }
+
         findViewById<Button>(R.id.btnAddWhitelistApp).setOnClickListener {
             showAppPicker()
         }
@@ -56,7 +67,7 @@ class StandbyWhitelistActivity : AppCompatActivity() {
         
         if (whitelist.isEmpty()) {
             val tv = TextView(this).apply {
-                text = "No apps whitelisted."
+                text = "No custom apps whitelisted.\nTap button above to protect Key Mapper, WhatsApp, or any essential app."
                 setTextColor(Color.GRAY)
                 gravity = android.view.Gravity.CENTER
                 setPadding(0, 50, 0, 0)
@@ -86,11 +97,9 @@ class StandbyWhitelistActivity : AppCompatActivity() {
             view.setOnLongClickListener {
                 AlertDialog.Builder(this)
                     .setTitle("Remove from Whitelist")
-                    .setMessage("Remove $pkg from standby whitelist?")
+                    .setMessage("Remove $pkg from Standby & Doze whitelist?")
                     .setPositiveButton("Remove") { _, _ ->
-                        val current = MultitaskingManager.getUserWhitelist(this).toMutableSet()
-                        current.remove(pkg)
-                        MultitaskingManager.saveUserWhitelist(this, current)
+                        MultitaskingManager.removeAppFromWhitelist(this, pkg)
                         refreshList()
                     }
                     .setNegativeButton("Cancel", null).show()
@@ -136,9 +145,7 @@ class StandbyWhitelistActivity : AppCompatActivity() {
         val dialog = AlertDialog.Builder(this).setView(dialogView).create()
         listView.setOnItemClickListener { _, _, pos, _ -> 
             val pkg = filteredApps[pos].packageName
-            val current = MultitaskingManager.getUserWhitelist(this).toMutableSet()
-            current.add(pkg)
-            MultitaskingManager.saveUserWhitelist(this, current)
+            MultitaskingManager.addAppToWhitelist(this, pkg)
             refreshList()
             dialog.dismiss() 
         }

@@ -128,5 +128,9 @@ object FreezerManager {
     fun setSpecialFreeze(context: Context, packageName: String, enabled: Boolean) {
         val prefs = context.getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE)
         prefs.edit().putBoolean("special_$packageName", enabled).apply()
+        if (!enabled) {
+            // Immediately restore app availability in launcher
+            ShellUtils.fastCmd("pm unsuspend $packageName 2>/dev/null")
+        }
     }
 }

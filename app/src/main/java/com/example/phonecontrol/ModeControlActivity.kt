@@ -6,13 +6,14 @@ import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.appbar.MaterialToolbar
+import kotlin.concurrent.thread
 
 class ModeControlActivity : AppCompatActivity() {
 
     private lateinit var rgModes: RadioGroup
     private lateinit var rgFocus: RadioGroup
-    private lateinit var rgGlobalFps: RadioGroup
     private lateinit var layoutFocusSettings: LinearLayout
+    private lateinit var tvCurrentRefreshSummary: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -20,15 +21,14 @@ class ModeControlActivity : AppCompatActivity() {
 
         rgModes = findViewById(R.id.rgModes)
         rgFocus = findViewById(R.id.rgFocus)
-        rgGlobalFps = findViewById(R.id.rgGlobalFps)
         layoutFocusSettings = findViewById(R.id.layoutFocusSettings)
+        tvCurrentRefreshSummary = findViewById(R.id.tvCurrentRefreshSummary)
 
         findViewById<MaterialToolbar>(R.id.toolbarModeControl).setNavigationOnClickListener { finish() }
 
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
         val savedMode = prefs.getString("selected_mode", "rbBalance")
         val savedFocus = prefs.getString("selected_focus", "rbFocusDaily")
-        val savedFps = prefs.getString("selected_global_fps", "rbGlobalFpsAuto")
 
         // Setup Global Modes
         when (savedMode) {
@@ -44,15 +44,6 @@ class ModeControlActivity : AppCompatActivity() {
             "rbFocusBattery" -> findViewById<RadioButton>(R.id.rbFocusBattery).isChecked = true
             "rbFocusMultitasking" -> findViewById<RadioButton>(R.id.rbFocusMultitasking).isChecked = true
             else -> findViewById<RadioButton>(R.id.rbFocusDaily).isChecked = true
-        }
-
-        // Setup Global FPS
-        when (savedFps) {
-            "rbGlobalFps30" -> findViewById<RadioButton>(R.id.rbGlobalFps30).isChecked = true
-            "rbGlobalFps60" -> findViewById<RadioButton>(R.id.rbGlobalFps60).isChecked = true
-            "rbGlobalFps90" -> findViewById<RadioButton>(R.id.rbGlobalFps90).isChecked = true
-            "rbGlobalFps120" -> findViewById<RadioButton>(R.id.rbGlobalFps120).isChecked = true
-            else -> findViewById<RadioButton>(R.id.rbGlobalFpsAuto).isChecked = true
         }
 
         rgModes.setOnCheckedChangeListener { _, checkedId ->
@@ -78,8 +69,9 @@ class ModeControlActivity : AppCompatActivity() {
                     "rbPerformance" -> "Performance"
                     else -> "Balance"
                 }
-                kotlin.concurrent.thread {
+                thread {
                     TweakManager.applyGlobalMode(displayMode)
+                    runOnUiThread { updateRefreshSummary() }
                 }
             }
         }
@@ -93,15 +85,28 @@ class ModeControlActivity : AppCompatActivity() {
             prefs.edit().putString("selected_focus", focusKey).apply()
         }
 
-        rgGlobalFps.setOnCheckedChangeListener { _, checkedId ->
-            val fpsKey = when (checkedId) {
-                R.id.rbGlobalFps30 -> "rbGlobalFps30"
-                R.id.rbGlobalFps60 -> "rbGlobalFps60"
-                R.id.rbGlobalFps90 -> "rbGlobalFps90"
-                R.id.rbGlobalFps120 -> "rbGlobalFps120"
-                else -> "rbGlobalFpsAuto"
-            }
-            prefs.edit().putString("selected_global_fps", fpsKey).apply()
+        // Clickable Shortcut directly to Custom Display Refresh Rate Activity
+        findViewById<View>(R.id.cardDisplayRefreshShortcut).setOnClickListener {
+            startActivity(Intent(this, RefreshRateActivity::class.java))
         }
+
+        updateRefreshSummary()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updateRefreshSummary()
+    }
+
+    private fun updateRefreshSummary() {
+        val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+        val savedHz = prefs.getString("screen_refresh", "rbHzDynamic")
+        val label = when (savedHz) {
+            "rbHz120" -> "Locked at 120Hz (Ultra Smooth)"
+            "rbHz90" -> "Locked at 90Hz (Balanced Smooth)"
+            "rbHz60" -> "Locked at 60Hz (Battery Saver)"
+            else -> "Dynamic / LTPO (Adaptive)"
+        }
+        tvCurrentRefreshSummary.text = "Current: $label"
     }
 }

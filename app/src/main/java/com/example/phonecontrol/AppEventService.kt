@@ -11,11 +11,14 @@ import android.view.accessibility.AccessibilityEvent
  */
 class AppEventService : AccessibilityService() {
 
+    private var lastDispatchedPkg = ""
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null || event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
 
         val pkgName = event.packageName?.toString() ?: return
-        if (pkgName.isBlank()) return
+        if (pkgName.isBlank() || pkgName == lastDispatchedPkg || pkgName == packageName) return
+        lastDispatchedPkg = pkgName
 
         // Instant notification to AutoTweakService with zero polling delay
         val intent = Intent(this, AutoTweakService::class.java).apply {

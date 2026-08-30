@@ -147,6 +147,20 @@ object TweakManager {
         }
     }
 
+    fun applyNetworkTweaks(tcpEnabled: Boolean, dnsVal: String) {
+        val commands = mutableListOf<String>()
+        if (tcpEnabled) {
+            commands.add("sysctl -w net.ipv4.tcp_congestion_control=bbr 2>/dev/null")
+            commands.add("sysctl -w net.ipv4.tcp_fastopen=3 2>/dev/null")
+            commands.add("sysctl -w net.core.default_qdisc=fq 2>/dev/null")
+        }
+        if (dnsVal.isNotEmpty()) {
+            commands.add("setprop net.dns1 $dnsVal")
+            commands.add("setprop net.dns2 8.8.4.4")
+        }
+        ShellUtils.runCommandsAsRoot(commands)
+    }
+
     fun setTouchBoost(enabled: Boolean) {
         if (enabled) {
             ShellUtils.fastCmd("settings put system touch_responsiveness 1")

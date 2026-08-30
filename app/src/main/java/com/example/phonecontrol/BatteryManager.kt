@@ -1,5 +1,6 @@
 package com.example.phonecontrol
 
+import android.content.Context
 import java.util.Locale
 
 object BatteryManager {
@@ -15,8 +16,16 @@ object BatteryManager {
         val wear: String
     )
 
+    data class BatteryAnalytics(
+        val voltageMv: Int,
+        val tempDeciC: Int,
+        val currentWatts: Double,
+        val cycles: Int,
+        val health: String,
+        val wearPercent: Int
+    )
+
     fun getBatteryStats(): BatteryInfo {
-        // Read multiple files at once to reduce shell overhead
         val files = listOf("voltage_now", "temp", "current_now", "cycle_count", "health", "charge_full", "charge_full_design")
         val cmd = files.joinToString(" && ") { "cat ${BATT_PATH}$it" }
         val result = ShellUtils.runAsRoot(cmd)
@@ -48,6 +57,24 @@ object BatteryManager {
         )
     }
 
+    fun getBatteryAnalytics(context: Context): BatteryAnalytics {
+        val stats = getBatteryStats()
+        val voltMv = (stats.voltage.replace("V", "").toDoubleOrNull() ?: 4.0 * 1000).toInt()
+        val tempDeciC = (stats.temp.replace("°C", "").toDoubleOrNull() ?: 30.0 * 10).toInt()
+        val currentWatts = stats.wattage.replace("W", "").toDoubleOrNull() ?: 0.0
+        val cycles = stats.cycles.toIntOrNull() ?: 0
+        val wearPercent = stats.wear.replace("%", "").toIntOrNull() ?: 100
+
+        return BatteryAnalytics(
+            voltageMv = voltMv,
+            tempDeciC = tempDeciC,
+            currentWatts = currentWatts,
+            cycles = cycles,
+            health = stats.health,
+            wearPercent = wearPercent
+        )
+    }
+
     fun setChargingEnabled(enabled: Boolean) {
         val value = if (enabled) "1" else "0"
         val commands = listOf(
@@ -58,18 +85,63 @@ object BatteryManager {
         ShellUtils.runCommandsAsRoot(commands)
     }
 
+    fun setChargingLimit(context: Context, percent: Int) {
+        val prefs = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
+        prefs.edit().putInt("battery_limit_percent", percent).apply()
+        // Hardware control limit if supported
+        val paths = listOf(
+            "/sys/class/power_supply/battery/charge_control_limit_max",
+            "/sys/class/power_supply/battery/charge_control_limit"
+        )
+        for (path in paths) {
+            ShellUtils.fastCmd("echo $percent > $path 2>/dev/null")
+        }
+    }
+
     fun setBypassEnabled(enabled: Boolean) {
         val value = if (enabled) "1" else "0"
         ShellUtils.fastCmd("echo $value > ${BATT_PATH}bypass_charging")
     }
 
+    fun setBypassCharging(context: Context, enabled: Boolean) {
+        val prefs = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
+        prefs.edit().putBoolean("battery_bypass_charging", enabled).apply()
+        setBypassEnabled(enabled)
+    }
+
+    fun setFastChargeBoost(context: Context, enabled: Boolean) {
+        val prefs = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
+        prefs.edit().putBoolean("battery_fast_charge_boost", enabled).apply()
+        setUsbFastCharge(enabled)
+        val current = if (enabled) 6000 else 3000
+        setChargeCurrent(current)
+    }
+
+    fun setKillSensorsScreenOff(context: Context, enabled: Boolean) {
+        val prefs = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
+        prefs.edit().putBoolean("battery_kill_sensors", enabled).apply()
+        if (enabled) {
+            ShellUtils.fastCmd("settings put global motion_engine_power_save 1 2>/dev/null")
+        } else {
+            ShellUtils.fastCmd("settings put global motion_engine_power_save 0 2>/dev/null")
+        }
+    }
+
+    fun setPrivacySensorsShield(context: Context, enabled: Boolean) {
+        val prefs = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
+        prefs.edit().putBoolean("battery_privacy_sensors", enabled).apply()
+        if (enabled) {
+            ShellUtils.fastCmd("cmd sensor_privacy enable 0 all 2>/dev/null")
+        } else {
+            ShellUtils.fastCmd("cmd sensor_privacy disable 0 all 2>/dev/null")
+        }
+    }
+
     fun setForceDoze(enabled: Boolean) {
         if (enabled) {
-            // App-level doze
             ShellUtils.fastCmd("dumpsys deviceidle force-idle deep")
-            // Kernel-level deep idle/sleep (Device specific nodes)
             ShellUtils.fastCmd("echo 1 > /sys/module/lpm_levels/parameters/sleep_disabled 2>/dev/null")
-            ShellUtils.fastCmd("echo N > /sys/module/printk/parameters/enabled 2>/dev/null") // Stop logs to sleep better
+            ShellUtils.fastCmd("echo N > /sys/module/printk/parameters/enabled 2>/dev/null")
         } else {
             ShellUtils.fastCmd("dumpsys deviceidle unforce")
             ShellUtils.fastCmd("echo 0 > /sys/module/lpm_levels/parameters/sleep_disabled 2>/dev/null")
@@ -77,9 +149,6 @@ object BatteryManager {
         }
     }
 
-    /**
-     * Force fast charging on USB ports (PC/Car).
-     */
     fun setUsbFastCharge(enabled: Boolean) {
         val value = if (enabled) "1" else "0"
         val paths = listOf(
@@ -93,12 +162,8 @@ object BatteryManager {
         }
     }
 
-    /**
-     * Limits the charging current to reduce heat and prolong battery health.
-     * @param mA Current in milliAmperes (e.g., 500, 1500, 3000)
-     */
     fun setChargeCurrent(mA: Int) {
-        val uA = mA * 1000 // Kernel usually takes microAmperes
+        val uA = mA * 1000
         val paths = listOf(
             "/sys/class/power_supply/battery/constant_charge_current_max",
             "/sys/class/power_supply/battery/input_current_limit",

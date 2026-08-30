@@ -349,17 +349,18 @@ class AutoTweakService : Service() {
                 }
             }
 
-            // 3. Block Kernel Wakelocks
+            // 3. Block Kernel Wakelocks (Safe)
             TweakManager.applyWakelockBlocker(true)
 
-            // 4. Sensor Logic
-            val firewallActive = prefs.getBoolean("sensor_firewall_enabled", false)
+            // 4. Sensor Logic - Only trigger if explicit kill/privacy toggles are ON
+            val killSensorsActive = prefs.getBoolean("battery_kill_sensors", false)
+            val privacySensorsActive = prefs.getBoolean("battery_privacy_sensors", false)
             val indivBlockActive = prefs.getBoolean("block_gyro", false) || 
                                   prefs.getBoolean("block_mag", false) || 
                                   prefs.getBoolean("block_light", false) || 
                                   prefs.getBoolean("block_motion", false)
 
-            if (firewallActive || indivBlockActive) {
+            if (killSensorsActive || privacySensorsActive || indivBlockActive) {
                 SensorManager.setSensorsEnabled(false)
             }
 
@@ -368,48 +369,38 @@ class AutoTweakService : Service() {
                 TweakManager.setLocationEnabled(false)
             }
 
-            // 6. Standby Guard
+            // 6. Guarantee Whitelist & Accessibility Exemption (Key Mapper, WhatsApp, Alarms, etc.)
+            val allSafeApps = MultitaskingManager.getUserWhitelist(this@AutoTweakService) + MultitaskingManager.protectedApps
+            for (pkg in allSafeApps) {
+                MultitaskingManager.grantFullExemption(pkg)
+            }
+
+            // 7. Standby Guard
             if (prefs.getBoolean("standby_guard_enabled", false)) {
                 val result = ShellUtils.runAsRoot("pm list packages -3 | cut -d ':' -f2")
                 val packages = result.output.split("\n").filter { it.isNotBlank() }
-                
-                val userWhitelist = MultitaskingManager.getUserWhitelist(this@AutoTweakService)
-                val dozeWhitelist = prefs.getStringSet("doze_whitelist", emptySet()) ?: emptySet()
-                
-                val defaultSafeList = setOf(
-                    "com.whatsapp",
-                    "org.telegram.messenger",
-                    "com.google.android.gm",
-                    "com.google.android.dialer",
-                    "com.android.phone",
-                    "com.google.android.apps.messaging",
-                    "com.truecaller",
-                    "com.google.android.apps.nbu.paisa.user",
-                    "net.one97.paytm",
-                    "com.phonepe.app",
-                    "in.org.npci.upiapp"
-                )
-                val allSafeApps = defaultSafeList + userWhitelist + dozeWhitelist + MultitaskingManager.protectedApps
 
                 for (pkg in packages) {
                     if (!allSafeApps.contains(pkg)) {
-                        ShellUtils.fastCmd("am set-standby-bucket $pkg restricted")
+                        ShellUtils.fastCmd("am set-standby-bucket $pkg restricted 2>/dev/null")
                     } else {
-                        ShellUtils.fastCmd("am set-standby-bucket $pkg active")
+                        ShellUtils.fastCmd("am set-standby-bucket $pkg active 2>/dev/null")
                     }
                 }
             }
 
-            // 7. Auto Hibernation
+            // 8. Auto Hibernation
             val freezerPrefs = getSharedPreferences("freezer_prefs", MODE_PRIVATE)
             if (freezerPrefs.getBoolean("auto_freeze_enabled", false)) {
                 val frozenApps = FreezerManager.getFrozenApps(this@AutoTweakService)
                 for (pkg in frozenApps) {
-                    FreezerManager.freezeApp(this@AutoTweakService, pkg)
+                    if (!allSafeApps.contains(pkg)) {
+                        FreezerManager.freezeApp(this@AutoTweakService, pkg)
+                    }
                 }
             }
 
-            // 8. AI Sleeping Profile
+            // 9. AI Sleeping Profile
             if (prefs.getString("selected_mode", "rbBalance") == "rbAutomatic") {
                 applyAiTweak(0, "rbFocusDaily")
             }

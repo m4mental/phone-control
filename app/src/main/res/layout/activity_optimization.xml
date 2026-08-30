@@ -26,12 +26,12 @@
             android:orientation="vertical"
             android:padding="16dp">
 
-            <!-- Sub-Feature 1: Display & Resolution Scaling -->
+            <!-- Card 1: Display & Resolution Scaling -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/cardResolution"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
+                android:layout_marginBottom="14dp"
                 app:cardCornerRadius="16dp"
                 app:cardBackgroundColor="#200010"
                 app:strokeWidth="1dp"
@@ -66,19 +66,80 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="2dp"
-                            android:text="Modify native resolution (720p/1080p) and DPI scaling for higher GPU FPS in heavy games."
+                            android:text="Modify native resolution (720p/1080p) and DPI scaling for higher GPU FPS."
                             android:textColor="#F48FB1"
                             android:textSize="11sp" />
                     </LinearLayout>
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="OPEN →"
+                        android:textColor="#FF4081"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Sub-Feature 2: Memory & ZRAM Manager -->
+            <!-- Card 2: Display Refresh Rate Override -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardRefreshRate"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="14dp"
+                app:cardCornerRadius="16dp"
+                app:cardBackgroundColor="#001824"
+                app:strokeWidth="1dp"
+                app:strokeColor="#00E5FF"
+                android:clickable="true"
+                android:focusable="true">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:padding="16dp"
+                    android:gravity="center_vertical">
+                    <ImageView
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:src="@android:drawable/ic_menu_rotate"
+                        app:tint="#00E5FF" />
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="16dp"
+                        android:orientation="vertical">
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Display Refresh Rate"
+                            android:textColor="@android:color/white"
+                            android:textStyle="bold"
+                            android:textSize="15sp" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="Force 120Hz peak fluid display, lock 90Hz, or 60Hz battery saver."
+                            android:textColor="#80DEEA"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="OPEN →"
+                        android:textColor="#00E5FF"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Card 3: Memory & ZRAM Manager -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/cardRam"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
+                android:layout_marginBottom="14dp"
                 app:cardCornerRadius="16dp"
                 app:cardBackgroundColor="#001F1A"
                 app:strokeWidth="1dp"
@@ -113,23 +174,30 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="2dp"
-                            android:text="High-speed compressed Physical RAM allocation and Low Memory Killer (LMK) tuning."
+                            android:text="High-speed compressed Physical RAM allocation and LMK tuning."
                             android:textColor="#80CBC4"
                             android:textSize="11sp" />
                     </LinearLayout>
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="OPEN →"
+                        android:textColor="#1DE9B6"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Sub-Feature 3: UFS Storage Boost -->
+            <!-- Card 4: UFS Storage Health & Trimmer -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/cardStorage"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
+                android:layout_marginBottom="14dp"
                 app:cardCornerRadius="16dp"
-                app:cardBackgroundColor="#211A00"
+                app:cardBackgroundColor="#001224"
                 app:strokeWidth="1dp"
-                app:strokeColor="#FFAB00"
+                app:strokeColor="#2979FF"
                 android:clickable="true"
                 android:focusable="true">
                 <LinearLayout
@@ -141,8 +209,8 @@
                     <ImageView
                         android:layout_width="28dp"
                         android:layout_height="28dp"
-                        android:src="@android:drawable/ic_menu_upload"
-                        app:tint="#FFAB00" />
+                        android:src="@android:drawable/ic_menu_agenda"
+                        app:tint="#2979FF" />
                     <LinearLayout
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
@@ -152,7 +220,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="UFS Storage Boost"
+                            android:text="UFS Storage Health &amp; Trimmer"
                             android:textColor="@android:color/white"
                             android:textStyle="bold"
                             android:textSize="15sp" />
@@ -160,23 +228,30 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="2dp"
-                            android:text="Automated weekly FSTRIM maintenance and mq-deadline I/O scheduler tuning."
-                            android:textColor="#FFE082"
+                            android:text="Real-time UFS health, wear indicators, life estimates, and hardware fstrim."
+                            android:textColor="#82B1FF"
                             android:textSize="11sp" />
                     </LinearLayout>
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="OPEN →"
+                        android:textColor="#2979FF"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Sub-Feature 4: Adaptive Thermal Engine -->
+            <!-- Card 5: Thermal Throttling Safety -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/cardThrottling"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
+                android:layout_marginBottom="14dp"
                 app:cardCornerRadius="16dp"
-                app:cardBackgroundColor="#211000"
+                app:cardBackgroundColor="#210505"
                 app:strokeWidth="1dp"
-                app:strokeColor="#FF6D00"
+                app:strokeColor="#FF5252"
                 android:clickable="true"
                 android:focusable="true">
                 <LinearLayout
@@ -189,7 +264,7 @@
                         android:layout_width="28dp"
                         android:layout_height="28dp"
                         android:src="@android:drawable/ic_dialog_alert"
-                        app:tint="#FF6D00" />
+                        app:tint="#FF5252" />
                     <LinearLayout
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
@@ -199,7 +274,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Adaptive Thermal Engine"
+                            android:text="Thermal Throttling Safety"
                             android:textColor="@android:color/white"
                             android:textStyle="bold"
                             android:textSize="15sp" />
@@ -207,121 +282,21 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="2dp"
-                            android:text="Hardware temperature monitoring, automatic cooldown throttling, and Big Core safety."
-                            android:textColor="#FFCC80"
+                            android:text="Thermal mitigation tuning, emergency cooldown tile, and temp trip points."
+                            android:textColor="#FFCDD2"
                             android:textSize="11sp" />
                     </LinearLayout>
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- Sub-Feature 5: Deep System Optimization Section -->
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Deep System Optimization"
-                android:textColor="#FFFFFF"
-                android:textSize="15sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="8dp" />
-
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/cardOptimizationSection"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
-                app:cardCornerRadius="16dp"
-                app:cardElevation="0dp"
-                app:cardBackgroundColor="#121212"
-                app:strokeWidth="1dp"
-                app:strokeColor="#333333">
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Included Maintenance Tasks:"
-                        android:textColor="#FFFFFF"
-                        android:textStyle="bold"
-                        android:layout_marginBottom="8dp" />
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="• Deep Junk Clean (Logs/Caches)\n• File System Trim (UFS Refresh)\n• ART Cache Optimization (Speed-Profile)"
-                        android:textColor="#888888"
+                        android:text="OPEN →"
+                        android:textColor="#FF5252"
                         android:textSize="12sp"
-                        android:lineSpacingExtra="4dp" />
+                        android:textStyle="bold" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnRunNow"
-                android:layout_width="match_parent"
-                android:layout_height="56dp"
-                android:text="RUN DEEP OPTIMIZATION"
-                android:textColor="@android:color/black"
-                android:textStyle="bold"
-                app:backgroundTint="@android:color/white"
-                app:cornerRadius="12dp" />
-
-            <TextView
-                android:id="@+id/tvLiveLog"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:textColor="@color/color_root"
-                android:textSize="12sp"
-                android:fontFamily="monospace"
-                android:visibility="gone" />
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="#222222"
-                android:layout_marginVertical="16dp" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Silent System Mode"
-                        android:textColor="#FFFFFF"
-                        android:textSize="15sp"
-                        android:textStyle="bold" />
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Stop logd (system logger) to reduce background CPU usage and save battery."
-                        android:textColor="#AAAAAA"
-                        android:textSize="11sp" />
-                </LinearLayout>
-                <com.google.android.material.switchmaterial.SwitchMaterial
-                    android:id="@+id/switchSilent"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
-            </LinearLayout>
-
-            <TextView
-                android:id="@+id/tvOptStatus"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="24dp"
-                android:text="Last run: Never"
-                android:textColor="#666666"
-                android:gravity="center"
-                android:textSize="12sp" />
 
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
+
 </LinearLayout>

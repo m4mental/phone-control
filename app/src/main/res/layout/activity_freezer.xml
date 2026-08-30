@@ -26,12 +26,66 @@
             android:orientation="vertical"
             android:padding="16dp">
 
-            <!-- Sub-Feature 1: Carrier Bloatware Remover -->
+            <!-- Card 1: App Freezer & Hibernation -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardAppFreezer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="14dp"
+                app:cardCornerRadius="16dp"
+                app:cardBackgroundColor="#210505"
+                app:strokeWidth="1dp"
+                app:strokeColor="#FF5252"
+                android:clickable="true"
+                android:focusable="true">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:padding="16dp"
+                    android:gravity="center_vertical">
+                    <ImageView
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:src="@android:drawable/ic_menu_close_clear_cancel"
+                        app:tint="#FF5252" />
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="16dp"
+                        android:orientation="vertical">
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="App Freezer &amp; Hibernation"
+                            android:textColor="@android:color/white"
+                            android:textStyle="bold"
+                            android:textSize="15sp" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="Auto-freeze apps on screen off, Linux kernel cgroup freeze, and special suspend."
+                            android:textColor="#FFCDD2"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="OPEN →"
+                        android:textColor="#FF5252"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Card 2: Carrier Bloatware Remover -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/cardBloatware"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
+                android:layout_marginBottom="14dp"
                 app:cardCornerRadius="16dp"
                 app:cardBackgroundColor="#210505"
                 app:strokeWidth="1dp"
@@ -66,19 +120,26 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="2dp"
-                            android:text="Safely disable or uninstall system carrier apps and background telemetry services."
+                            android:text="Safely disable or uninstall system carrier bloatware and background telemetry."
                             android:textColor="#FFCDD2"
                             android:textSize="11sp" />
                     </LinearLayout>
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="OPEN →"
+                        android:textColor="#FF5252"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Sub-Feature 2: App & Data Vault [BETA] -->
+            <!-- Card 3: App & Data Vault [BETA] -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/cardVault"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
+                android:layout_marginBottom="14dp"
                 app:cardCornerRadius="16dp"
                 app:cardBackgroundColor="#1A0D00"
                 app:strokeWidth="1dp"
@@ -113,19 +174,26 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="2dp"
-                            android:text="Local offline compressed backups for installed application APKs and user databases."
+                            android:text="Local offline compressed backups for installed application APKs and databases."
                             android:textColor="#FFE0B2"
                             android:textSize="11sp" />
                     </LinearLayout>
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="OPEN →"
+                        android:textColor="#FFAB40"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Sub-Feature 3: Root Shell Terminal -->
+            <!-- Card 4: Root Shell Terminal -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/cardTerminal"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
+                android:layout_marginBottom="14dp"
                 app:cardCornerRadius="16dp"
                 app:cardBackgroundColor="#001F08"
                 app:strokeWidth="1dp"
@@ -160,157 +228,21 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="2dp"
-                            android:text="Interactive superuser Linux terminal console for raw shell commands and debugging."
-                            android:textColor="#C8E6C9"
+                            android:text="Direct superuser command execution, ps process monitor, and live dumpsys."
+                            android:textColor="#A5D6A7"
                             android:textSize="11sp" />
                     </LinearLayout>
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="OPEN →"
+                        android:textColor="#00E676"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Sub-Feature 4: App Freezer & Hibernation Section -->
-            <LinearLayout
-                android:id="@+id/layoutFreezerSection"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="App Freezer &amp; Deep Hibernation"
-                    android:textColor="#FFFFFF"
-                    android:textSize="15sp"
-                    android:textStyle="bold"
-                    android:layout_marginBottom="4dp" />
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Hibernation completely suspends apps to save battery. Suspended apps cannot run in background until launched manually."
-                    android:textColor="#AAAAAA"
-                    android:textSize="11sp"
-                    android:layout_marginBottom="12dp" />
-
-                <com.google.android.material.card.MaterialCardView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="16dp"
-                    app:cardCornerRadius="16dp"
-                    app:cardBackgroundColor="#121212"
-                    app:strokeWidth="1dp"
-                    app:strokeColor="#333333">
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:padding="16dp">
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:orientation="horizontal"
-                            android:gravity="center_vertical">
-                            <LinearLayout
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:orientation="vertical">
-                                <TextView
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:text="Auto-Freeze on Screen OFF"
-                                    android:textColor="#FFFFFF"
-                                    android:textStyle="bold"
-                                    android:textSize="14sp" />
-                                <TextView
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:text="Automatically suspends selected apps when the screen turns off."
-                                    android:textColor="#888888"
-                                    android:textSize="11sp" />
-                            </LinearLayout>
-                            <com.google.android.material.switchmaterial.SwitchMaterial
-                                android:id="@+id/switchAutoFreeze"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content" />
-                        </LinearLayout>
-                    </LinearLayout>
-                </com.google.android.material.card.MaterialCardView>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:layout_marginBottom="16dp">
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnAddNewFreeze"
-                        android:layout_width="0dp"
-                        android:layout_height="50dp"
-                        android:layout_weight="1"
-                        android:text="+ Add App"
-                        android:textColor="@android:color/black"
-                        android:textStyle="bold"
-                        app:backgroundTint="@android:color/white"
-                        app:cornerRadius="12dp" />
-                    <View android:layout_width="12dp" android:layout_height="0dp" />
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnFreezeAllNow"
-                        android:layout_width="0dp"
-                        android:layout_height="50dp"
-                        android:layout_weight="1"
-                        android:text="Freeze All"
-                        android:textColor="@android:color/white"
-                        android:textStyle="bold"
-                        app:backgroundTint="#1A1A1A"
-                        app:strokeWidth="1dp"
-                        app:strokeColor="#444444"
-                        app:cornerRadius="12dp" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:id="@+id/layoutEditActions"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:layout_marginBottom="12dp"
-                    android:visibility="gone">
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnRemoveSelected"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="Remove Selected"
-                        android:textColor="@android:color/white"
-                        app:backgroundTint="@android:color/holo_red_dark"
-                        app:cornerRadius="8dp" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnCancelEdit"
-                        style="@style/Widget.Material3.Button.TextButton"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="8dp"
-                        android:text="Cancel"
-                        android:textColor="@android:color/white" />
-                </LinearLayout>
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Managed Hibernated Apps"
-                    android:textColor="#FFFFFF"
-                    android:textSize="14sp"
-                    android:textStyle="bold"
-                    android:layout_marginBottom="8dp" />
-
-                <LinearLayout
-                    android:id="@+id/layoutFrozenAppsList"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical" />
-
-            </LinearLayout>
-
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
+
 </LinearLayout>
