@@ -417,7 +417,7 @@ class AutoTweakService : Service() {
                               prefs.getBoolean("block_motion", false)
 
         if (killSensorsActive || privacySensorsActive || indivBlockActive) {
-            SensorManager.setSensorsEnabled(false)
+            SensorManager.setSensorsEnabled(this@AutoTweakService, false)
         }
 
         // 5. GPS Auto-Saver on Screen OFF
@@ -504,9 +504,12 @@ class AutoTweakService : Service() {
                               prefs.getBoolean("block_mag", false) || 
                               prefs.getBoolean("block_light", false) || 
                               prefs.getBoolean("block_motion", false)
+        val killSensorsActive = prefs.getBoolean("battery_kill_sensors", false)
+        val privacySensorsActive = prefs.getBoolean("battery_privacy_sensors", false)
 
-        if (!indivBlockActive) {
-            SensorManager.setSensorsEnabled(true)
+        // Only restore sensor privacy if it was actually toggled off by screen-off triggers
+        if (!indivBlockActive && (killSensorsActive || privacySensorsActive)) {
+            SensorManager.setSensorsEnabled(this@AutoTweakService, true)
         }
 
         TweakManager.applyWakelockBlocker(false)
