@@ -196,16 +196,71 @@ cmd activity set-inactive $packageName false
 
 ---
 
-## 🤖 System Operating Modes & AI Engine
+## 🤖 System Operating Modes & 4-Stage Progressive Governor
 
-The Main Dashboard provides 1-tap switching across 4 global system profiles:
+Phone Control replaces traditional static governors with a **4-Stage Progressive Dynamic EAS Ladder** engineered specifically for the MediaTek Dimensity 7200 Pro (6 Little Cortex-A510 + 2 Big Cortex-A715 cores):
 
-| Mode | CPU / GPU Governor | Display Refresh Rate | Background Policy | Target Usage |
-| :--- | :--- | :--- | :--- | :--- |
-| 🔋 **Power Saver** | Downclocked Energy-Aware | Fixed 60Hz | Aggressive Standby & Doze | Maximum battery endurance |
-| ⚖️ **Balanced** | Dynamic Interactive / Schedutil | Dynamic LTPO (Auto) | Normal Android Lifecycle | Smooth daily multitasking |
-| 🚀 **Performance** | Performance Governor / High Floor | Fixed 120Hz | Unrestricted Background & I/O | Competitive gaming & heavy loads |
-| 🤖 **Automatic (AI)** | Dynamic Real-Time Load Sensing | Adaptive Frequency | Automated Context Tuning | Fully automated intelligent tuning |
+```
+                                 ┌────────────────────────────────────────────────┐
+                                 │     STAGE 4: Extreme Unleashed Raw Turbo       │
+                                 │     6 Little @ 2.0GHz  |  2 Big @ 2.8GHz       │
+                                 │     [BGMI 90fps / 3D Gaming / 4K Video Export] │
+                                 └───────────────────────▲────────────────────────┘
+                                                         │ >90% Load / Game Turbo
+                                 ┌───────────────────────┴────────────────────────┐
+                                 │      STAGE 3: Balanced Dual-Cluster Compute    │
+                                 │      6 Little @ 2.0GHz  |  2 Big @ 1.5GHz      │
+                                 │      [HDR Camera / Video Timeline Editing]     │
+                                 └───────────────────────▲────────────────────────┘
+                                                         │ 70-90% Load
+                                 ┌───────────────────────┴────────────────────────┐
+                                 │      STAGE 2: 120Hz Pure 6-Core Fluidity       │
+                                 │      6 Little @ 1.25G-2.0G | Big @ 400MHz Sleep│
+                                 │      [Rapid App Switching / Heavy Scroll]      │
+                                 └───────────────────────▲────────────────────────┘
+                                                         │ 35-70% Load
+                                 ┌───────────────────────┴────────────────────────┐
+                                 │      STAGE 1: Super Cool Pure Eco Base         │
+                                 │      6 Little @ 650M-950M  | Big @ 400MHz Sleep│
+                                 │      [Reading / YouTube / Chatting / Settings] │
+                                 └───────────────────────▲────────────────────────┘
+                                                         │ Screen On (0-35% Load)
+                                 ┌───────────────────────┴────────────────────────┐
+                                 │       SCREEN-OFF: 0.05W Standby Deep Sleep     │
+                                 │       6 Little @ 480MHz  | Big @ 400MHz Sleep  │
+                                 └────────────────────────────────────────────────┘
+```
+
+### 📊 Progressive Frequency Ladder Details:
+
+| Stage | Target CPU Load | 6 Little Cores (0–5) | 2 Big Cores (6–7) | Real-World Use Cases | Thermal / Power |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| 💤 **Standby Sleep** | Screen Locked | `480 MHz` (Min Floor) | `400 MHz` (Deep Sleep) | Phone in pocket / Overnight | ~0.05W (0% overnight drain) |
+| 🟢 **Stage 1 (Eco)** | `0% – 35%` | `650M ➔ 850M ➔ 950M` | `400 MHz` (Deep Sleep) | Reading, YouTube, WhatsApp, Settings | Ice Cold (<33°C, 0.12W) |
+| 🔵 **Stage 2 (Fluid)** | `35% – 70%` | `1.25 GHz ➔ 2.0 GHz` | `400 MHz` (Deep Sleep) | 120Hz Fast App Carousel & Scrolling | Butter Smooth 120fps |
+| 🟡 **Stage 3 (Compute)**| `70% – 90%` | `2.0 GHz` | `1.5 GHz` (Cool Clock) | HDR Camera processing, Video editors | Balanced (<38°C) |
+| 🔴 **Stage 4 (Turbo)** | `>90%` / Gaming | `2.0 GHz` (Max) | `2.8 GHz` (Full Turbo) | BGMI 90fps, Genshin, 4K Rendering | Maximum Peak Performance |
+
+---
+
+## 🔐 Hidden Test Lab & Biometric Screen Lock Protection
+
+For safety and clean UI presentation, the **Stage Override Test Lab** is hidden by default:
+* **Activation Trigger:** Long-press on the **"Operation Mode Control"** card on the main dashboard.
+* **Biometric Authentication:** A Material confirmation dialog prompts for device authentication via Android's `KeyguardManager` (supporting **Fingerprint, PIN, Pattern, or Password**).
+* **Instant Lock:** Includes a dedicated **`[✕ Lock]`** button in the Test Lab header to immediately conceal and lock the laboratory card.
+* **⚡ Apply Selected Mode Button:** Allows instant 0ms manual re-application with toast verification.
+
+---
+
+## 🎨 Real-Time Multi-Color Stage Indicator
+
+The Main Dashboard CPU Card features dynamic sub-frequency color telemetry for Stage 1:
+* **`S`** remains permanent **Cyan (`#00E5FF`)**.
+* **`1`** dynamically shifts in real-time based on current kernel frequency:
+  * **Cyan (`#00E5FF`)** @ `650 MHz` (Base Floor / Static Screen)
+  * **Yellow (`#FFD700`)** @ `850 MHz` (Touch Burst / Feed Scrolling)
+  * **Red (`#FF5252`)** @ `950 MHz` (Peak Stage 1 / Multi-Window)
 
 ---
 
