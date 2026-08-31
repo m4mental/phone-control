@@ -60,7 +60,7 @@ object TweakManager {
                 applyCpuTuning("perf")
                 applyIoOptimization("perf")
                 applyInputBoost(true, aggressive = false)
-                applyAsymmetricCpuFreqTuning("balance")
+                applyAsymmetricCpuFreqTuning("boost")
             }
             "AI_Extreme" -> {
                 // Extreme Beast: Stage 4 Full Turbo Unleashed (2.0GHz Little + 2.8GHz Big Cores)
@@ -418,7 +418,31 @@ object TweakManager {
                 ShellUtils.fastCmd(script)
             }
             "balance" -> {
-                // Balanced / AI Dynamic Ladder: Stage 1 (650M-950M) scaling up to Stage 2 (2.0GHz 6-Cores) & Stage 3 (1.5GHz Big Cores)
+                // Stage 2 Pure 6-Core Fluid: 6 Little Cores 650MHz - 2.0GHz, 2 Big Cores LOCKED at 400MHz Sleep!
+                val script = """
+                    for c in 0 1 2 3 4 5; do
+                        echo 650000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
+                        echo 2000000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
+                        echo schedutil > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_governor 2>/dev/null
+                    done
+                    for c in 6 7; do
+                        echo 400000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
+                        echo 400000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
+                        echo schedutil > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_governor 2>/dev/null
+                    done
+                    echo 650000 > /sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq 2>/dev/null
+                    echo 2000000 > /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null
+                    echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_min_freq 2>/dev/null
+                    echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq 2>/dev/null
+                    echo 400000 > /sys/devices/system/cpu/cpufreq/policy7/scaling_min_freq 2>/dev/null
+                    echo 400000 > /sys/devices/system/cpu/cpufreq/policy7/scaling_max_freq 2>/dev/null
+                    echo 1000 > /sys/devices/system/cpu/cpufreq/policy0/schedutil/rate_limit_us 2>/dev/null
+                    echo 20000 > /sys/devices/system/cpu/cpufreq/policy6/schedutil/up_rate_limit_us 2>/dev/null
+                """.trimIndent()
+                ShellUtils.fastCmd(script)
+            }
+            "boost" -> {
+                // Stage 3 Dual-Cluster Balanced Compute: 6 Little Cores 2.0GHz, 2 Big Cores 1.5GHz
                 val script = """
                     for c in 0 1 2 3 4 5; do
                         echo 650000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
@@ -436,9 +460,7 @@ object TweakManager {
                     echo 1500000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq 2>/dev/null
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy7/scaling_min_freq 2>/dev/null
                     echo 1500000 > /sys/devices/system/cpu/cpufreq/policy7/scaling_max_freq 2>/dev/null
-                    echo 85 > /proc/sys/kernel/sched_upmigrate 2>/dev/null
-                    echo 65 > /proc/sys/kernel/sched_downmigrate 2>/dev/null
-                    echo 5000 > /sys/devices/system/cpu/cpufreq/policy0/schedutil/up_rate_limit_us 2>/dev/null
+                    echo 1000 > /sys/devices/system/cpu/cpufreq/policy0/schedutil/rate_limit_us 2>/dev/null
                     echo 15000 > /sys/devices/system/cpu/cpufreq/policy6/schedutil/up_rate_limit_us 2>/dev/null
                 """.trimIndent()
                 ShellUtils.fastCmd(script)

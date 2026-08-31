@@ -21,7 +21,16 @@ object ShellUtils {
     @Volatile var isRootGrantedCached: Boolean? = null
 
     /**
-     * Check if the shell is currently busy with a long-running task.
+     * Executes a fast root command and returns output string.
+     */
+    fun fastCmdResult(command: String): String {
+        return try {
+            runAsRoot(command, 1000).output
+        } catch (e: Exception) { "" }
+    }
+
+    /**
+     * Executes a fast background root command without blocking the main UI thread.
      */
     var isBusy = false
         private set

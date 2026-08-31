@@ -329,10 +329,11 @@ class MainActivity : AppCompatActivity() {
     private fun readLittleCoreFreqKhz(): Int {
         return try {
             val f = java.io.File("/sys/devices/system/cpu/cpufreq/policy0/scaling_cur_freq")
-            if (f.exists()) f.readText().trim().toIntOrNull() ?: 0
-            else {
-                val f2 = java.io.File("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq")
-                if (f2.exists()) f2.readText().trim().toIntOrNull() ?: 0 else 0
+            if (f.exists() && f.canRead()) {
+                f.readText().trim().toIntOrNull() ?: 0
+            } else {
+                val res = ShellUtils.fastCmdResult("cat /sys/devices/system/cpu/cpufreq/policy0/scaling_cur_freq 2>/dev/null").trim()
+                res.toIntOrNull() ?: 0
             }
         } catch (e: Exception) { 0 }
     }
@@ -388,7 +389,13 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                tvLiveCpuUsage.text = android.text.Html.fromHtml("<font color='#FFFFFF'>$cpuUsage%</font> ($stageHtml)", android.text.Html.FROM_HTML_MODE_LEGACY)
+                val freqLabel = if (currentFreqKhz > 0) {
+                    if (currentFreqKhz >= 1000000) String.format("%.1fG", currentFreqKhz / 1000000.0)
+                    else "${currentFreqKhz / 1000}M"
+                } else ""
+                val freqSuffix = if (freqLabel.isNotBlank()) " • $freqLabel" else ""
+
+                tvLiveCpuUsage.text = android.text.Html.fromHtml("<font color='#FFFFFF'>$cpuUsage%</font> ($stageHtml<font color='#B0BEC5'>$freqSuffix</font>)", android.text.Html.FROM_HTML_MODE_LEGACY)
             }
         }
     }

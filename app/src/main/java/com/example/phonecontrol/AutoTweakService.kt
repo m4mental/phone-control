@@ -197,25 +197,23 @@ class AutoTweakService : Service() {
 
     private fun calculateAppAiLoad(pkg: String): Int {
         val lower = pkg.lowercase()
-        // 1. Heavy Apps
+        // 1. Heavy Compute / 3D Games / Video Editing (Stage 3 & 4 - Big Cores Wake Up)
         if (lower.contains("camera") || lower.contains("video") || lower.contains("editor") ||
             lower.contains("capcut") || lower.contains("kinemaster") || lower.contains("antutu") ||
             lower.contains("geekbench") || lower.contains("3dmark") || lower.contains("genshin") ||
             lower.contains("pubg") || lower.contains("cod") || lower.contains("bgmi") ||
             lower.contains("lightroom") || lower.contains("photoshop") || lower.contains("speedtest")) {
-            return 60
+            return 80
         }
         
-        // 2. Daily Fluent / Media / Social
-        if (lower.contains("chrome") || lower.contains("browser") || lower.contains("youtube") ||
-            lower.contains("instagram") || lower.contains("whatsapp") || lower.contains("telegram") ||
-            lower.contains("twitter") || lower.contains("x.android") || lower.contains("tiktok") ||
-            lower.contains("spotify") || lower.contains("netflix") || lower.contains("amazon") ||
-            lower.contains("flipkart")) {
-            return 25
+        // 2. Heavy Browsing / Complex Web / Shopping (Stage 2 - 6 Little Cores up to 2.0GHz, Big Cores Sleep)
+        if (lower.contains("chrome") || lower.contains("browser") || lower.contains("brave") ||
+            lower.contains("amazon") || lower.contains("flipkart")) {
+            return 30
         }
         
-        // 3. System / Light / Launcher
+        // 3. Daily Social, Chatting, Messaging, Media, Settings, System UI (Stage 1 Eco - 650M Base -> 850M Touch Burst, Big Cores Sleep)
+        // WhatsApp, Telegram, YouTube, Instagram, X/Twitter, Phone, Settings, etc.
         return 10
     }
 
