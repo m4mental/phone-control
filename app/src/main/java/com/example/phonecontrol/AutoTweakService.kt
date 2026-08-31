@@ -253,6 +253,12 @@ class AutoTweakService : Service() {
 
     private fun handleForegroundAppEvent(pkg: String) {
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+        val manualStage = prefs.getInt("manual_stage_override", 0)
+        if (manualStage != 0 || TweakManager.manualStageOverride != 0) {
+            // Strictly protect user's manual stage override (do not switch frequencies on app transition)
+            return
+        }
+
         val turboPrefs = getSharedPreferences("game_turbo_prefs", MODE_PRIVATE)
         val games = turboPrefs.getStringSet("game_packages", emptySet()) ?: emptySet()
         val perAppConfig = PerAppManager.getConfig(this, pkg)
@@ -323,6 +329,13 @@ class AutoTweakService : Service() {
     }
 
     private fun applyAiTweak(load: Int, focus: String) {
+        val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+        val manualStage = prefs.getInt("manual_stage_override", 0)
+        if (manualStage != 0) {
+            // Respect Test Lab Manual Stage Override 100% (Do not overwrite user test locks)
+            return
+        }
+
         val adjustedLoad = if (isFloatingWindowActive && load < 50) {
             if (load > 25) 25 else load 
         } else {
@@ -334,20 +347,28 @@ class AutoTweakService : Service() {
         } else {
             when (focus) {
                 "rbFocusBattery" -> {
+                    // Battery Saver Focus: Stays strictly in Stage 1 Eco (650MHz - 950MHz) for all app switching & daily tasks
                     when {
-                        adjustedLoad > 40 -> "AI_Boost"
-                        adjustedLoad > 10 -> "AI_Daily"
+                        adjustedLoad > 70 -> "AI_Boost"
                         else -> "AI_EcoActive"
                     }
                 }
                 "rbFocusDaily" -> {
-                    if (adjustedLoad > 35) "AI_Boost" else "AI_Daily"
+                    // Daily Fluent Focus: Idle drops to Stage 1 (650M-950M), active gestures/switches jump to Stage 2 (120fps), heavy tasks to Stage 3
+                    when {
+                        adjustedLoad > 75 -> "AI_Extreme"
+                        adjustedLoad > 45 -> "AI_Boost"
+                        adjustedLoad > 15 -> "AI_Daily"
+                        else -> "AI_EcoActive"
+                    }
                 }
                 "rbFocusMultitasking" -> {
+                    // Multitasking Focus: Instant Stage 2 & 3 throughput with idle saver
                     when {
-                        adjustedLoad > 30 -> "AI_Extreme"
-                        adjustedLoad > 15 -> "AI_Boost"
-                        else -> "AI_Daily"
+                        adjustedLoad > 50 -> "AI_Extreme"
+                        adjustedLoad > 30 -> "AI_Boost"
+                        adjustedLoad > 10 -> "AI_Daily"
+                        else -> "AI_EcoActive"
                     }
                 }
                 else -> "AI_Daily"
@@ -473,9 +494,10 @@ class AutoTweakService : Service() {
             }
         }
 
-        // 9. AI Sleeping Profile
-        if (prefs.getString("selected_mode", "rbBalance") == "rbAutomatic") {
-            applyAiTweak(0, "rbFocusDaily")
+        // 9. Zero-Drain Deep Sleep Profile (480MHz Hardware Minimum Floor)
+        val manualStage = prefs.getInt("manual_stage_override", 0)
+        if (manualStage == 0) {
+            TweakManager.applyScreenOffSleep()
         }
     }
 
@@ -488,11 +510,23 @@ class AutoTweakService : Service() {
         TweakManager.setClusterParking(false, deep = true) 
         ShellUtils.fastCmd("echo 'on' > /data/local/tmp/pc_screen")
 
-        // 2. Restore Automatic AI Profile IMMEDIATELY
-        if (isScreenOn && prefs.getString("selected_mode", "rbBalance") == "rbAutomatic") {
-            val focus = prefs.getString("selected_focus", "rbFocusDaily") ?: "rbFocusDaily"
-            val load = calculateAppAiLoad(lastForegroundApp)
-            applyAiTweak(load, focus)
+        // 2. Restore Operation Mode (or Re-enforce Manual Stage)
+        val manualStage = prefs.getInt("manual_stage_override", 0)
+        if (manualStage != 0) {
+            TweakManager.manualStageOverride = manualStage
+            TweakManager.applyRawStageScript(manualStage)
+        } else {
+            val savedMode = prefs.getString("selected_mode", "rbBalance")
+            when (savedMode) {
+                "rbPowerSaver" -> TweakManager.applyGlobalMode("Power Saver")
+                "rbPerformance" -> TweakManager.applyGlobalMode("Performance")
+                "rbAutomatic" -> {
+                    val focus = prefs.getString("selected_focus", "rbFocusDaily") ?: "rbFocusDaily"
+                    val load = calculateAppAiLoad(lastForegroundApp)
+                    applyAiTweak(load, focus)
+                }
+                else -> TweakManager.applyGlobalMode("Balance")
+            }
         }
 
         val superDozePrefs = getSharedPreferences("super_doze_prefs", MODE_PRIVATE)

@@ -85,6 +85,41 @@ class ModeControlActivity : AppCompatActivity() {
             prefs.edit().putString("selected_focus", focusKey).apply()
         }
 
+        // Explicit Apply Mode Button
+        findViewById<Button>(R.id.btnApplyMode).setOnClickListener {
+            val checkedModeId = rgModes.checkedRadioButtonId
+            val modeKey = when (checkedModeId) {
+                R.id.rbPowerSaver -> "rbPowerSaver"
+                R.id.rbPerformance -> "rbPerformance"
+                R.id.rbAutomatic -> "rbAutomatic"
+                else -> "rbBalance"
+            }
+            prefs.edit().putString("selected_mode", modeKey).apply()
+
+            // Reset manual stage lock so full governor takes effect
+            prefs.edit().putInt("manual_stage_override", 0).apply()
+            TweakManager.manualStageOverride = 0
+
+            thread {
+                if (modeKey == "rbAutomatic") {
+                    startService(Intent(this, AutoTweakService::class.java))
+                } else {
+                    prefs.edit().remove("active_ai_label").apply()
+                    val displayMode = when (modeKey) {
+                        "rbPowerSaver" -> "Power Saver"
+                        "rbPerformance" -> "Performance"
+                        else -> "Balance"
+                    }
+                    TweakManager.applyGlobalMode(displayMode)
+                }
+
+                runOnUiThread {
+                    Toast.makeText(this, "⚡ Mode Applied Successfully", Toast.LENGTH_SHORT).show()
+                    updateRefreshSummary()
+                }
+            }
+        }
+
         // Clickable Shortcut directly to Custom Display Refresh Rate Activity
         findViewById<View>(R.id.cardDisplayRefreshShortcut).setOnClickListener {
             startActivity(Intent(this, RefreshRateActivity::class.java))

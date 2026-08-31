@@ -38,6 +38,11 @@ object ThermalManager {
         if (isCooldownActive) return
         
         val prefs = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
+        val manualStage = prefs.getInt("manual_stage_override", 0)
+        if (manualStage != 0 || TweakManager.manualStageOverride != 0) {
+            // Strictly protect user's manual test lock in Test Lab
+            return
+        }
 
         // 1. Auto Emergency Cooldown Trigger Check
         val isAutoCooldownEnabled = prefs.getBoolean("auto_cooldown_enabled", false)
