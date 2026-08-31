@@ -99,6 +99,19 @@
                             app:cornerRadius="10dp" />
                     </LinearLayout>
 
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnCustomWidgetApps"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="📱 Custom Widget Selection"
+                        android:textColor="@color/color_freezer"
+                        app:icon="@android:drawable/ic_menu_view"
+                        app:iconTint="@color/color_freezer"
+                        app:backgroundTint="#1F2A30"
+                        app:cornerRadius="10dp" />
+
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

@@ -11,38 +11,38 @@ import android.os.Build
 import android.widget.RemoteViews
 import android.widget.RemoteViewsService
 
-class FreezerWidgetService : RemoteViewsService() {
+class SpecialFreezerWidgetService : RemoteViewsService() {
     override fun onGetViewFactory(intent: Intent): RemoteViewsFactory {
-        return FreezerRemoteViewsFactory(this.applicationContext)
+        return SpecialFreezerRemoteViewsFactory(this.applicationContext)
     }
 }
 
-class FreezerRemoteViewsFactory(private val context: Context) : RemoteViewsService.RemoteViewsFactory {
+class SpecialFreezerRemoteViewsFactory(private val context: Context) : RemoteViewsService.RemoteViewsFactory {
 
-    private var frozenAppsList = mutableListOf<String>()
+    private var specialFrozenAppsList = mutableListOf<String>()
 
     override fun onCreate() {}
 
     override fun onDataSetChanged() {
-        val set = FreezerManager.getFrozenApps(context)
-        frozenAppsList.clear()
-        frozenAppsList.addAll(set.sorted())
+        val customSet = FreezerManager.getCustomWidgetApps(context)
+        val finalSet = if (customSet.isNotEmpty()) customSet else FreezerManager.getSpecialFreezeApps(context)
+        specialFrozenAppsList.clear()
+        specialFrozenAppsList.addAll(finalSet.sorted())
     }
 
     override fun onDestroy() {
-        frozenAppsList.clear()
+        specialFrozenAppsList.clear()
     }
 
-    override fun getCount(): Int = frozenAppsList.size
+    override fun getCount(): Int = specialFrozenAppsList.size
 
     override fun getViewAt(position: Int): RemoteViews {
         val views = RemoteViews(context.packageName, R.layout.widget_item_app)
-        if (position >= frozenAppsList.size) return views
-        val pkg = frozenAppsList[position]
-        
+        if (position >= specialFrozenAppsList.size) return views
+
+        val pkg = specialFrozenAppsList[position]
         val pm = context.packageManager
         try {
-            // CRITICAL: Must use MATCH_DISABLED_COMPONENTS to see icons of frozen apps
             val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                 PackageManager.MATCH_DISABLED_COMPONENTS
             } else {
@@ -57,7 +57,7 @@ class FreezerRemoteViewsFactory(private val context: Context) : RemoteViewsServi
             views.setImageViewBitmap(R.id.widget_app_icon, drawableToMonochromeBitmap(icon))
             
             val fillInIntent = Intent().apply {
-                putExtra(FreezerWidgetProvider.EXTRA_PACKAGE_NAME, pkg)
+                putExtra(SpecialFreezerWidgetProvider.EXTRA_PACKAGE_NAME, pkg)
             }
             views.setOnClickFillInIntent(R.id.widget_app_icon, fillInIntent)
             views.setOnClickFillInIntent(R.id.widget_app_name, fillInIntent)
@@ -98,12 +98,15 @@ class FreezerRemoteViewsFactory(private val context: Context) : RemoteViewsServi
             ))
             matrix.postConcat(cm)
             paint.colorFilter = ColorMatrixColorFilter(matrix)
-            drawable.setBounds(0, 0, canvas.width, canvas.height)
-            canvas.saveLayer(null, paint)
-            drawable.draw(canvas)
-            canvas.restore()
+            
+            val tempBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            val tempCanvas = Canvas(tempBitmap)
+            drawable.setBounds(0, 0, width, height)
+            drawable.draw(tempCanvas)
+            
+            canvas.drawBitmap(tempBitmap, 0f, 0f, paint)
         } else {
-            drawable.setBounds(0, 0, canvas.width, canvas.height)
+            drawable.setBounds(0, 0, width, height)
             drawable.draw(canvas)
         }
         return bitmap

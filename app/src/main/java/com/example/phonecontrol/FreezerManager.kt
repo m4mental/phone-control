@@ -160,16 +160,36 @@ object FreezerManager {
     }
 
     fun launchApp(context: Context, packageName: String) {
+        if (packageName.isBlank()) return
         lastLaunchedPackage = packageName
         lastLaunchTime = System.currentTimeMillis()
 
-        unfreezeApp(packageName)
+        // 1. Synchronously unsuspend, enable, and unfreeze via Root BEFORE attempting launch
+        val script = """
+            pm enable "$packageName" 2>/dev/null
+            pm unsuspend "$packageName" 2>/dev/null
+            am unfreeze "$packageName" 2>/dev/null
+            am set-standby-bucket "$packageName" active 2>/dev/null
+            for p in $(pidof "$packageName"); do
+                echo 0 > /proc/${'$'}p/oom_score_adj 2>/dev/null
+            done
+        """.trimIndent()
+        ShellUtils.runAsRoot(script)
         TweakManager.triggerTurboBoost()
         
-        val intent = context.packageManager.getLaunchIntentForPackage(packageName)
-        intent?.let {
-            it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(it)
+        // 2. Direct Root Launcher launch (0ms delay, bypasses OS suspend cache dialogs)
+        val monkeyResult = ShellUtils.runAsRoot("monkey -p $packageName -c android.intent.category.LAUNCHER 1")
+        if (monkeyResult.exitCode != 0 || monkeyResult.output.contains("No activities found")) {
+            // Fallback to PackageManager launch intent
+            try {
+                val intent = context.packageManager.getLaunchIntentForPackage(packageName)
+                intent?.let {
+                    it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+                    context.startActivity(it)
+                }
+            } catch (e: Exception) {
+                // Ignore
+            }
         }
     }
 
@@ -197,6 +217,35 @@ object FreezerManager {
         set.remove(packageName)
         saveFrozenApps(context, set)
         unfreezeApp(packageName)
+    }
+
+    fun getCustomWidgetApps(context: Context): Set<String> {
+        val prefs = context.getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE)
+        return prefs.getStringSet("custom_widget_apps", emptySet()) ?: emptySet()
+    }
+
+    fun saveCustomWidgetApps(context: Context, packages: Set<String>) {
+        val prefs = context.getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putStringSet("custom_widget_apps", packages).apply()
+    }
+
+    fun toggleCustomWidgetApp(context: Context, packageName: String): Boolean {
+        val prefs = context.getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE)
+        val set = prefs.getStringSet("custom_widget_apps", emptySet())?.toMutableSet() ?: mutableSetOf()
+        val newState = if (set.contains(packageName)) {
+            set.remove(packageName)
+            false
+        } else {
+            set.add(packageName)
+            true
+        }
+        prefs.edit().putStringSet("custom_widget_apps", set).apply()
+        return newState
+    }
+
+    fun getSpecialFreezeApps(context: Context): Set<String> {
+        val prefs = context.getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE)
+        return prefs.getStringSet("special_freeze_apps", emptySet()) ?: emptySet()
     }
 
     fun isSpecialFreeze(context: Context, packageName: String): Boolean {

@@ -244,7 +244,7 @@
             </intent-filter>
         </service>
 
-        <!-- Freezer Widget -->
+        <!-- Standard Freezer Widget (All Frozen Apps) -->
         <receiver android:name=".FreezerWidgetProvider" android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
@@ -254,6 +254,19 @@
         </receiver>
 
         <service android:name=".FreezerWidgetService"
+            android:permission="android.permission.BIND_REMOTEVIEWS"
+            android:exported="false" />
+
+        <!-- Special Freezer Widget (Custom Choice Special Freeze Apps Only) -->
+        <receiver android:name=".SpecialFreezerWidgetProvider" android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.example.phonecontrol.ACTION_LAUNCH_SPECIAL_APP" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/special_freezer_widget_info" />
+        </receiver>
+
+        <service android:name=".SpecialFreezerWidgetService"
             android:permission="android.permission.BIND_REMOTEVIEWS"
             android:exported="false" />
 

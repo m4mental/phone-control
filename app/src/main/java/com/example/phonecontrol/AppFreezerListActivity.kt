@@ -70,6 +70,7 @@ class AppFreezerListActivity : AppCompatActivity() {
 
         btnFreezeAll.setOnClickListener { freezeAll() }
         btnAdd.setOnClickListener { showSearchableAppPicker() }
+        findViewById<MaterialButton>(R.id.btnCustomWidgetApps).setOnClickListener { showCustomWidgetAppPicker() }
         btnRemoveSelected.setOnClickListener { removeMultipleApps() }
         btnCancelEdit.setOnClickListener { exitEditMode() }
 
@@ -139,32 +140,39 @@ class AppFreezerListActivity : AppCompatActivity() {
         } else {
             ivIcon.setImageResource(android.R.drawable.sym_def_app_icon)
         }
+
         tvName.text = item.name
         tvPkg.text = item.pkg
         
-        if (item.isActive) {
-            tvStatus.text = if (item.isSpecial) "ACTIVE (SPECIAL)" else "ACTIVE"
-            tvStatus.setTextColor(android.graphics.Color.GREEN)
+        val isCustomWidget = FreezerManager.getCustomWidgetApps(this).contains(item.pkg)
+        val widgetTag = if (isCustomWidget) " • 📱 Widget" else ""
+
+        if (item.isSpecial) {
+            tvStatus.text = "Special Freeze (Suspended)$widgetTag"
+            tvStatus.setTextColor(android.graphics.Color.parseColor("#FF5252"))
+        } else if (item.isActive) {
+            tvStatus.text = "Active in Memory$widgetTag"
+            tvStatus.setTextColor(android.graphics.Color.parseColor("#00E676"))
         } else {
-            tvStatus.text = if (item.isSpecial) "HIBERNATING (SPECIAL)" else "HIBERNATING"
-            tvStatus.setTextColor(android.graphics.Color.CYAN)
+            tvStatus.text = "Hibernated (0% CPU)$widgetTag"
+            tvStatus.setTextColor(android.graphics.Color.parseColor("#00E5FF"))
         }
 
         view.setOnClickListener {
             if (isEditMode) {
                 toggleSelection(item.pkg, cbSelect)
             } else {
-                FreezerManager.launchApp(this, item.pkg)
-                Toast.makeText(this, "Resuming ${item.name}...", Toast.LENGTH_SHORT).show()
+                showAppOptionsDialog(item.pkg, item.name)
             }
         }
-        
+
         view.setOnLongClickListener {
             if (!isEditMode) {
-                showAppOptionsDialog(item.pkg, item.name)
+                enterEditMode(item.pkg)
             }
             true
         }
+
         layoutFrozenAppsList.addView(view)
     }
 
@@ -183,16 +191,23 @@ class AppFreezerListActivity : AppCompatActivity() {
             runOnUiThread {
                 progress.dismiss()
                 refreshList()
-                FreezerWidgetProvider.updateAllWidgets(this)
+                notifyWidgets()
                 Toast.makeText(this, "Hibernated ${apps.size} apps!", Toast.LENGTH_SHORT).show()
             }
         }
     }
 
+    private fun notifyWidgets() {
+        FreezerWidgetProvider.updateAllWidgets(this)
+        SpecialFreezerWidgetProvider.updateAllWidgets(this)
+    }
+
     private fun showAppOptionsDialog(pkg: String, appName: String) {
         val isSpecial = FreezerManager.isSpecialFreeze(this, pkg)
         val specialLabel = if (isSpecial) "Disable Special Freeze (Restore Launcher Icon)" else "Enable Special Freeze (Hard Kill + Suspend)"
-        val options = arrayOf("Resume / Unfreeze App", specialLabel, "Remove from Hibernation List", "Bulk Edit Mode")
+        val isCustomWidget = FreezerManager.getCustomWidgetApps(this).contains(pkg)
+        val widgetLabel = if (isCustomWidget) "📱 Remove from Custom Widget" else "📱 Add to Custom Widget"
+        val options = arrayOf("Resume / Unfreeze App", specialLabel, widgetLabel, "Remove from Hibernation List", "Bulk Edit Mode")
 
         AlertDialog.Builder(this)
             .setTitle(appName)
@@ -203,6 +218,7 @@ class AppFreezerListActivity : AppCompatActivity() {
                             FreezerManager.unfreezeApp(pkg)
                             runOnUiThread {
                                 refreshList()
+                                notifyWidgets()
                                 Toast.makeText(this, "$appName Unfrozen & Ready", Toast.LENGTH_SHORT).show()
                             }
                         }
@@ -219,12 +235,20 @@ class AppFreezerListActivity : AppCompatActivity() {
                             }
                             runOnUiThread {
                                 refreshList()
+                                notifyWidgets()
                                 val msg = if (newVal) "Special Freeze Enabled (Hard Suspend)" else "Special Freeze Disabled (Standard Hibernation Active)"
                                 Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
                             }
                         }
                     }
                     2 -> {
+                        val added = FreezerManager.toggleCustomWidgetApp(this, pkg)
+                        refreshList()
+                        notifyWidgets()
+                        val msg = if (added) "Added $appName to Custom Widget" else "Removed $appName from Custom Widget"
+                        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                    }
+                    3 -> {
                         val current = FreezerManager.getFrozenApps(this).toMutableSet()
                         current.remove(pkg)
                         thread {
@@ -233,11 +257,12 @@ class AppFreezerListActivity : AppCompatActivity() {
                             FreezerManager.saveFrozenApps(this, current)
                             runOnUiThread {
                                 refreshList()
+                                notifyWidgets()
                                 Toast.makeText(this, "Removed and unfreezed $appName", Toast.LENGTH_SHORT).show()
                             }
                         }
                     }
-                    3 -> enterEditMode(pkg)
+                    4 -> enterEditMode(pkg)
                 }
             }
             .show()
@@ -287,7 +312,7 @@ class AppFreezerListActivity : AppCompatActivity() {
                     }
                     FreezerManager.unfreezeMultipleApps(toRemove)
                     runOnUiThread {
-                        FreezerWidgetProvider.updateAllWidgets(this)
+                        notifyWidgets()
                         exitEditMode()
                         Toast.makeText(this, "Unfroze $count apps", Toast.LENGTH_SHORT).show()
                     }
@@ -317,7 +342,7 @@ class AppFreezerListActivity : AppCompatActivity() {
                     val updatedSet = currentFrozen.toMutableSet().apply { addAll(newlySelected) }
                     FreezerManager.saveFrozenApps(this, updatedSet)
                     refreshList()
-                    FreezerWidgetProvider.updateAllWidgets(this)
+                    notifyWidgets()
                     Toast.makeText(this, "Added ${newlySelected.size} apps to Hibernation list", Toast.LENGTH_SHORT).show()
                 }
             }
@@ -366,6 +391,84 @@ class AppFreezerListActivity : AppCompatActivity() {
 
                 cbSelectAll.setOnCheckedChangeListener { _, isChecked ->
                     for (app in filteredApps) app.isChecked = isChecked
+                    adapter?.notifyDataSetChanged()
+                }
+
+                dialog.show()
+            }
+        }
+    }
+
+    private fun showCustomWidgetAppPicker() {
+        val allFrozen = FreezerManager.getFrozenApps(this)
+        if (allFrozen.isEmpty()) {
+            Toast.makeText(this, "No apps in hibernation list yet! Add apps first.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val currentCustom = FreezerManager.getCustomWidgetApps(this)
+        val dialogView = layoutInflater.inflate(R.layout.dialog_app_picker, null)
+        val etSearch = dialogView.findViewById<EditText>(R.id.etSearchApp)
+        val lvApps = dialogView.findViewById<ListView>(R.id.lvApps)
+        val cbSelectAll = dialogView.findViewById<CheckBox>(R.id.cbSelectAll)
+
+        var allItems: List<AppItem> = emptyList()
+        var filteredItems: List<AppItem> = emptyList()
+        var adapter: AppPickerAdapter? = null
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Select Custom Widget Apps")
+            .setView(dialogView)
+            .setPositiveButton("Save") { _, _ ->
+                val selected = allItems.filter { it.isChecked }.map { it.info.packageName }.toSet()
+                FreezerManager.saveCustomWidgetApps(this, selected)
+                refreshList()
+                notifyWidgets()
+                Toast.makeText(this, "Saved ${selected.size} apps for Custom Widget", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancel", null)
+            .create()
+
+        fun updateList() {
+            val query = etSearch.text.toString().trim().lowercase()
+            filteredItems = if (query.isEmpty()) {
+                allItems
+            } else {
+                allItems.filter { it.label.lowercase().contains(query) || it.info.packageName.lowercase().contains(query) }
+            }
+            adapter = AppPickerAdapter(filteredItems)
+            lvApps.adapter = adapter
+        }
+
+        thread {
+            val items = allFrozen.mapNotNull { pkg ->
+                try {
+                    val appInfo = pm.getApplicationInfo(pkg, PackageManager.MATCH_UNINSTALLED_PACKAGES)
+                    val label = pm.getApplicationLabel(appInfo).toString()
+                    AppItem(appInfo, label).apply {
+                        isChecked = currentCustom.contains(pkg)
+                    }
+                } catch (e: Exception) {
+                    null
+                }
+            }.sortedBy { it.label.lowercase() }
+
+            allItems = items
+            filteredItems = allItems
+
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                adapter = AppPickerAdapter(filteredItems)
+                lvApps.adapter = adapter
+
+                etSearch.addTextChangedListener(object : TextWatcher {
+                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { updateList() }
+                    override fun afterTextChanged(s: Editable?) {}
+                })
+
+                cbSelectAll.setOnCheckedChangeListener { _, isChecked ->
+                    for (app in filteredItems) app.isChecked = isChecked
                     adapter?.notifyDataSetChanged()
                 }
 
