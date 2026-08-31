@@ -90,9 +90,9 @@ object TweakManager {
                 ShellUtils.fastCmd("echo 1 > /sys/devices/virtual/touchpanel/smart_wake/touch_responsiveness 2>/dev/null")
             } else {
                 // Progressive Touch-Adaptive Daily Boost:
-                // Sits at 650MHz Base Idle -> Climbs to 850MHz on touch for 100ms; Big Cores stay sleeping (Zero Idle Heating!)
+                // Sits at 650MHz Base Idle -> Climbs to 950MHz on touch/video call for 100ms; Big Cores stay sleeping (Zero Idle Heating!)
                 ShellUtils.fastCmd("echo 1 > /sys/module/cpu_boost/parameters/input_boost_enabled 2>/dev/null")
-                ShellUtils.fastCmd("echo 0:850000 6:0 > /sys/module/cpu_boost/parameters/input_boost_freq 2>/dev/null")
+                ShellUtils.fastCmd("echo 0:950000 6:0 > /sys/module/cpu_boost/parameters/input_boost_freq 2>/dev/null")
                 ShellUtils.fastCmd("echo 100 > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null")
                 ShellUtils.fastCmd("echo 0 > /proc/touchpanel/game_switch_enable 2>/dev/null")
                 ShellUtils.fastCmd("echo 0 > /sys/devices/virtual/touchpanel/smart_wake/touch_responsiveness 2>/dev/null")
