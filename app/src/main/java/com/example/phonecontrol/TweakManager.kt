@@ -478,8 +478,11 @@ object TweakManager {
                 echo 400000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
                 echo schedutil > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_governor 2>/dev/null
             done
+            echo 480000 > /sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq 2>/dev/null
             echo 480000 > /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null
+            echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_min_freq 2>/dev/null
             echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq 2>/dev/null
+            echo 400000 > /sys/devices/system/cpu/cpufreq/policy7/scaling_min_freq 2>/dev/null
             echo 400000 > /sys/devices/system/cpu/cpufreq/policy7/scaling_max_freq 2>/dev/null
         """.trimIndent()
         ShellUtils.fastCmd(script)
