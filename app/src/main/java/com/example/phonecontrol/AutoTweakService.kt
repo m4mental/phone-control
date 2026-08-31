@@ -395,13 +395,21 @@ class AutoTweakService : Service() {
             TweakManager.setClusterParking(true, deep = false)
         }
 
-        // 2. Super Doze & Sync Logic
+        // 2. Super Doze & Sync Logic with State Preservation
         if (isSuperDoze || isForceDoze) {
             if (isSuperDoze && superDozePrefs.getBoolean("sync_off_enabled", true)) {
-                ShellUtils.fastCmd("settings put global master_sync_enabled 0")
+                val currentSync = android.content.ContentResolver.getMasterSyncAutomatically()
+                superDozePrefs.edit().putBoolean("user_saved_sync_state", currentSync).apply()
+                if (currentSync) {
+                    ShellUtils.fastCmd("settings put global master_sync_enabled 0")
+                }
             }
             if (isSuperDoze && superDozePrefs.getBoolean("radio_off_enabled", false)) {
-                ShellUtils.fastCmd("svc data disable")
+                val currentData = ShellUtils.runAsRoot("settings get global mobile_data").output.trim() == "1"
+                superDozePrefs.edit().putBoolean("user_saved_mobile_data", currentData).apply()
+                if (currentData) {
+                    ShellUtils.fastCmd("svc data disable")
+                }
             }
         }
 
@@ -420,9 +428,13 @@ class AutoTweakService : Service() {
             SensorManager.setSensorsEnabled(this@AutoTweakService, false)
         }
 
-        // 5. GPS Auto-Saver on Screen OFF
+        // 5. GPS Auto-Saver on Screen OFF with State Preservation
         if (prefs.getBoolean("gps_auto_saver_enabled", false)) {
-            TweakManager.setLocationEnabled(false)
+            val currentLocMode = TweakManager.getLocationMode(this@AutoTweakService)
+            prefs.edit().putInt("user_saved_location_mode", currentLocMode).apply()
+            if (currentLocMode != 0) {
+                TweakManager.setLocationMode(0)
+            }
         }
 
         // 6. Guarantee Whitelist & Accessibility Exemption
@@ -488,16 +500,25 @@ class AutoTweakService : Service() {
 
         if (isSuperDoze) {
             if (superDozePrefs.getBoolean("sync_off_enabled", true)) {
-                ShellUtils.fastCmd("settings put global master_sync_enabled 1")
+                val savedSync = superDozePrefs.getBoolean("user_saved_sync_state", false)
+                if (savedSync) {
+                    ShellUtils.fastCmd("settings put global master_sync_enabled 1")
+                }
             }
             if (superDozePrefs.getBoolean("radio_off_enabled", false)) {
-                ShellUtils.fastCmd("svc data enable")
+                val savedData = superDozePrefs.getBoolean("user_saved_mobile_data", false)
+                if (savedData) {
+                    ShellUtils.fastCmd("svc data enable")
+                }
             }
         }
 
-        // GPS Auto-Saver Restore
+        // GPS Auto-Saver Restore with State Preservation
         if (prefs.getBoolean("gps_auto_saver_enabled", false)) {
-            TweakManager.setLocationEnabled(true)
+            val savedLocMode = prefs.getInt("user_saved_location_mode", 0)
+            if (savedLocMode != 0) {
+                TweakManager.setLocationMode(savedLocMode)
+            }
         }
 
         val indivBlockActive = prefs.getBoolean("block_gyro", false) || 

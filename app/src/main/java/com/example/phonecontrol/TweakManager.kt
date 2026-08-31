@@ -1,5 +1,6 @@
 package com.example.phonecontrol
 
+import android.content.Context
 import android.util.Log
 
 object TweakManager {
@@ -454,11 +455,23 @@ object TweakManager {
     }
 
     /**
-     * 5. Location (GPS) Control
+     * 5. Location (GPS) Control with State Preservation
      */
-    fun setLocationEnabled(enabled: Boolean) {
-        val mode = if (enabled) "3" else "0" // 3 = High Accuracy, 0 = Off
+    fun getLocationMode(context: Context): Int {
+        return try {
+            android.provider.Settings.Secure.getInt(context.contentResolver, android.provider.Settings.Secure.LOCATION_MODE, 0)
+        } catch (e: Exception) {
+            0
+        }
+    }
+
+    fun setLocationMode(mode: Int) {
         ShellUtils.fastCmd("settings put secure location_mode $mode")
+    }
+
+    fun setLocationEnabled(enabled: Boolean) {
+        val mode = if (enabled) 3 else 0
+        setLocationMode(mode)
     }
 
     fun applyRamSettings(zramKey: String, profileKey: String) {
