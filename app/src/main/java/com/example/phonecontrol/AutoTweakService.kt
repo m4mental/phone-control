@@ -222,18 +222,12 @@ class AutoTweakService : Service() {
         return START_STICKY
     }
 
-    fun isVideoCallOrVoipActive(): Boolean {
+    fun isVideoCallActive(): Boolean {
         try {
-            val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-            val isCallMode = audioManager?.let {
-                it.mode == AudioManager.MODE_IN_COMMUNICATION ||
-                it.mode == AudioManager.MODE_IN_CALL ||
-                it.mode == AudioManager.MODE_RINGTONE
-            } ?: false
+            // Video calls specifically stream active camera feed (even in background PiP / app-switching)
+            if (isCameraInUse) return true
 
-            if (isCallMode || isCameraInUse) return true
-
-            // Secondary check via camera service dumpsys
+            // Secondary check via camera service dumpsys for active streaming clients
             val camOut = ShellUtils.runAsRoot("dumpsys media.camera | grep -E 'Client\\[|active'").output
             if (camOut.isNotBlank() && (camOut.contains("active") || camOut.contains("Client["))) {
                 return true
@@ -272,13 +266,13 @@ class AutoTweakService : Service() {
             return 30
         }
         
-        // 3. Social / Video Call & VOIP (WhatsApp, Telegram, Meet, Instagram) - Stage 1 Locked 950MHz Little Cores
-        if (isVideoCallOrVoipActive()) {
+        // 3. Active Video Call (WhatsApp, Telegram, Meet, Instagram) - Stage 1 Locked 950MHz Little Cores
+        if (isVideoCallActive()) {
             return 25
         }
 
-        // 4. Daily Social, Chatting, Messaging, Media, Settings, System UI (Stage 1 Eco - 650M Base -> 950M Touch Burst, Big Cores Sleep)
-        // WhatsApp, Telegram, YouTube, Instagram, X/Twitter, Phone, Settings, etc.
+        // 4. Daily Social, Chatting, Messaging, Media, Normal Voice Calls, Settings, System UI (Stage 1 Eco - 650M Base Floor)
+        // Normal voice calls, WhatsApp chat, Telegram, YouTube, Instagram, X/Twitter, Phone, Settings, etc.
         return 10
     }
 
@@ -407,7 +401,7 @@ class AutoTweakService : Service() {
 
         val targetMode = if (!isScreenOn) {
             "AI_Sleeping"
-        } else if (isVideoCallOrVoipActive()) {
+        } else if (isVideoCallActive()) {
             "AI_VideoCall"
         } else {
             when (focus) {
