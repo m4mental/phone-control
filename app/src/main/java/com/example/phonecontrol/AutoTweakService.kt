@@ -5,6 +5,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.hardware.camera2.CameraManager
+import android.media.AudioManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -33,10 +35,28 @@ class AutoTweakService : Service() {
     @Volatile private var isFloatingWindowActive = false
     @Volatile private var isScreenOn = true
     @Volatile private var isWakeupBoosting = false
+    @Volatile private var isCameraInUse = false
     @Volatile private var lastAiMode = ""
 
     private val tweakExecutor = Executors.newSingleThreadExecutor()
     private lateinit var connectivityManager: ConnectivityManager
+    private lateinit var cameraManager: CameraManager
+
+    private val cameraCallback = object : CameraManager.AvailabilityCallback() {
+        override fun onCameraUnavailable(cameraId: String) {
+            isCameraInUse = true
+            tweakExecutor.execute {
+                handleCameraOrCallStateChanged()
+            }
+        }
+
+        override fun onCameraAvailable(cameraId: String) {
+            isCameraInUse = false
+            tweakExecutor.execute {
+                handleCameraOrCallStateChanged()
+            }
+        }
+    }
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
@@ -139,6 +159,13 @@ class AutoTweakService : Service() {
             .build()
         connectivityManager.registerNetworkCallback(networkRequest, networkCallback)
 
+        try {
+            cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
+            cameraManager.registerAvailabilityCallback(cameraCallback, null)
+        } catch (e: Exception) {
+            Log.e("AutoTweak", "Failed to register camera availability callback: ${e.message}")
+        }
+
         tweakExecutor.execute {
             AppEventService.enableViaRoot(packageName)
             ThermalManager.checkAndRecoverCooldown(this)
@@ -195,6 +222,39 @@ class AutoTweakService : Service() {
         return START_STICKY
     }
 
+    fun isVideoCallOrVoipActive(): Boolean {
+        try {
+            val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            val isCallMode = audioManager?.let {
+                it.mode == AudioManager.MODE_IN_COMMUNICATION ||
+                it.mode == AudioManager.MODE_IN_CALL ||
+                it.mode == AudioManager.MODE_RINGTONE
+            } ?: false
+
+            if (isCallMode || isCameraInUse) return true
+
+            // Secondary check via camera service dumpsys
+            val camOut = ShellUtils.runAsRoot("dumpsys media.camera | grep -E 'Client\\[|active'").output
+            if (camOut.isNotBlank() && (camOut.contains("active") || camOut.contains("Client["))) {
+                return true
+            }
+        } catch (e: Exception) {}
+        return false
+    }
+
+    private fun handleCameraOrCallStateChanged() {
+        val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+        val manualStage = prefs.getInt("manual_stage_override", 0)
+        if (manualStage != 0 || TweakManager.manualStageOverride != 0) return
+
+        if (prefs.getString("selected_mode", "rbBalance") == "rbAutomatic") {
+            val focus = prefs.getString("selected_focus", "rbFocusDaily") ?: "rbFocusDaily"
+            val targetPkg = if (lastForegroundApp.isNotBlank()) lastForegroundApp else packageName
+            val load = calculateAppAiLoad(targetPkg)
+            applyAiTweak(load, focus)
+        }
+    }
+
     private fun calculateAppAiLoad(pkg: String): Int {
         val lower = pkg.lowercase()
         // 1. Heavy Compute / 3D Games / Video Editing (Stage 3 & 4 - Big Cores Wake Up)
@@ -212,7 +272,12 @@ class AutoTweakService : Service() {
             return 30
         }
         
-        // 3. Daily Social, Chatting, Messaging, Media, Settings, System UI (Stage 1 Eco - 650M Base -> 850M Touch Burst, Big Cores Sleep)
+        // 3. Social / Video Call & VOIP (WhatsApp, Telegram, Meet, Instagram) - Stage 1 Locked 950MHz Little Cores
+        if (isVideoCallOrVoipActive()) {
+            return 25
+        }
+
+        // 4. Daily Social, Chatting, Messaging, Media, Settings, System UI (Stage 1 Eco - 650M Base -> 950M Touch Burst, Big Cores Sleep)
         // WhatsApp, Telegram, YouTube, Instagram, X/Twitter, Phone, Settings, etc.
         return 10
     }
@@ -342,6 +407,8 @@ class AutoTweakService : Service() {
 
         val targetMode = if (!isScreenOn) {
             "AI_Sleeping"
+        } else if (isVideoCallOrVoipActive()) {
+            "AI_VideoCall"
         } else {
             when (focus) {
                 "rbFocusBattery" -> {
@@ -385,6 +452,7 @@ class AutoTweakService : Service() {
             
             val displayLabel = when(targetMode) {
                 "AI_Sleeping" -> "AI: Sleeping"
+                "AI_VideoCall" -> "AI: Video Call (950M Lock)"
                 "AI_EcoActive" -> "AI: Eco Active"
                 "AI_Daily" -> "AI: Daily Fluent"
                 "AI_Boost" -> "AI: Multi-Boost"
@@ -572,6 +640,7 @@ class AutoTweakService : Service() {
         unregisterReceiver(screenReceiver)
         unregisterReceiver(batteryThermalReceiver)
         try { connectivityManager.unregisterNetworkCallback(networkCallback) } catch (e: Exception) {}
+        try { cameraManager.unregisterAvailabilityCallback(cameraCallback) } catch (e: Exception) {}
         tweakExecutor.shutdown()
         ShellUtils.closePersistentShell()
         super.onDestroy()

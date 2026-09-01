@@ -30,10 +30,18 @@ class AppEventService : AccessibilityService() {
         if (event == null || event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
 
         val pkgName = event.packageName?.toString() ?: return
-        if (pkgName.isBlank() || pkgName == lastDispatchedPkg || pkgName == packageName) return
+        val clsName = event.className?.toString() ?: ""
+        if (pkgName.isBlank() || pkgName == packageName) return
         
         // Ignore system overlays, keyboards, volume sliders, and transient dialogs
         if (ignoredSystemPackages.contains(pkgName)) return
+
+        val isCallOrCameraActivity = clsName.contains("Voip", ignoreCase = true) ||
+                                     clsName.contains("Call", ignoreCase = true) ||
+                                     clsName.contains("Camera", ignoreCase = true) ||
+                                     clsName.contains("Video", ignoreCase = true)
+
+        if (pkgName == lastDispatchedPkg && !isCallOrCameraActivity) return
 
         lastDispatchedPkg = pkgName
 
