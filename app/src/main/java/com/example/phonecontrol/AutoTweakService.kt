@@ -268,7 +268,7 @@ class AutoTweakService : Service() {
     }
 
     private fun handleForegroundAppTransition(previousPkg: String, newPkg: String) {
-        val frozenApps = FreezerManager.getFrozenApps(this)
+        val frozenApps = FreezerManager.getFrozenApps(this) + FreezerManager.getSpecialFreezeApps(this)
         val allSafeApps = MultitaskingManager.getUserWhitelist(this) + MultitaskingManager.protectedApps
         val activeAudioApps = FreezerManager.getActivePlayingAudioPackages(this)
 
@@ -293,6 +293,8 @@ class AutoTweakService : Service() {
                     FreezerManager.freezeApp(this, pkg)
                 }
             }
+            SpecialFreezerWidgetProvider.updateAllWidgets(this@AutoTweakService)
+            FreezerWidgetProvider.updateAllWidgets(this@AutoTweakService)
         }
 
         // 3. Perform Tweak & Profile Adaptations for new app
