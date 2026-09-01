@@ -253,6 +253,18 @@ For safety and clean UI presentation, the **Stage Override Test Lab** is hidden 
 
 ---
 
+## 🚀 90-Second Post-Boot Fast Startup Turbo Engine
+
+Upon phone reboot or restart (`ACTION_BOOT_COMPLETED`), Android executes heavy initialization workloads (DEX bytecode optimization, media scanner, Google Play sync, app widgets, and launcher caching).
+* **Boot Time Acceleration (0 – 90 Seconds / 1.5 Minutes):**
+  * Little Cores (0–5) unlock to **`2.0 GHz`** and Big Cores (6–7) unlock to **`2.8 GHz` (Stage 4 Turbo)**.
+  * Ensures all startup tasks complete within the first 90 seconds with **zero boot-time lag or UI sluggishness**.
+* **Automatic Eco Transition (After 90 Seconds):**
+  * Automatically transitions down to the user's configured mode (e.g. **Stage 1 Eco: `650 MHz` Base Floor + Big Cores `400 MHz` Deep Sleep**, ready to dynamically spike on touches and app loads).
+  * Returns the device to an ultra-cool, power-saving idle state immediately after initialization.
+
+---
+
 ## 🎨 Real-Time Multi-Color Stage & MHz Live Telemetry
 
 The Main Dashboard CPU Card features instant sub-frequency color telemetry and live hardware frequency readings directly on-screen without requiring terminal access:

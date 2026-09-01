@@ -15,16 +15,14 @@ class BootReceiver : BroadcastReceiver() {
                 ShellUtils.runAsRoot("dumpsys deviceidle whitelist +com.example.phonecontrol")
                 AppEventService.enableViaRoot(context.packageName)
                 
-                // Re-apply Kernel Mode Settings
                 val prefs = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
-                val savedModeKey = prefs.getString("selected_mode", "rbBalance") ?: "rbBalance"
-                val activeMode = when(savedModeKey) {
-                    "rbPowerSaver" -> "Power Saver"
-                    "rbPerformance" -> "Performance"
-                    else -> "Balance"
-                }
-                TweakManager.applyGlobalMode(activeMode)
-                
+
+                // 1. Post-Boot Fast Startup Turbo Boost (90 Seconds / 1.5 Minutes)
+                // Unleash Little (2.0GHz) & Big (2.8GHz) Cores so Android startup tasks, DexOpt, and launcher widgets finish instantly
+                Log.d("BootReceiver", "Post-Boot Turbo Boost active for 90 seconds...")
+                TweakManager.applyGlobalMode("Performance")
+                prefs.edit().putString("active_ai_label", "AI: Post-Boot Turbo").apply()
+
                 // Re-apply RAM and Multitasking settings
                 val zram = prefs.getString("zram_size", "rbZram4G") ?: "rbZram4G"
                 val profile = prefs.getString("ram_profile", "rbProfileBalance") ?: "rbProfileBalance"
@@ -66,6 +64,29 @@ class BootReceiver : BroadcastReceiver() {
                     context.startService(serviceIntent)
                 } catch (e: Exception) {
                     Log.e("BootReceiver", "Failed to start service normally: ${e.message}")
+                }
+
+                // 2. Settle down after 90 seconds (1.5 Minutes) to user saved Eco/Auto mode
+                try {
+                    Thread.sleep(90000)
+                    Log.d("BootReceiver", "Post-Boot 90s completed. Transitioning to saved user mode...")
+                    val savedModeKey = prefs.getString("selected_mode", "rbAutomatic") ?: "rbAutomatic"
+                    if (savedModeKey == "rbAutomatic") {
+                        val intentAi = Intent(context, AutoTweakService::class.java).apply {
+                            action = "com.example.phonecontrol.ACTION_AI_TICK"
+                            putExtra("load", 10)
+                        }
+                        context.startService(intentAi)
+                    } else {
+                        val activeMode = when(savedModeKey) {
+                            "rbPowerSaver" -> "Power Saver"
+                            "rbPerformance" -> "Performance"
+                            else -> "Balance"
+                        }
+                        TweakManager.applyGlobalMode(activeMode)
+                    }
+                } catch (e: Exception) {
+                    Log.e("BootReceiver", "Error settling down after boot: ${e.message}")
                 }
             }
         }

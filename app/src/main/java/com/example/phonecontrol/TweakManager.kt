@@ -394,8 +394,9 @@ object TweakManager {
 
         when (mode) {
             "power" -> {
-                // Power Saver / Eco: Pure 650MHz Clean Base Floor (Ice Cold Idle & UI Navigation)
+                // Power Saver / Eco: Pure 650MHz Clean Base Floor (Ice Cold Idle & UI Navigation, Big Cores Sleeping)
                 val script = """
+                    chmod 644 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
                     for c in 0 1 2 3 4 5; do
                         echo 650000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
                         echo 650000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
@@ -414,12 +415,14 @@ object TweakManager {
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy7/scaling_max_freq 2>/dev/null
                     echo 1000 > /sys/devices/system/cpu/cpufreq/policy0/schedutil/rate_limit_us 2>/dev/null
                     echo 20000 > /sys/devices/system/cpu/cpufreq/policy6/schedutil/up_rate_limit_us 2>/dev/null
+                    chmod 444 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
                 """.trimIndent()
                 ShellUtils.fastCmd(script)
             }
             "balance" -> {
                 // Stage 2 Pure 6-Core Fluid: 6 Little Cores 650MHz - 2.0GHz, 2 Big Cores LOCKED at 400MHz Sleep!
                 val script = """
+                    chmod 644 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
                     for c in 0 1 2 3 4 5; do
                         echo 650000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
                         echo 2000000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
@@ -438,12 +441,14 @@ object TweakManager {
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy7/scaling_max_freq 2>/dev/null
                     echo 1000 > /sys/devices/system/cpu/cpufreq/policy0/schedutil/rate_limit_us 2>/dev/null
                     echo 20000 > /sys/devices/system/cpu/cpufreq/policy6/schedutil/up_rate_limit_us 2>/dev/null
+                    chmod 444 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
                 """.trimIndent()
                 ShellUtils.fastCmd(script)
             }
             "boost" -> {
                 // Stage 3 Dual-Cluster Balanced Compute: 6 Little Cores 2.0GHz, 2 Big Cores 1.5GHz
                 val script = """
+                    chmod 644 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
                     for c in 0 1 2 3 4 5; do
                         echo 650000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
                         echo 2000000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
@@ -462,6 +467,7 @@ object TweakManager {
                     echo 1500000 > /sys/devices/system/cpu/cpufreq/policy7/scaling_max_freq 2>/dev/null
                     echo 1000 > /sys/devices/system/cpu/cpufreq/policy0/schedutil/rate_limit_us 2>/dev/null
                     echo 15000 > /sys/devices/system/cpu/cpufreq/policy6/schedutil/up_rate_limit_us 2>/dev/null
+                    chmod 444 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
                 """.trimIndent()
                 ShellUtils.fastCmd(script)
             }
