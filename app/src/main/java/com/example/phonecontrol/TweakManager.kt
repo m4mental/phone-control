@@ -436,12 +436,12 @@ object TweakManager {
 
         when (mode) {
             "power" -> {
-                // Power Saver / Eco: 650MHz Base Floor -> 950MHz Dynamic Max, Big Cores 400MHz Sleeping
+                // Power Saver / Eco: Clean 650MHz Base Floor (Ice Cold Idle & UI Navigation, Big Cores Sleeping)
                 val script = """
                     chmod 644 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
                     for c in 0 1 2 3 4 5; do
                         echo 650000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
-                        echo 950000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
+                        echo 650000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
                         echo schedutil > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_governor 2>/dev/null
                     done
                     for c in 6 7; do
@@ -450,7 +450,7 @@ object TweakManager {
                         echo schedutil > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_governor 2>/dev/null
                     done
                     echo 650000 > /sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq 2>/dev/null
-                    echo 950000 > /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null
+                    echo 650000 > /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_min_freq 2>/dev/null
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq 2>/dev/null
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy7/scaling_min_freq 2>/dev/null

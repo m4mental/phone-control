@@ -1,17 +1,18 @@
 package com.example.phonecontrol
 
+import android.app.AppOpsManager
 import android.app.Service
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.hardware.camera2.CameraManager
 import android.media.AudioManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.BatteryManager as AndroidBatteryManager
+import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import java.util.concurrent.Executors
@@ -40,18 +41,12 @@ class AutoTweakService : Service() {
 
     private val tweakExecutor = Executors.newSingleThreadExecutor()
     private lateinit var connectivityManager: ConnectivityManager
-    private lateinit var cameraManager: CameraManager
+    private lateinit var appOpsManager: AppOpsManager
 
-    private val cameraCallback = object : CameraManager.AvailabilityCallback() {
-        override fun onCameraUnavailable(cameraId: String) {
-            isCameraInUse = true
-            tweakExecutor.execute {
-                handleCameraOrCallStateChanged()
-            }
-        }
-
-        override fun onCameraAvailable(cameraId: String) {
-            isCameraInUse = false
+    private val opActiveListener = AppOpsManager.OnOpActiveChangedListener { op, uid, pkg, active ->
+        if (op == AppOpsManager.OPSTR_CAMERA || op == "android:phone_call_camera") {
+            Log.d("AutoTweak", "Camera Op Active Changed -> pkg: $pkg, active: $active")
+            isCameraInUse = active
             tweakExecutor.execute {
                 handleCameraOrCallStateChanged()
             }
@@ -160,10 +155,16 @@ class AutoTweakService : Service() {
         connectivityManager.registerNetworkCallback(networkRequest, networkCallback)
 
         try {
-            cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
-            cameraManager.registerAvailabilityCallback(cameraCallback, null)
+            appOpsManager = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                appOpsManager.startWatchingActive(
+                    arrayOf(AppOpsManager.OPSTR_CAMERA, "android:phone_call_camera"),
+                    tweakExecutor,
+                    opActiveListener
+                )
+            }
         } catch (e: Exception) {
-            Log.e("AutoTweak", "Failed to register camera availability callback: ${e.message}")
+            Log.e("AutoTweak", "Failed to start watching active camera op: ${e.message}")
         }
 
         tweakExecutor.execute {
@@ -223,17 +224,7 @@ class AutoTweakService : Service() {
     }
 
     fun isVideoCallActive(): Boolean {
-        try {
-            // Video calls specifically stream active camera feed (even in background PiP / app-switching)
-            if (isCameraInUse) return true
-
-            // Secondary check via camera service dumpsys for active streaming clients
-            val camOut = ShellUtils.runAsRoot("dumpsys media.camera | grep -E 'Client\\[|active'").output
-            if (camOut.isNotBlank() && (camOut.contains("active") || camOut.contains("Client["))) {
-                return true
-            }
-        } catch (e: Exception) {}
-        return false
+        return isCameraInUse
     }
 
     private fun handleCameraOrCallStateChanged() {
@@ -634,7 +625,11 @@ class AutoTweakService : Service() {
         unregisterReceiver(screenReceiver)
         unregisterReceiver(batteryThermalReceiver)
         try { connectivityManager.unregisterNetworkCallback(networkCallback) } catch (e: Exception) {}
-        try { cameraManager.unregisterAvailabilityCallback(cameraCallback) } catch (e: Exception) {}
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                appOpsManager.stopWatchingActive(opActiveListener)
+            }
+        } catch (e: Exception) {}
         tweakExecutor.shutdown()
         ShellUtils.closePersistentShell()
         super.onDestroy()
