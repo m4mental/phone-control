@@ -389,6 +389,22 @@ object TweakManager {
     }
 
     /**
+     * Rapid 200ms App-Switch & Launch Transition Boost:
+     * Momentarily unlocks Little Cores to 950MHz for 200ms for 100% fluid 120fps window animations,
+     * then immediately settles back to 650MHz Base Floor (Zero idle drain, Big Cores sleeping).
+     */
+    fun triggerAppSwitchBoost() {
+        if (manualStageOverride != 0) return
+        kotlin.concurrent.thread {
+            try {
+                ShellUtils.fastCmd("chmod 666 /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null; echo 950000 > /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null")
+                Thread.sleep(200)
+                ShellUtils.fastCmd("echo 650000 > /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null; chmod 444 /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null")
+            } catch (e: Exception) {}
+        }
+    }
+
+    /**
      * Dedicated WhatsApp/VOIP Video Call & Camera Lock:
      * Locks 6 Little Cores strictly to 950MHz (0 frame drops, 0 stutter, fluid 30-60fps)
      * Keeps 2 Big Cores deeply sleeping at 400MHz (Zero heating / zero battery drain).
@@ -436,12 +452,12 @@ object TweakManager {
 
         when (mode) {
             "power" -> {
-                // Power Saver / Eco: Dynamic 650MHz Base Floor -> 850M Touch -> 950M Video Call Ceiling (Big Cores Sleeping)
+                // Power Saver / Eco: Pure 650MHz Base Floor (Ice Cold Idle & UI Navigation, Big Cores Sleeping)
                 val script = """
-                    chmod 644 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
+                    chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* 2>/dev/null
                     for c in 0 1 2 3 4 5; do
                         echo 650000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
-                        echo 950000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
+                        echo 650000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
                         echo schedutil > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_governor 2>/dev/null
                     done
                     for c in 6 7; do
@@ -450,14 +466,13 @@ object TweakManager {
                         echo schedutil > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_governor 2>/dev/null
                     done
                     echo 650000 > /sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq 2>/dev/null
-                    echo 950000 > /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null
+                    echo 650000 > /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_min_freq 2>/dev/null
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq 2>/dev/null
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy7/scaling_min_freq 2>/dev/null
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy7/scaling_max_freq 2>/dev/null
                     echo 1000 > /sys/devices/system/cpu/cpufreq/policy0/schedutil/rate_limit_us 2>/dev/null
                     echo 20000 > /sys/devices/system/cpu/cpufreq/policy6/schedutil/up_rate_limit_us 2>/dev/null
-                    chmod 444 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
                 """.trimIndent()
                 ShellUtils.fastCmd(script)
             }

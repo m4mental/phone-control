@@ -268,6 +268,9 @@ class AutoTweakService : Service() {
     }
 
     private fun handleForegroundAppTransition(previousPkg: String, newPkg: String) {
+        // Instant 200ms Window Animation Boost for butter-smooth 120fps app-switch transition
+        TweakManager.triggerAppSwitchBoost()
+
         val frozenApps = FreezerManager.getFrozenApps(this) + FreezerManager.getSpecialFreezeApps(this)
         val allSafeApps = MultitaskingManager.getUserWhitelist(this) + MultitaskingManager.protectedApps
         val activeAudioApps = FreezerManager.getActivePlayingAudioPackages(this)
