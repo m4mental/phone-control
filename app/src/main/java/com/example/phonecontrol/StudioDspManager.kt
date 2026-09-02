@@ -23,6 +23,7 @@ object StudioDspManager {
     private var standardEqualizer: Equalizer? = null
     private var bassBoost: BassBoost? = null
     private var virtualizer: Virtualizer? = null
+    private var presetReverb: android.media.audiofx.PresetReverb? = null
 
     // Track active player audio sessions (e.g. Spotify, YouTube Music)
     private val activePlayerSessions = mutableSetOf<Int>()
@@ -41,10 +42,10 @@ object StudioDspManager {
                 ShellUtils.fastCmd("pm grant ${context.packageName} android.permission.DUMP")
             } catch (e: Exception) {}
 
-            // 1. Initialize BassBoost & Virtualizer on Global Session
+            // 1. Initialize BassBoost, Virtualizer & PresetReverb on Global Session
             try {
                 bassBoost = BassBoost(0, GLOBAL_AUDIO_SESSION).apply {
-                    val strength = PowerampPresetManager.getBassBoostStrength(context)
+                    val strength = PowerampPresetManager.getDynamicSystemIntensity(context)
                     setStrength(strength.toShort())
                 }
             } catch (e: Exception) {
@@ -53,11 +54,19 @@ object StudioDspManager {
 
             try {
                 virtualizer = Virtualizer(0, GLOBAL_AUDIO_SESSION).apply {
-                    val strength = PowerampPresetManager.getVirtualizerStrength(context)
+                    val strength = PowerampPresetManager.getSurroundStrength(context)
                     setStrength(strength.toShort())
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Virtualizer init fallback: ${e.message}")
+            }
+
+            try {
+                presetReverb = android.media.audiofx.PresetReverb(0, GLOBAL_AUDIO_SESSION).apply {
+                    preset = PowerampPresetManager.getReverbPreset(context)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "PresetReverb init fallback: ${e.message}")
             }
 
             // 2. Initialize DynamicsProcessing or Standard Equalizer
@@ -121,8 +130,9 @@ object StudioDspManager {
         try {
             dynamicsProcessing?.enabled = enabled
             standardEqualizer?.enabled = enabled
-            bassBoost?.enabled = enabled && PowerampPresetManager.getBassBoostStrength(context) > 0
-            virtualizer?.enabled = enabled && PowerampPresetManager.getVirtualizerStrength(context) > 0
+            bassBoost?.enabled = enabled && PowerampPresetManager.isDynamicSystemEnabled(context)
+            virtualizer?.enabled = enabled && PowerampPresetManager.isSurroundEnabled(context)
+            presetReverb?.enabled = enabled && PowerampPresetManager.isReverbEnabled(context)
             Log.d(TAG, "Studio DSP Master set to: $enabled")
         } catch (e: Exception) {
             Log.e(TAG, "Error toggling master DSP state: ${e.message}")
@@ -243,16 +253,50 @@ object StudioDspManager {
         }
     }
 
-    fun setVirtualizer(context: Context, strength: Int) {
-        PowerampPresetManager.setVirtualizerStrength(context, strength)
+    // --- Differential Surround (Stereo Widening & Haas effect) ---
+    fun setDifferentialSurround(context: Context, enabled: Boolean, strength: Int) {
+        PowerampPresetManager.setSurroundEnabled(context, enabled)
+        PowerampPresetManager.setSurroundStrength(context, strength)
         try {
             virtualizer?.let {
                 it.setStrength(strength.coerceIn(0, 1000).toShort())
-                it.enabled = isCurrentlyEnabled && strength > 0
+                it.enabled = isCurrentlyEnabled && enabled
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error setting virtualizer: ${e.message}")
+            Log.e(TAG, "Error setting Differential Surround: ${e.message}")
         }
+    }
+
+    // --- Reverberation (Acoustic Space / Hall Reflection) ---
+    fun setReverberation(context: Context, enabled: Boolean, preset: Short) {
+        PowerampPresetManager.setReverbEnabled(context, enabled)
+        PowerampPresetManager.setReverbPreset(context, preset)
+        try {
+            presetReverb?.let {
+                it.preset = preset
+                it.enabled = isCurrentlyEnabled && enabled
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting Reverberation: ${e.message}")
+        }
+    }
+
+    // --- Dynamic System (Subwoofer Harmonics & Driver Resonance) ---
+    fun setDynamicSystem(context: Context, enabled: Boolean, intensity: Int) {
+        PowerampPresetManager.setDynamicSystemEnabled(context, enabled)
+        PowerampPresetManager.setDynamicSystemIntensity(context, intensity)
+        try {
+            bassBoost?.let {
+                it.setStrength(intensity.coerceIn(0, 1000).toShort())
+                it.enabled = isCurrentlyEnabled && enabled
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting Dynamic System: ${e.message}")
+        }
+    }
+
+    fun setVirtualizer(context: Context, strength: Int) {
+        setDifferentialSurround(context, strength > 0, strength)
     }
 
     /**
@@ -265,6 +309,7 @@ object StudioDspManager {
             standardEqualizer?.enabled = false
             bassBoost?.enabled = false
             virtualizer?.enabled = false
+            presetReverb?.enabled = false
             Log.d(TAG, "Studio DSP put to SLEEP (0% CPU)")
         } catch (e: Exception) {}
     }
@@ -278,8 +323,9 @@ object StudioDspManager {
         try {
             dynamicsProcessing?.enabled = true
             standardEqualizer?.enabled = true
-            bassBoost?.enabled = PowerampPresetManager.getBassBoostStrength(context) > 0
-            virtualizer?.enabled = PowerampPresetManager.getVirtualizerStrength(context) > 0
+            bassBoost?.enabled = PowerampPresetManager.isDynamicSystemEnabled(context)
+            virtualizer?.enabled = PowerampPresetManager.isSurroundEnabled(context)
+            presetReverb?.enabled = PowerampPresetManager.isReverbEnabled(context)
             Log.d(TAG, "Studio DSP WOKE UP in 0ms")
         } catch (e: Exception) {}
     }
@@ -290,10 +336,12 @@ object StudioDspManager {
             standardEqualizer?.release()
             bassBoost?.release()
             virtualizer?.release()
+            presetReverb?.release()
             dynamicsProcessing = null
             standardEqualizer = null
             bassBoost = null
             virtualizer = null
+            presetReverb = null
             isInitialized = false
         } catch (e: Exception) {}
     }

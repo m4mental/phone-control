@@ -394,6 +394,303 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- ViPER FX Suite (Differential Surround, Reverberation, Dynamic System) -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardBackgroundColor="#0D1527"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="0dp"
+                app:strokeColor="#1E293B"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="✨ ViPER FX Suite (Acoustics &amp; Harmonics)"
+                        android:textColor="#C084FC"
+                        android:textSize="13sp"
+                        android:textStyle="bold"
+                        android:layout_marginBottom="12dp" />
+
+                    <!-- 1. Differential Surround -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:background="#131F37"
+                        android:padding="12dp"
+                        android:layout_marginBottom="10dp">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Differential surround"
+                                    android:textColor="#FFFFFF"
+                                    android:textSize="13sp"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Phase widening &amp; Haas 3D soundstage"
+                                    android:textColor="#94A3B8"
+                                    android:textSize="11sp" />
+                            </LinearLayout>
+
+                            <com.google.android.material.materialswitch.MaterialSwitch
+                                android:id="@+id/switchSurround"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:id="@+id/layoutSurroundControls"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:id="@+id/tvSurroundStrength"
+                                android:layout_width="70dp"
+                                android:layout_height="wrap_content"
+                                android:text="Level: 50%"
+                                android:textColor="#00E5FF"
+                                android:textSize="11sp"
+                                android:textStyle="bold" />
+
+                            <SeekBar
+                                android:id="@+id/seekSurround"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:max="1000"
+                                android:progress="500"
+                                android:progressTint="#00E5FF"
+                                android:thumbTint="#00E5FF" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <!-- 2. Reverberation -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:background="#131F37"
+                        android:padding="12dp"
+                        android:layout_marginBottom="10dp">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Reverberation"
+                                    android:textColor="#FFFFFF"
+                                    android:textSize="13sp"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Acoustic room simulation &amp; hall reflection"
+                                    android:textColor="#94A3B8"
+                                    android:textSize="11sp" />
+                            </LinearLayout>
+
+                            <com.google.android.material.materialswitch.MaterialSwitch
+                                android:id="@+id/switchReverb"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content" />
+                        </LinearLayout>
+
+                        <!-- Reverb Preset Chips -->
+                        <HorizontalScrollView
+                            android:id="@+id/scrollReverbChips"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:scrollbars="none">
+
+                            <com.google.android.material.chip.ChipGroup
+                                android:id="@+id/chipGroupReverb"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                app:singleSelection="true">
+
+                                <com.google.android.material.chip.Chip
+                                    android:id="@+id/chipReverbSmallRoom"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Small Room"
+                                    android:textColor="#E2E8F0"
+                                    android:textSize="11sp"
+                                    app:chipBackgroundColor="#1E293B"
+                                    app:chipCornerRadius="8dp"
+                                    style="@style/Widget.Material3.Chip.Filter" />
+
+                                <com.google.android.material.chip.Chip
+                                    android:id="@+id/chipReverbMediumRoom"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Medium Room"
+                                    android:textColor="#E2E8F0"
+                                    android:textSize="11sp"
+                                    app:chipBackgroundColor="#1E293B"
+                                    app:chipCornerRadius="8dp"
+                                    style="@style/Widget.Material3.Chip.Filter" />
+
+                                <com.google.android.material.chip.Chip
+                                    android:id="@+id/chipReverbLargeRoom"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Large Room"
+                                    android:textColor="#E2E8F0"
+                                    android:textSize="11sp"
+                                    app:chipBackgroundColor="#1E293B"
+                                    app:chipCornerRadius="8dp"
+                                    style="@style/Widget.Material3.Chip.Filter" />
+
+                                <com.google.android.material.chip.Chip
+                                    android:id="@+id/chipReverbMediumHall"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Medium Hall"
+                                    android:textColor="#E2E8F0"
+                                    android:textSize="11sp"
+                                    app:chipBackgroundColor="#1E293B"
+                                    app:chipCornerRadius="8dp"
+                                    style="@style/Widget.Material3.Chip.Filter" />
+
+                                <com.google.android.material.chip.Chip
+                                    android:id="@+id/chipReverbLargeHall"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Concert Hall"
+                                    android:textColor="#E2E8F0"
+                                    android:textSize="11sp"
+                                    app:chipBackgroundColor="#1E293B"
+                                    app:chipCornerRadius="8dp"
+                                    style="@style/Widget.Material3.Chip.Filter" />
+
+                                <com.google.android.material.chip.Chip
+                                    android:id="@+id/chipReverbPlate"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Studio Plate"
+                                    android:textColor="#E2E8F0"
+                                    android:textSize="11sp"
+                                    app:chipBackgroundColor="#1E293B"
+                                    app:chipCornerRadius="8dp"
+                                    style="@style/Widget.Material3.Chip.Filter" />
+                            </com.google.android.material.chip.ChipGroup>
+                        </HorizontalScrollView>
+                    </LinearLayout>
+
+                    <!-- 3. Dynamic System -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:background="#131F37"
+                        android:padding="12dp">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Dynamic system"
+                                    android:textColor="#FFFFFF"
+                                    android:textSize="13sp"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="ViPER harmonic bass drive &amp; diaphragm resonance"
+                                    android:textColor="#94A3B8"
+                                    android:textSize="11sp" />
+                            </LinearLayout>
+
+                            <com.google.android.material.materialswitch.MaterialSwitch
+                                android:id="@+id/switchDynamicSystem"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:id="@+id/layoutDynamicControls"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:id="@+id/tvDynamicIntensity"
+                                android:layout_width="70dp"
+                                android:layout_height="wrap_content"
+                                android:text="Drive: 60%"
+                                android:textColor="#FF80AB"
+                                android:textSize="11sp"
+                                android:textStyle="bold" />
+
+                            <SeekBar
+                                android:id="@+id/seekDynamicSystem"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:max="1000"
+                                android:progress="600"
+                                android:progressTint="#FF80AB"
+                                android:thumbTint="#FF80AB" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- Individual Multi-Band Sliders Container -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"

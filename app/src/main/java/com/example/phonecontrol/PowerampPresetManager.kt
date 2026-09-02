@@ -74,6 +74,24 @@ object PowerampPresetManager {
         getPrefs(context).edit().putFloat(KEY_CURRENT_PREAMP, preamp).apply()
     }
 
+    // --- Differential Surround ---
+    fun isSurroundEnabled(context: Context): Boolean = getPrefs(context).getBoolean("surround_enabled", false)
+    fun setSurroundEnabled(context: Context, enabled: Boolean) = getPrefs(context).edit().putBoolean("surround_enabled", enabled).apply()
+    fun getSurroundStrength(context: Context): Int = getPrefs(context).getInt("surround_strength", 500)
+    fun setSurroundStrength(context: Context, str: Int) = getPrefs(context).edit().putInt("surround_strength", str).apply()
+
+    // --- Reverberation ---
+    fun isReverbEnabled(context: Context): Boolean = getPrefs(context).getBoolean("reverb_enabled", false)
+    fun setReverbEnabled(context: Context, enabled: Boolean) = getPrefs(context).edit().putBoolean("reverb_enabled", enabled).apply()
+    fun getReverbPreset(context: Context): Short = getPrefs(context).getInt("reverb_preset", 2).toShort() // PresetReverb.PRESET_LARGEROOM = 3, MEDIUMROOM = 2
+    fun setReverbPreset(context: Context, preset: Short) = getPrefs(context).edit().putInt("reverb_preset", preset.toInt()).apply()
+
+    // --- Dynamic System (Harmonic Bass Drive) ---
+    fun isDynamicSystemEnabled(context: Context): Boolean = getPrefs(context).getBoolean("dynamic_system_enabled", false)
+    fun setDynamicSystemEnabled(context: Context, enabled: Boolean) = getPrefs(context).edit().putBoolean("dynamic_system_enabled", enabled).apply()
+    fun getDynamicSystemIntensity(context: Context): Int = getPrefs(context).getInt("dynamic_system_intensity", 600) // 0 to 1000
+    fun setDynamicSystemIntensity(context: Context, intensity: Int) = getPrefs(context).edit().putInt("dynamic_system_intensity", intensity).apply()
+
     fun getActivePresetName(context: Context): String {
         return getPrefs(context).getString(KEY_ACTIVE_PRESET, "DTS Sound Unbound profile") ?: "DTS Sound Unbound profile"
     }

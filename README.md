@@ -351,6 +351,10 @@ Phone Control features a high-precision, studio-grade audio mastering suite buil
 * **Master Tone & Spatial Controls:**
   * Tone Bass (90Hz Shelf) and Tone Treble (10kHz Shelf) sliders.
   * Hardware Subwoofer Bass Boost and 3D Spatial Virtualizer.
+* **✨ ViPER FX Suite (Acoustics, Widening & Harmonics):**
+  * 🎧 **Differential Surround:** Stereo soundstage expansion via Haas effect phase delays, creating an immersive 3D surround atmosphere in headphones.
+  * 🏛️ **Reverberation:** Acoustic simulation powered by Android's native `PresetReverb` engine (Small Room, Medium Room, Large Room, Concert Hall, Studio Plate).
+  * 🔊 **Dynamic System:** ViPER-inspired harmonic bass drive and diaphragm resonance algorithm delivering deep, punchy subwoofer rumble without distortion.
 * **Smart Sleep Guard & Dual Coexistence:**
   * Auto-sleeps the DSP engine to **0% CPU / 0% RAM usage** when music is paused, waking up in **0ms** upon audio track playback.
   * Seamlessly co-exists with the App Freezer's external **Smart Equalizer Audio Guard** (protecting external apps like Poweramp Equalizer / Wavelet if user prefers external equalizers).

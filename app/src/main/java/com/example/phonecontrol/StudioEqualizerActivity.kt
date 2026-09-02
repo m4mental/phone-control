@@ -17,6 +17,7 @@ import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.materialswitch.MaterialSwitch
+import android.media.audiofx.PresetReverb
 import java.util.Locale
 
 class StudioEqualizerActivity : AppCompatActivity() {
@@ -38,6 +39,27 @@ class StudioEqualizerActivity : AppCompatActivity() {
     private lateinit var seekVirtualizer: SeekBar
     private lateinit var tvVirtualizerTitle: TextView
     private lateinit var llBandsContainer: LinearLayout
+
+    // ViPER FX Views
+    private lateinit var switchSurround: MaterialSwitch
+    private lateinit var seekSurround: SeekBar
+    private lateinit var tvSurroundStrength: TextView
+    private lateinit var layoutSurroundControls: View
+
+    private lateinit var switchReverb: MaterialSwitch
+    private lateinit var scrollReverbChips: View
+    private lateinit var chipGroupReverb: ChipGroup
+    private lateinit var chipReverbSmallRoom: Chip
+    private lateinit var chipReverbMediumRoom: Chip
+    private lateinit var chipReverbLargeRoom: Chip
+    private lateinit var chipReverbMediumHall: Chip
+    private lateinit var chipReverbLargeHall: Chip
+    private lateinit var chipReverbPlate: Chip
+
+    private lateinit var switchDynamicSystem: MaterialSwitch
+    private lateinit var seekDynamicSystem: SeekBar
+    private lateinit var tvDynamicIntensity: TextView
+    private lateinit var layoutDynamicControls: View
 
     private var currentPreset: EqualizerPreset? = null
 
@@ -104,6 +126,56 @@ class StudioEqualizerActivity : AppCompatActivity() {
         val virt = PowerampPresetManager.getVirtualizerStrength(this)
         seekVirtualizer.progress = virt
         tvVirtualizerTitle.text = "3D Virtualizer: ${virt / 10}%"
+
+        // ViPER FX Suite Views
+        switchSurround = findViewById(R.id.switchSurround)
+        seekSurround = findViewById(R.id.seekSurround)
+        tvSurroundStrength = findViewById(R.id.tvSurroundStrength)
+        layoutSurroundControls = findViewById(R.id.layoutSurroundControls)
+
+        switchReverb = findViewById(R.id.switchReverb)
+        scrollReverbChips = findViewById(R.id.scrollReverbChips)
+        chipGroupReverb = findViewById(R.id.chipGroupReverb)
+        chipReverbSmallRoom = findViewById(R.id.chipReverbSmallRoom)
+        chipReverbMediumRoom = findViewById(R.id.chipReverbMediumRoom)
+        chipReverbLargeRoom = findViewById(R.id.chipReverbLargeRoom)
+        chipReverbMediumHall = findViewById(R.id.chipReverbMediumHall)
+        chipReverbLargeHall = findViewById(R.id.chipReverbLargeHall)
+        chipReverbPlate = findViewById(R.id.chipReverbPlate)
+
+        switchDynamicSystem = findViewById(R.id.switchDynamicSystem)
+        seekDynamicSystem = findViewById(R.id.seekDynamicSystem)
+        tvDynamicIntensity = findViewById(R.id.tvDynamicIntensity)
+        layoutDynamicControls = findViewById(R.id.layoutDynamicControls)
+
+        // Populate ViPER States
+        val surroundOn = PowerampPresetManager.isSurroundEnabled(this)
+        val surroundStr = PowerampPresetManager.getSurroundStrength(this)
+        switchSurround.isChecked = surroundOn
+        seekSurround.progress = surroundStr
+        tvSurroundStrength.text = "Level: ${surroundStr / 10}%"
+        layoutSurroundControls.alpha = if (surroundOn) 1.0f else 0.4f
+
+        val reverbOn = PowerampPresetManager.isReverbEnabled(this)
+        val reverbPreset = PowerampPresetManager.getReverbPreset(this)
+        switchReverb.isChecked = reverbOn
+        scrollReverbChips.alpha = if (reverbOn) 1.0f else 0.4f
+        when (reverbPreset) {
+            PresetReverb.PRESET_SMALLROOM -> chipReverbSmallRoom.isChecked = true
+            PresetReverb.PRESET_MEDIUMROOM -> chipReverbMediumRoom.isChecked = true
+            PresetReverb.PRESET_LARGEROOM -> chipReverbLargeRoom.isChecked = true
+            PresetReverb.PRESET_MEDIUMHALL -> chipReverbMediumHall.isChecked = true
+            PresetReverb.PRESET_LARGEHALL -> chipReverbLargeHall.isChecked = true
+            PresetReverb.PRESET_PLATE -> chipReverbPlate.isChecked = true
+            else -> chipReverbMediumRoom.isChecked = true
+        }
+
+        val dynamicOn = PowerampPresetManager.isDynamicSystemEnabled(this)
+        val dynamicStr = PowerampPresetManager.getDynamicSystemIntensity(this)
+        switchDynamicSystem.isChecked = dynamicOn
+        seekDynamicSystem.progress = dynamicStr
+        tvDynamicIntensity.text = "Drive: ${dynamicStr / 10}%"
+        layoutDynamicControls.alpha = if (dynamicOn) 1.0f else 0.4f
     }
 
     private fun setupListeners() {
@@ -187,6 +259,62 @@ class StudioEqualizerActivity : AppCompatActivity() {
             override fun onStartTrackingTouch(sb: SeekBar?) {}
             override fun onStopTrackingTouch(sb: SeekBar?) {}
         })
+
+        // --- Differential Surround ---
+        switchSurround.setOnCheckedChangeListener { _, isChecked ->
+            layoutSurroundControls.alpha = if (isChecked) 1.0f else 0.4f
+            StudioDspManager.setDifferentialSurround(this, isChecked, seekSurround.progress)
+        }
+        seekSurround.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser) {
+                    tvSurroundStrength.text = "Level: ${progress / 10}%"
+                    StudioDspManager.setDifferentialSurround(this@StudioEqualizerActivity, switchSurround.isChecked, progress)
+                }
+            }
+            override fun onStartTrackingTouch(sb: SeekBar?) {}
+            override fun onStopTrackingTouch(sb: SeekBar?) {}
+        })
+
+        // --- Reverberation ---
+        switchReverb.setOnCheckedChangeListener { _, isChecked ->
+            scrollReverbChips.alpha = if (isChecked) 1.0f else 0.4f
+            StudioDspManager.setReverberation(this, isChecked, getSelectedReverbPreset())
+        }
+        chipGroupReverb.setOnCheckedStateChangeListener { _, checkedIds ->
+            if (checkedIds.isNotEmpty()) {
+                val preset = getSelectedReverbPreset()
+                StudioDspManager.setReverberation(this, switchReverb.isChecked, preset)
+            }
+        }
+
+        // --- Dynamic System ---
+        switchDynamicSystem.setOnCheckedChangeListener { _, isChecked ->
+            layoutDynamicControls.alpha = if (isChecked) 1.0f else 0.4f
+            StudioDspManager.setDynamicSystem(this, isChecked, seekDynamicSystem.progress)
+        }
+        seekDynamicSystem.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser) {
+                    tvDynamicIntensity.text = "Drive: ${progress / 10}%"
+                    StudioDspManager.setDynamicSystem(this@StudioEqualizerActivity, switchDynamicSystem.isChecked, progress)
+                }
+            }
+            override fun onStartTrackingTouch(sb: SeekBar?) {}
+            override fun onStopTrackingTouch(sb: SeekBar?) {}
+        })
+    }
+
+    private fun getSelectedReverbPreset(): Short {
+        return when (chipGroupReverb.checkedChipId) {
+            R.id.chipReverbSmallRoom -> PresetReverb.PRESET_SMALLROOM
+            R.id.chipReverbMediumRoom -> PresetReverb.PRESET_MEDIUMROOM
+            R.id.chipReverbLargeRoom -> PresetReverb.PRESET_LARGEROOM
+            R.id.chipReverbMediumHall -> PresetReverb.PRESET_MEDIUMHALL
+            R.id.chipReverbLargeHall -> PresetReverb.PRESET_LARGEHALL
+            R.id.chipReverbPlate -> PresetReverb.PRESET_PLATE
+            else -> PresetReverb.PRESET_MEDIUMROOM
+        }
     }
 
     private fun updateShelfBand(type: Int, gain: Float) {
