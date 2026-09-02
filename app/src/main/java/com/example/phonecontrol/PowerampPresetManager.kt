@@ -19,11 +19,20 @@ data class EqualizerBand(
 )
 
 data class EqualizerPreset(
-    val name: String,
-    val preamp: Float = 0.0f,   // Preamp gain in dB
-    val parametric: Boolean = false,
+    var name: String,
+    var preamp: Float = 0.0f,   // Preamp gain in dB
+    var parametric: Boolean = false,
     val bands: MutableList<EqualizerBand> = mutableListOf()
-)
+) {
+    fun deepCopy(newName: String = name): EqualizerPreset {
+        return EqualizerPreset(
+            name = newName,
+            preamp = preamp,
+            parametric = parametric,
+            bands = bands.map { it.copy() }.toMutableList()
+        )
+    }
+}
 
 object PowerampPresetManager {
 
@@ -169,7 +178,28 @@ object PowerampPresetManager {
             )
         ))
 
-        // 4. My song 2 (Full Parametric Profile)
+        // 4. Dimensional 3D Theater (IMAX & Dolby Atmos Cinema Acoustics)
+        list.add(EqualizerPreset(
+            name = "Dimensional 3D Theater",
+            preamp = -3.0f,
+            parametric = false,
+            bands = mutableListOf(
+                EqualizerBand(type = 0, frequency = 90, q = 0.8f, gain = 6.5f),   // Deep Cinema Bass Shelf
+                EqualizerBand(type = 1, frequency = 10000, q = 0.6f, gain = 4.5f), // Air Surround Treble Shelf
+                EqualizerBand(type = 2, frequency = 31, q = 0.0f, gain = 7.5f),   // Subwoofer Floor Rumble
+                EqualizerBand(type = 2, frequency = 62, q = 0.0f, gain = 6.0f),   // Explosive Impact
+                EqualizerBand(type = 2, frequency = 124, q = 0.0f, gain = 3.0f),  // Cinematic Warmth
+                EqualizerBand(type = 2, frequency = 249, q = 0.0f, gain = 1.0f),
+                EqualizerBand(type = 2, frequency = 498, q = 0.0f, gain = -0.5f), // Mud clarity dip
+                EqualizerBand(type = 2, frequency = 996, q = 0.0f, gain = 2.0f),  // Dialogue presence
+                EqualizerBand(type = 2, frequency = 1995, q = 0.0f, gain = 2.8f), // Speech clarity boost
+                EqualizerBand(type = 2, frequency = 3993, q = 0.0f, gain = 1.5f), // Spatial depth
+                EqualizerBand(type = 2, frequency = 7993, q = 0.0f, gain = 4.2f), // 3D Foley sound effects
+                EqualizerBand(type = 2, frequency = 16000, q = 0.0f, gain = 5.5f) // Atmospheric air
+            )
+        ))
+
+        // 5. My song 2 (Full Parametric Profile)
         list.add(EqualizerPreset(
             name = "My song 2",
             preamp = 0.0f,
@@ -219,6 +249,10 @@ object PowerampPresetManager {
     fun getPresetByName(context: Context, name: String): EqualizerPreset? {
         return getAllPresets(context).find { it.name.equals(name, ignoreCase = true) }
             ?: getBuiltInPresets().firstOrNull()
+    }
+
+    fun isBuiltInPreset(name: String): Boolean {
+        return getBuiltInPresets().any { it.name.equals(name, ignoreCase = true) }
     }
 
     /**

@@ -197,11 +197,11 @@ class StudioEqualizerActivity : AppCompatActivity() {
         seekPreamp.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser) {
+                    onUserModifiedPreset()
                     val gain = (progress - 120) / 10.0f
                     tvPreampValue.text = String.format(Locale.US, "%+.1f dB", gain)
                     currentPreset?.let {
-                        val updated = it.copy(preamp = gain)
-                        currentPreset = updated
+                        it.preamp = gain
                         StudioDspManager.setPreampGain(gain)
                     }
                 }
@@ -317,7 +317,21 @@ class StudioEqualizerActivity : AppCompatActivity() {
         }
     }
 
+    private fun onUserModifiedPreset() {
+        val curr = currentPreset ?: return
+        if (PowerampPresetManager.isBuiltInPreset(curr.name)) {
+            val customName = "${curr.name} (Custom)"
+            val forked = curr.deepCopy(customName)
+            currentPreset = forked
+            tvActivePresetHeader.text = customName
+            tvProfileTypeBadge.text = "CUSTOM (UNSAVED)"
+            tvProfileTypeBadge.setTextColor(android.graphics.Color.parseColor("#FF9100"))
+            chipGroupPresets.clearCheck()
+        }
+    }
+
     private fun updateShelfBand(type: Int, gain: Float) {
+        onUserModifiedPreset()
         val p = currentPreset ?: return
         val shelf = p.bands.find { it.type == type }
         if (shelf != null) {
@@ -352,11 +366,13 @@ class StudioEqualizerActivity : AppCompatActivity() {
         val allPresets = PowerampPresetManager.getAllPresets(this)
 
         for (preset in allPresets) {
+            val isBuiltIn = PowerampPresetManager.isBuiltInPreset(preset.name)
             val chip = Chip(this).apply {
-                text = preset.name
+                text = if (isBuiltIn) preset.name else "★ ${preset.name}"
                 isCheckable = true
                 isChecked = preset.name.equals(selectedName, ignoreCase = true)
-                chipBackgroundColor = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#1E293B"))
+                val bgColor = if (!isBuiltIn) "#2D1B36" else "#1E293B"
+                chipBackgroundColor = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor(bgColor))
                 setTextColor(if (isChecked) getColor(android.R.color.white) else getColor(android.R.color.darker_gray))
                 setOnClickListener {
                     applySelectedPreset(preset)
@@ -368,31 +384,59 @@ class StudioEqualizerActivity : AppCompatActivity() {
     }
 
     private fun applySelectedPreset(preset: EqualizerPreset) {
-        currentPreset = preset
-        StudioDspManager.applyPreset(this, preset)
+        val workingPreset = preset.deepCopy()
+        currentPreset = workingPreset
+        StudioDspManager.applyPreset(this, workingPreset)
 
-        tvActivePresetHeader.text = preset.name
-        tvProfileTypeBadge.text = if (preset.parametric) "PARAMETRIC BIQUAD" else "${preset.bands.size}-BAND GRAPHIC"
+        tvActivePresetHeader.text = workingPreset.name
+        val isBuiltIn = PowerampPresetManager.isBuiltInPreset(workingPreset.name)
+        if (isBuiltIn) {
+            tvProfileTypeBadge.text = if (workingPreset.parametric) "PARAMETRIC BIQUAD" else "${workingPreset.bands.size}-BAND GRAPHIC"
+            tvProfileTypeBadge.setTextColor(android.graphics.Color.parseColor("#00E5FF"))
+        } else {
+            tvProfileTypeBadge.text = "CUSTOM PROFILE"
+            tvProfileTypeBadge.setTextColor(android.graphics.Color.parseColor("#C084FC"))
+        }
 
         // Set Preamp UI
-        val preampProgress = (preset.preamp * 10.0f + 120).toInt().coerceIn(0, 240)
+        val preampProgress = (workingPreset.preamp * 10.0f + 120).toInt().coerceIn(0, 240)
         seekPreamp.progress = preampProgress
-        tvPreampValue.text = String.format(Locale.US, "%+.1f dB", preset.preamp)
+        tvPreampValue.text = String.format(Locale.US, "%+.1f dB", workingPreset.preamp)
 
         // Set Tone Shelves UI
-        val bassShelf = preset.bands.find { it.type == 0 }?.gain ?: 0.0f
+        val bassShelf = workingPreset.bands.find { it.type == 0 }?.gain ?: 0.0f
         seekToneBass.progress = (bassShelf * 10.0f + 120).toInt().coerceIn(0, 240)
         tvToneBassValue.text = String.format(Locale.US, "%+.1f dB", bassShelf)
 
-        val trebleShelf = preset.bands.find { it.type == 1 }?.gain ?: 0.0f
+        val trebleShelf = workingPreset.bands.find { it.type == 1 }?.gain ?: 0.0f
         seekToneTreble.progress = (trebleShelf * 10.0f + 120).toInt().coerceIn(0, 240)
         tvToneTrebleValue.text = String.format(Locale.US, "%+.1f dB", trebleShelf)
 
         // Update Frequency Curve Canvas
-        curveView.setBands(preset.bands)
+        curveView.setBands(workingPreset.bands)
+
+        // Dimensional 3D Theater: Auto-engage cinema matrix
+        if (workingPreset.name.equals("Dimensional 3D Theater", ignoreCase = true)) {
+            switchSurround.isChecked = true
+            seekSurround.progress = 800
+            tvSurroundStrength.text = "Level: 80%"
+            layoutSurroundControls.alpha = 1.0f
+            StudioDspManager.setDifferentialSurround(this, true, 800)
+
+            switchReverb.isChecked = true
+            chipReverbLargeHall.isChecked = true
+            scrollReverbChips.alpha = 1.0f
+            StudioDspManager.setReverberation(this, true, PresetReverb.PRESET_LARGEHALL)
+
+            switchDynamicSystem.isChecked = true
+            seekDynamicSystem.progress = 700
+            tvDynamicIntensity.text = "Drive: 70%"
+            layoutDynamicControls.alpha = 1.0f
+            StudioDspManager.setDynamicSystem(this, true, 700)
+        }
 
         // Build Multi-Band Vertical Sliders
-        buildBandSliders(preset)
+        buildBandSliders(workingPreset)
     }
 
     private fun buildBandSliders(preset: EqualizerPreset) {
@@ -431,11 +475,14 @@ class StudioEqualizerActivity : AppCompatActivity() {
             seekBand.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(sb: SeekBar?, prog: Int, fromUser: Boolean) {
                     if (fromUser) {
+                        onUserModifiedPreset()
                         val newGain = (prog - 150) / 10.0f
                         band.gain = newGain
                         tvGain.text = String.format(Locale.US, "%+.1f", newGain)
-                        curveView.setBands(preset.bands)
-                        StudioDspManager.applyPreset(this@StudioEqualizerActivity, preset)
+                        currentPreset?.let { p ->
+                            curveView.setBands(p.bands)
+                            StudioDspManager.applyPreset(this@StudioEqualizerActivity, p)
+                        }
                     }
                 }
                 override fun onStartTrackingTouch(sb: SeekBar?) {}
@@ -507,22 +554,25 @@ class StudioEqualizerActivity : AppCompatActivity() {
 
     private fun showSavePresetDialog() {
         val curr = currentPreset ?: return
+        val defaultName = curr.name.replace(" (Custom)", "").replace(" (Modified)", "") + " Custom"
         val input = EditText(this).apply {
-            setText("${curr.name} (Custom)")
+            setText(defaultName)
             setTextColor(getColor(android.R.color.white))
+            setSelection(text.length)
         }
 
         MaterialAlertDialogBuilder(this)
-            .setTitle("Save Custom Preset")
+            .setTitle("Save as Custom Preset")
+            .setMessage("Save your modified acoustic tuning as a separate custom preset:")
             .setView(input)
             .setPositiveButton("Save") { _, _ ->
                 val name = input.text.toString().trim()
                 if (name.isNotBlank()) {
-                    val newPreset = curr.copy(name = name)
+                    val newPreset = curr.deepCopy(name)
                     PowerampPresetManager.saveCustomPreset(this, newPreset)
                     applySelectedPreset(newPreset)
                     rebuildPresetChips(name)
-                    Toast.makeText(this, "Preset '$name' Saved!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Saved Custom Preset '$name' 🎉", Toast.LENGTH_SHORT).show()
                 }
             }
             .setNegativeButton("Cancel", null)
