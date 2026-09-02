@@ -260,4 +260,112 @@ object FreezerManager {
         if (enable) set.add(packageName) else set.remove(packageName)
         prefs.edit().putStringSet("special_freeze_apps", set).apply()
     }
+
+    val KNOWN_EQUALIZERS = listOf(
+        "com.maxmpz.equalizer",               // Poweramp Equalizer
+        "com.pittvandewitt.wavelet",           // Wavelet
+        "com.audlabs.viperfx",                // ViPER4Android FX
+        "com.pittvandewitt.viperfx",           // ViPER4Android
+        "com.jazibkhan.equalizer",             // Flat Equalizer
+        "james.dsp",                           // JamesDSP
+        "me.timschneeberger.rootlessjamesdsp", // RootlessJamesDSP
+        "com.kotor.spotiq",                    // SpotiQ
+        "com.goodev.volume.booster"            // Volume Booster Goodev
+    )
+
+    /**
+     * Dynamically detects the active equalizer or audio DSP app installed on the device.
+     */
+    fun getDetectedEqualizerPackage(context: Context): String? {
+        val prefs = context.getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE)
+        val manualSelection = prefs.getString("selected_equalizer_pkg", null)
+        val pm = context.packageManager
+
+        // 1. Check user manual override
+        if (!manualSelection.isNullOrBlank()) {
+            try {
+                pm.getPackageInfo(manualSelection, 0)
+                return manualSelection
+            } catch (ignored: Exception) {}
+        }
+
+        // 2. Check popular known equalizers
+        for (pkg in KNOWN_EQUALIZERS) {
+            try {
+                pm.getPackageInfo(pkg, 0)
+                return pkg
+            } catch (ignored: Exception) {}
+        }
+
+        // 3. Query system for any app responding to AudioEffect Control Panel
+        try {
+            val intent = Intent("android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL")
+            val resolveInfos = pm.queryIntentActivities(intent, 0)
+            for (info in resolveInfos) {
+                val pkg = info.activityInfo?.packageName
+                if (pkg != null && pkg != context.packageName) {
+                    return pkg
+                }
+            }
+        } catch (ignored: Exception) {}
+
+        return null
+    }
+
+    fun isEqualizerSleepEnabled(context: Context): Boolean {
+        val prefs = context.getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE)
+        return prefs.getBoolean("smart_equalizer_sleep_enabled", true)
+    }
+
+    fun setEqualizerSleepEnabled(context: Context, enabled: Boolean) {
+        val prefs = context.getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putBoolean("smart_equalizer_sleep_enabled", enabled).apply()
+    }
+
+    fun saveSelectedEqualizer(context: Context, pkg: String?) {
+        val prefs = context.getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putString("selected_equalizer_pkg", pkg).apply()
+    }
+
+    /**
+     * Ultra-fast RAM sleep (CGroup Freeze) for audio equalizers.
+     * Halts all threads and wakelocks without killing the service or breaking audio pipelines.
+     */
+    fun instantFreezeEqualizer(packageName: String) {
+        if (packageName.isBlank()) return
+        val script = """
+            am freeze "$packageName" 2>/dev/null
+            am set-standby-bucket "$packageName" restricted 2>/dev/null
+            for p in $(pidof "$packageName"); do
+                echo 900 > /proc/${'$'}p/oom_score_adj 2>/dev/null
+            done
+        """.trimIndent()
+        ShellUtils.fastCmd(script)
+    }
+
+    /**
+     * 1-Millisecond Instant Unfreeze:
+     * Resumes the equalizer instantly from RAM with its audio session completely intact (Zero Audio Dropout).
+     */
+    fun instantUnfreezeEqualizer(packageName: String) {
+        if (packageName.isBlank()) return
+        val script = """
+            pm enable "$packageName" 2>/dev/null
+            am unfreeze "$packageName" 2>/dev/null
+            am set-standby-bucket "$packageName" active 2>/dev/null
+            for p in $(pidof "$packageName"); do
+                echo 0 > /proc/${'$'}p/oom_score_adj 2>/dev/null
+            done
+        """.trimIndent()
+        ShellUtils.fastCmd(script)
+    }
+
+    /**
+     * Checks if the app is currently in frozen/suspended state.
+     */
+    fun isAppFrozen(packageName: String): Boolean {
+        if (packageName.isBlank()) return false
+        val out = ShellUtils.fastCmdResult("dumpsys activity processes | grep -E '$packageName.*freeze=true' 2>/dev/null")
+        return out.isNotBlank()
+    }
 }

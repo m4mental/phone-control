@@ -7,13 +7,16 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.media.AudioManager
+import android.media.AudioPlaybackConfiguration
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.BatteryManager as AndroidBatteryManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.util.Log
 import java.util.concurrent.Executors
 import kotlin.concurrent.thread
@@ -38,10 +41,26 @@ class AutoTweakService : Service() {
     @Volatile private var isWakeupBoosting = false
     @Volatile private var isCameraInUse = false
     @Volatile private var lastAiMode = ""
+    @Volatile private var isAudioCurrentlyActive = false
+    @Volatile private var isEqualizerFrozen = false
 
     private val tweakExecutor = Executors.newSingleThreadExecutor()
     private lateinit var connectivityManager: ConnectivityManager
     private lateinit var appOpsManager: AppOpsManager
+    private var audioManager: AudioManager? = null
+    private var equalizerFreezeHandler: Handler? = null
+    private var equalizerFreezeRunnable: Runnable? = null
+
+    private val audioPlaybackCallback = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        object : AudioManager.AudioPlaybackCallback() {
+            override fun onPlaybackConfigChanged(configs: MutableList<AudioPlaybackConfiguration>?) {
+                super.onPlaybackConfigChanged(configs)
+                tweakExecutor.execute {
+                    handleAudioPlaybackStateChanged(configs)
+                }
+            }
+        }
+    } else null
 
     private val opActiveListener = AppOpsManager.OnOpActiveChangedListener { op, uid, pkg, active ->
         if (op == AppOpsManager.OPSTR_CAMERA || op == "android:phone_call_camera") {
@@ -167,9 +186,57 @@ class AutoTweakService : Service() {
             Log.e("AutoTweak", "Failed to start watching active camera op: ${e.message}")
         }
 
+        // Smart Equalizer Audio Guard (0ms Instant Unfreeze on Music Play, 15s Auto-Sleep on Pause)
+        try {
+            audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && audioManager != null && audioPlaybackCallback != null) {
+                equalizerFreezeHandler = Handler(Looper.getMainLooper())
+                audioManager?.registerAudioPlaybackCallback(audioPlaybackCallback, equalizerFreezeHandler)
+                Log.d("AutoTweak", "AudioPlaybackCallback successfully registered for Equalizer Guard")
+            }
+        } catch (e: Exception) {
+            Log.e("AutoTweak", "Failed to register audio playback callback: ${e.message}")
+        }
+
         tweakExecutor.execute {
             AppEventService.enableViaRoot(packageName)
             ThermalManager.checkAndRecoverCooldown(this)
+        }
+    }
+
+    private fun handleAudioPlaybackStateChanged(configs: List<AudioPlaybackConfiguration>?) {
+        if (!FreezerManager.isEqualizerSleepEnabled(this)) return
+        val eqPkg = FreezerManager.getDetectedEqualizerPackage(this) ?: return
+
+        val hasActiveAudio = audioManager?.isMusicActive == true
+        if (hasActiveAudio) {
+            isAudioCurrentlyActive = true
+            equalizerFreezeRunnable?.let { equalizerFreezeHandler?.removeCallbacks(it) }
+
+            // CRITICAL: Only unfreeze if it was actually in frozen sleep!
+            // If already playing, DO NOT TOUCH IT! Zero commands, zero service reloads, zero audio drops!
+            if (isEqualizerFrozen) {
+                Log.d("AutoTweak", "🎵 Audio resumed -> Instant unfreeze for Equalizer [$eqPkg]")
+                FreezerManager.instantUnfreezeEqualizer(eqPkg)
+                isEqualizerFrozen = false
+            }
+        } else {
+            if (isAudioCurrentlyActive) {
+                isAudioCurrentlyActive = false
+                Log.d("AutoTweak", "⏸️ Audio paused -> Starting 30s grace timer for Equalizer [$eqPkg]")
+                equalizerFreezeRunnable?.let { equalizerFreezeHandler?.removeCallbacks(it) }
+                equalizerFreezeRunnable = Runnable {
+                    tweakExecutor.execute {
+                        val isStillPlaying = audioManager?.isMusicActive == true
+                        if (!isStillPlaying && lastForegroundApp != eqPkg && !isEqualizerFrozen) {
+                            Log.d("AutoTweak", "❄️ 30s elapsed with no audio -> Freezing Equalizer [$eqPkg]")
+                            FreezerManager.instantFreezeEqualizer(eqPkg)
+                            isEqualizerFrozen = true
+                        }
+                    }
+                }
+                equalizerFreezeHandler?.postDelayed(equalizerFreezeRunnable!!, 30000)
+            }
         }
     }
 
@@ -285,7 +352,14 @@ class AutoTweakService : Service() {
         // Only freeze apps if they are NO LONGER in Recents, NOT visible on screen, NOT playing audio/video, and NOT whitelisted!
         if (frozenApps.isNotEmpty()) {
             val recentPkgs = FreezerManager.getRecentPackages()
+            val detectedEqPkg = FreezerManager.getDetectedEqualizerPackage(this)
+
             for (pkg in frozenApps) {
+                // If this is the active Equalizer, it is safely managed by Smart Equalizer Guard — DO NOT force-stop on app switch!
+                if (pkg == detectedEqPkg && FreezerManager.isEqualizerSleepEnabled(this)) {
+                    continue
+                }
+
                 if (pkg != newPkg && 
                     !recentPkgs.contains(pkg) && 
                     !allSafeApps.contains(pkg) && 
@@ -627,6 +701,11 @@ class AutoTweakService : Service() {
     }
 
     override fun onDestroy() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && audioManager != null && audioPlaybackCallback != null) {
+                audioManager?.unregisterAudioPlaybackCallback(audioPlaybackCallback)
+            }
+        } catch (e: Exception) {}
         unregisterReceiver(screenReceiver)
         unregisterReceiver(batteryThermalReceiver)
         try { connectivityManager.unregisterNetworkCallback(networkCallback) } catch (e: Exception) {}

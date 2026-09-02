@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
+import android.media.AudioManager
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -74,12 +75,89 @@ class AppFreezerListActivity : AppCompatActivity() {
         btnRemoveSelected.setOnClickListener { removeMultipleApps() }
         btnCancelEdit.setOnClickListener { exitEditMode() }
 
+        setupEqualizerGuardUI()
         refreshList()
     }
 
     override fun onResume() {
         super.onResume()
+        setupEqualizerGuardUI()
         refreshList()
+    }
+
+    private fun setupEqualizerGuardUI() {
+        val switchEq = findViewById<SwitchMaterial?>(R.id.switchEqualizerGuard) ?: return
+        val tvDetected = findViewById<TextView?>(R.id.tvDetectedEqualizer) ?: return
+        val btnChange = findViewById<MaterialButton?>(R.id.btnChangeEqualizer) ?: return
+
+        fun updateUI() {
+            val isEnabled = FreezerManager.isEqualizerSleepEnabled(this)
+            switchEq.isChecked = isEnabled
+
+            val detectedPkg = FreezerManager.getDetectedEqualizerPackage(this)
+            if (detectedPkg != null) {
+                val appLabel = try {
+                    val info = pm.getApplicationInfo(detectedPkg, 0)
+                    pm.getApplicationLabel(info).toString()
+                } catch (e: Exception) {
+                    detectedPkg
+                }
+                val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                val isMusicPlaying = audioManager?.isMusicActive == true
+                val isFrozen = FreezerManager.isAppFrozen(detectedPkg)
+
+                val statusSuffix = when {
+                    isMusicPlaying -> " • 🎵 Playing"
+                    isFrozen -> " • ❄️ Hibernated"
+                    else -> " • ⏸️ Paused"
+                }
+                tvDetected.text = "Target: $appLabel$statusSuffix"
+                tvDetected.setTextColor(
+                    if (isMusicPlaying) android.graphics.Color.parseColor("#00E676")
+                    else if (isFrozen) android.graphics.Color.parseColor("#00E5FF")
+                    else android.graphics.Color.parseColor("#FFD700")
+                )
+            } else {
+                tvDetected.text = "No Equalizer App Found"
+                tvDetected.setTextColor(android.graphics.Color.GRAY)
+            }
+        }
+
+        updateUI()
+
+        switchEq.setOnCheckedChangeListener { _, isChecked ->
+            FreezerManager.setEqualizerSleepEnabled(this, isChecked)
+            val msg = if (isChecked) "Smart Equalizer Guard Enabled (0ms Audio Sleep Active)" else "Smart Equalizer Guard Disabled"
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+        }
+
+        btnChange.setOnClickListener {
+            showEqualizerPicker {
+                updateUI()
+            }
+        }
+    }
+
+    private fun showEqualizerPicker(onSelected: () -> Unit) {
+        val installedApps = getInstalledAppsList().sortedBy { it.label.lowercase() }
+        val names = installedApps.map { "${it.label} (${it.info.packageName})" }.toTypedArray()
+
+        AlertDialog.Builder(this)
+            .setTitle("Select Audio Equalizer / DSP App")
+            .setItems(names) { _, which ->
+                val selectedPkg = installedApps[which].info.packageName
+                FreezerManager.saveSelectedEqualizer(this, selectedPkg)
+                FreezerManager.setEqualizerSleepEnabled(this, true)
+                onSelected()
+                Toast.makeText(this, "Selected: ${installedApps[which].label}", Toast.LENGTH_SHORT).show()
+            }
+            .setNeutralButton("Auto-Detect") { _, _ ->
+                FreezerManager.saveSelectedEqualizer(this, null)
+                onSelected()
+                Toast.makeText(this, "Reset to Auto-Detection", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun refreshList() {

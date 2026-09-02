@@ -275,7 +275,7 @@ class AdbShellActivity : AppCompatActivity() {
             .setPositiveButton("ENABLE") { _, _ ->
                 val pkg = et.text.toString().trim()
                 if (pkg.isNotEmpty()) {
-                    executeCommand("pm enable $pkg; pm unhide $pkg")
+                    executeCommand("pm default-state --user 0 $pkg; pm unhide $pkg; pm enable $pkg; pm unsuspend $pkg")
                 }
             }
             .setNegativeButton("Cancel", null)
