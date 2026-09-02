@@ -1,11 +1,15 @@
 package com.example.phonecontrol
 
 import android.app.AppOpsManager
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.Service
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.ServiceInfo
+import android.hardware.camera2.CameraManager
 import android.media.AudioManager
 import android.media.AudioPlaybackConfiguration
 import android.net.ConnectivityManager
@@ -18,6 +22,8 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.util.Log
+import androidx.core.app.NotificationCompat
+import java.util.Collections
 import java.util.concurrent.Executors
 import kotlin.concurrent.thread
 
@@ -40,6 +46,7 @@ class AutoTweakService : Service() {
     @Volatile private var isScreenOn = true
     @Volatile private var isWakeupBoosting = false
     @Volatile private var isCameraInUse = false
+    @Volatile private var isVideoCallActive = false
     @Volatile private var lastAiMode = ""
     @Volatile private var isAudioCurrentlyActive = false
     @Volatile private var isEqualizerFrozen = false
@@ -47,9 +54,47 @@ class AutoTweakService : Service() {
     private val tweakExecutor = Executors.newSingleThreadExecutor()
     private lateinit var connectivityManager: ConnectivityManager
     private lateinit var appOpsManager: AppOpsManager
+    private var cameraManager: CameraManager? = null
+    private val activeCameras = Collections.synchronizedSet(mutableSetOf<String>())
     private var audioManager: AudioManager? = null
     private var equalizerFreezeHandler: Handler? = null
     private var equalizerFreezeRunnable: Runnable? = null
+
+    private val cameraAvailabilityCallback = object : CameraManager.AvailabilityCallback() {
+        override fun onCameraUnavailable(cameraId: String) {
+            super.onCameraUnavailable(cameraId)
+            activeCameras.add(cameraId)
+            isCameraInUse = true
+            Log.d("AutoTweak", "📷 Camera unavailable (in use): $cameraId. Total active: ${activeCameras.size}")
+            tweakExecutor.execute { handleVideoCallStateChanged() }
+        }
+
+        override fun onCameraAvailable(cameraId: String) {
+            super.onCameraAvailable(cameraId)
+            activeCameras.remove(cameraId)
+            isCameraInUse = activeCameras.isNotEmpty()
+            Log.d("AutoTweak", "📷 Camera available (closed): $cameraId. Remaining: ${activeCameras.size}")
+            tweakExecutor.execute { handleVideoCallStateChanged() }
+        }
+    }
+
+    private fun handleVideoCallStateChanged() {
+        val hasCamera = activeCameras.isNotEmpty()
+        val isCallAudio = audioManager?.mode == AudioManager.MODE_IN_COMMUNICATION || audioManager?.mode == AudioManager.MODE_IN_CALL
+        val isVideoCallNow = hasCamera || isCallAudio
+
+        if (isVideoCallNow && !isVideoCallActive) {
+            isVideoCallActive = true
+            Log.d("AutoTweak", "📹 Video Call / Camera ACTIVE -> Locking Little Cores to 950MHz!")
+            TweakManager.applyVideoCallEcoLock()
+            sendBroadcast(Intent("com.example.phonecontrol.UPDATE_UI").setPackage(packageName))
+        } else if (!isVideoCallNow && isVideoCallActive) {
+            isVideoCallActive = false
+            Log.d("AutoTweak", "📹 Video Call / Camera ENDED -> Restoring previous state!")
+            TweakManager.restorePreVideoCallState(this)
+            sendBroadcast(Intent("com.example.phonecontrol.UPDATE_UI").setPackage(packageName))
+        }
+    }
 
     private val audioPlaybackCallback = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         object : AudioManager.AudioPlaybackCallback() {
@@ -67,7 +112,7 @@ class AutoTweakService : Service() {
             Log.d("AutoTweak", "Camera Op Active Changed -> pkg: $pkg, active: $active")
             isCameraInUse = active
             tweakExecutor.execute {
-                handleCameraOrCallStateChanged()
+                handleVideoCallStateChanged()
             }
         }
     }
@@ -157,6 +202,11 @@ class AutoTweakService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        try {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            val nm = getSystemService(NotificationManager::class.java)
+            nm?.cancel(1001)
+        } catch (e: Exception) {}
         connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         
         val screenFilter = IntentFilter().apply {
@@ -172,6 +222,14 @@ class AutoTweakService : Service() {
             .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
             .build()
         connectivityManager.registerNetworkCallback(networkRequest, networkCallback)
+
+        try {
+            cameraManager = getSystemService(Context.CAMERA_SERVICE) as? CameraManager
+            cameraManager?.registerAvailabilityCallback(cameraAvailabilityCallback, Handler(Looper.getMainLooper()))
+            Log.d("AutoTweak", "CameraManager.AvailabilityCallback successfully registered for Video Call detection")
+        } catch (e: Exception) {
+            Log.e("AutoTweak", "Failed to register camera availability callback: ${e.message}")
+        }
 
         try {
             appOpsManager = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
@@ -194,11 +252,19 @@ class AutoTweakService : Service() {
                 audioManager?.registerAudioPlaybackCallback(audioPlaybackCallback, equalizerFreezeHandler)
                 Log.d("AutoTweak", "AudioPlaybackCallback successfully registered for Equalizer Guard")
             }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && audioManager != null) {
+                audioManager?.addOnModeChangedListener(tweakExecutor, AudioManager.OnModeChangedListener { mode ->
+                    Log.d("AutoTweak", "Audio Mode Changed: $mode")
+                    handleVideoCallStateChanged()
+                })
+                Log.d("AutoTweak", "AudioManager.OnModeChangedListener successfully registered for Call detection")
+            }
         } catch (e: Exception) {
-            Log.e("AutoTweak", "Failed to register audio playback callback: ${e.message}")
+            Log.e("AutoTweak", "Failed to register audio callbacks: ${e.message}")
         }
 
         tweakExecutor.execute {
+            handleVideoCallStateChanged()
             AppEventService.enableViaRoot(packageName)
             ThermalManager.checkAndRecoverCooldown(this)
         }
@@ -710,9 +776,7 @@ class AutoTweakService : Service() {
         unregisterReceiver(batteryThermalReceiver)
         try { connectivityManager.unregisterNetworkCallback(networkCallback) } catch (e: Exception) {}
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                appOpsManager.stopWatchingActive(opActiveListener)
-            }
+            cameraManager?.unregisterAvailabilityCallback(cameraAvailabilityCallback)
         } catch (e: Exception) {}
         tweakExecutor.shutdown()
         ShellUtils.closePersistentShell()

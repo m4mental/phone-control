@@ -372,15 +372,16 @@ class MainActivity : AppCompatActivity() {
                     return "<font color='#00E5FF'>S</font><font color='$oneColor'>1</font>"
                 }
 
-                val stageHtml = when (manualStage) {
-                    13 -> "<font color='#00E5FF'>S</font><font color='#00E5FF'>1</font>"
-                    12 -> "<font color='#00E5FF'>S</font><font color='#00E5FF'>1</font>"
-                    11 -> "<font color='#00E5FF'>S</font><font color='#00E5FF'>1</font>"
-                    10 -> getS1Html(currentFreqKhz)
-                    1 -> getS1Html(currentFreqKhz)
-                    2 -> "<font color='#69F0AE'>S2</font>"
-                    3 -> "<font color='#FFD700'>S3</font>"
-                    4 -> "<font color='#FF5252'>S4</font>"
+                val stageHtml = when {
+                    TweakManager.isVideoCallBoostActive -> "<font color='#00E5FF'>S</font><font color='#FF5252'>1</font>"
+                    manualStage == 13 -> "<font color='#00E5FF'>S</font><font color='#00E5FF'>1</font>"
+                    manualStage == 12 -> "<font color='#00E5FF'>S</font><font color='#00E5FF'>1</font>"
+                    manualStage == 11 -> "<font color='#00E5FF'>S</font><font color='#00E5FF'>1</font>"
+                    manualStage == 10 -> getS1Html(currentFreqKhz)
+                    manualStage == 1 -> getS1Html(currentFreqKhz)
+                    manualStage == 2 -> "<font color='#69F0AE'>S2</font>"
+                    manualStage == 3 -> "<font color='#FFD700'>S3</font>"
+                    manualStage == 4 -> "<font color='#FF5252'>S4</font>"
                     else -> when {
                         cpuUsage < 35 -> getS1Html(currentFreqKhz)
                         cpuUsage < 70 -> "<font color='#69F0AE'>S2</font>"

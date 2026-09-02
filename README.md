@@ -305,12 +305,24 @@ The Main Dashboard CPU Card features instant sub-frequency color telemetry and l
 
 ---
 
-## 📞 Video Call & Social Media Optimization Sweet Spot
+## 📞 Hardware-Triggered Video Call Boost & Invisible Background Engine
 
-WhatsApp, Telegram, and Instagram video calls are intelligently managed under **Stage 1 Eco**:
-* **6 Little Cores:** Dynamically scale between `650 MHz` (Base) and `950 MHz` (Video Encode/Decode & Floating Window PiP) for 100% fluid 30-60fps call quality.
-* **2 Big Cores:** Permanently locked in **`400 MHz` Deep Sleep** throughout the entire call.
-* **Result:** Zero thermal buildup (<35°C on 1-hour calls) with ultra-low battery consumption.
+WhatsApp, Telegram, Zoom, Google Meet, and Instagram video calls are intelligently handled by an automated hardware-level monitoring pipeline:
+* **Dual Hardware-Level Detection:**
+  * **`CameraManager.AvailabilityCallback`:** Connects directly to Android's camera subsystem. As soon as any application opens the camera sensor (`onCameraUnavailable`), the engine triggers instantly in 0ms.
+  * **`AudioManager.OnModeChangedListener` (`MODE_IN_COMMUNICATION`):** Detects active VoIP call sessions and telephony communication states without polling loops.
+* **Instant 950MHz Little Core Lock:**
+  * Even if the device is currently running in **Stage 1 (650MHz Strict Lock)** or **Power Saver Mode**, the engine temporarily unlocks and locks all 6 Little Cores strictly to **`950 MHz`** (`scaling_max_freq = 950000` & `scaling_min_freq = 950000`).
+  * Provides jitter-free, 100% smooth 30-60fps hardware video decoding/encoding and Picture-in-Picture (PiP) window rendering.
+* **400MHz Deep Sleep on Big Cores:**
+  * Both Big Cores (6 & 7) remain permanently clamped at **`400 MHz` Deep Sleep** throughout the entire call.
+  * **Result:** Ice-cold thermal performance (<34°C even during 1+ hour video calls) with near-zero battery drain.
+* **Auto-Restore on Call End:**
+  * The moment the video call terminates and the camera sensor is released (`onCameraAvailable` + audio mode reset), the engine immediately re-applies the user's base configured frequency (e.g. 650MHz Base Floor).
+* **👻 100% Invisible Background Architecture (Android 14 / 15 / 16):**
+  * Operates without any persistent foreground notification banner or notification drawer clutter.
+  * Completely omitted from Android 14/15/16's default **"Active Apps"** / **"Apps running in background"** Quick Settings drawer.
+  * Maintained permanently alive through root-level Doze exemptions (`dumpsys deviceidle whitelist` + `appops RUN_IN_BACKGROUND allow`).
 
 ---
 

@@ -404,27 +404,35 @@ object TweakManager {
         }
     }
 
+    @Volatile var isVideoCallBoostActive = false
+
     /**
      * Dedicated WhatsApp/VOIP Video Call & Camera Lock:
      * Locks 6 Little Cores strictly to 950MHz (0 frame drops, 0 stutter, fluid 30-60fps)
      * Keeps 2 Big Cores deeply sleeping at 400MHz (Zero heating / zero battery drain).
+     * Overrides manual stage temporarily for the duration of the call.
      */
     fun applyVideoCallEcoLock() {
-        if (manualStageOverride != 0) return
+        isVideoCallBoostActive = true
         val script = """
-            chmod 644 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
+            chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
+            chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_min_freq 2>/dev/null
+            echo 950000 > /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null
+            echo 950000 > /sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq 2>/dev/null
             for c in 0 1 2 3 4 5; do
-                echo 950000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
+                chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
+                chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
                 echo 950000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
+                echo 950000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
                 echo schedutil > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_governor 2>/dev/null
             done
             for c in 6 7; do
+                chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
+                chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
                 echo 400000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
                 echo 400000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
                 echo schedutil > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_governor 2>/dev/null
             done
-            echo 950000 > /sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq 2>/dev/null
-            echo 950000 > /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null
             echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_min_freq 2>/dev/null
             echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq 2>/dev/null
             echo 400000 > /sys/devices/system/cpu/cpufreq/policy7/scaling_min_freq 2>/dev/null
@@ -434,6 +442,29 @@ object TweakManager {
             chmod 444 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
         """.trimIndent()
         ShellUtils.fastCmd(script)
+        android.util.Log.d("TweakManager", "📹 Video Call Boost Applied -> 6 Little Cores LOCKED at 950MHz")
+    }
+
+    /**
+     * Restores previous profile after Video Call finishes.
+     */
+    fun restorePreVideoCallState(context: Context) {
+        isVideoCallBoostActive = false
+        val prefs = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
+        val manualStage = prefs.getInt("manual_stage_override", 0)
+        if (manualStage != 0) {
+            manualStageOverride = manualStage
+            applyRawStageScript(manualStage)
+            return
+        }
+        val mode = prefs.getString("selected_mode", "rbBalance")
+        when (mode) {
+            "rbPowerSaver" -> applyGlobalMode("Power Saver")
+            "rbPerformance" -> applyGlobalMode("Performance")
+            "rbAutomatic" -> applyGlobalMode("Automatic")
+            else -> applyGlobalMode("Balanced")
+        }
+        android.util.Log.d("TweakManager", "📹 Video Call Boost Restored -> Profile re-applied")
     }
 
     /**
