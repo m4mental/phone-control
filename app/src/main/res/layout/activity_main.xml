@@ -703,6 +703,72 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- Hub 6: Studio Audio Equalizer (Poweramp DSP) -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardStudioEqualizer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="24dp"
+                app:cardCornerRadius="16dp"
+                app:cardBackgroundColor="#130D2B"
+                app:strokeWidth="1dp"
+                app:strokeColor="#7C4DFF"
+                android:clickable="true"
+                android:focusable="true">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:padding="16dp"
+                    android:gravity="center_vertical">
+                    <ImageView
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:src="@android:drawable/ic_media_play"
+                        app:tint="#B388FF" />
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="16dp"
+                        android:orientation="vertical">
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical">
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="Studio Audio Equalizer"
+                                android:textColor="@android:color/white"
+                                android:textStyle="bold"
+                                android:textSize="15sp" />
+                            <TextView
+                                android:id="@+id/tvEqBadgeStatus"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="DSP READY"
+                                android:textColor="#B388FF"
+                                android:textSize="10sp"
+                                android:textStyle="bold"
+                                android:background="#2E1B5B"
+                                android:paddingHorizontal="6dp"
+                                android:paddingVertical="1dp" />
+                        </LinearLayout>
+                        <TextView
+                            android:id="@+id/tvEqCardSubtitle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="Poweramp DSP engine, DTS Sound Unbound, parametric EQ, and preamp limiter."
+                            android:textColor="#D1C4E9"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- Hidden References for dynamic sub-activity links -->
             <View android:id="@+id/cardSuperDoze" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
             <View android:id="@+id/cardPerApp" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />

@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="64dp"
+    android:layout_height="wrap_content"
+    android:gravity="center_horizontal"
+    android:orientation="vertical"
+    android:padding="4dp">
+
+    <!-- Live Gain dB Label -->
+    <TextView
+        android:id="@+id/tvBandGain"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="+0.0 dB"
+        android:textColor="#00E5FF"
+        android:textSize="11sp"
+        android:textStyle="bold" />
+
+    <!-- Rotated Vertical SeekBar Container -->
+    <FrameLayout
+        android:layout_width="48dp"
+        android:layout_height="180dp"
+        android:layout_marginVertical="4dp">
+
+        <SeekBar
+            android:id="@+id/seekBand"
+            android:layout_width="160dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:max="300"
+            android:progress="150"
+            android:progressTint="#00E5FF"
+            android:thumbTint="#FFFFFF"
+            android:rotation="270" />
+    </FrameLayout>
+
+    <!-- Frequency Label -->
+    <TextView
+        android:id="@+id/tvBandFreq"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="1kHz"
+        android:textColor="#FFFFFF"
+        android:textSize="12sp"
+        android:textStyle="bold" />
+
+    <!-- Q-Factor / Type Tag -->
+    <TextView
+        android:id="@+id/tvBandQ"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:text="Q: 0.8"
+        android:textColor="#94A3B8"
+        android:textSize="9sp" />
+
+</LinearLayout>

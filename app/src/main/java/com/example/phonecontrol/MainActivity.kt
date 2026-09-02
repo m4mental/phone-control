@@ -82,6 +82,7 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<View>(R.id.cardPerApp).setOnClickListener { startActivity(Intent(this, PerAppActivity::class.java)) }
         findViewById<View>(R.id.cardFreezer).setOnClickListener { startActivity(Intent(this, FreezerActivity::class.java)) }
+        findViewById<View>(R.id.cardStudioEqualizer).setOnClickListener { startActivity(Intent(this, StudioEqualizerActivity::class.java)) }
         findViewById<View>(R.id.cardBattery).setOnClickListener { startActivity(Intent(this, BatteryActivity::class.java)) }
         findViewById<View>(R.id.cardVault).setOnClickListener { startActivity(Intent(this, VaultActivity::class.java)) }
         findViewById<View>(R.id.cardTowerLock).setOnClickListener { startActivity(Intent(this, HomeTowerLockActivity::class.java)) }
@@ -263,7 +264,28 @@ class MainActivity : AppCompatActivity() {
         updateDisplayStatus()
         updateLiveStats()
         updateCardVisibility()
+        updateEqualizerCardStatus()
         liveHandler.postDelayed(liveRunnable, 2500)
+    }
+
+    private fun updateEqualizerCardStatus() {
+        val tvBadge = findViewById<TextView>(R.id.tvEqBadgeStatus) ?: return
+        val tvSubtitle = findViewById<TextView>(R.id.tvEqCardSubtitle) ?: return
+        val isEnabled = PowerampPresetManager.isMasterEnabled(this)
+        val activePreset = PowerampPresetManager.getActivePresetName(this)
+        if (isEnabled) {
+            tvBadge.text = "ACTIVE"
+            tvBadge.setTextColor(Color.parseColor("#00E5FF"))
+            tvBadge.setBackgroundColor(Color.parseColor("#0D253A"))
+            tvSubtitle.text = "Active: $activePreset • Limiter & Preamp Engaged"
+            tvSubtitle.setTextColor(Color.parseColor("#80DEEA"))
+        } else {
+            tvBadge.text = "OFF"
+            tvBadge.setTextColor(Color.parseColor("#888888"))
+            tvBadge.setBackgroundColor(Color.parseColor("#1F2937"))
+            tvSubtitle.text = "Tap to launch 12-band Poweramp DSP Equalizer & DTS Profiles."
+            tvSubtitle.setTextColor(Color.parseColor("#D1C4E9"))
+        }
     }
     
     override fun onPause() {

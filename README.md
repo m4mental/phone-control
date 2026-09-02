@@ -326,6 +326,37 @@ WhatsApp, Telegram, Zoom, Google Meet, and Instagram video calls are intelligent
 
 ---
 
+## 🎛️ Studio Audio Equalizer (Poweramp DSP Engine & DTS Profiles)
+
+Phone Control features a high-precision, studio-grade audio mastering suite built directly into the operating system's audio pipeline:
+* **Zero-Flashing Android Architecture:**
+  * Runs 100% on Android's native **`DynamicsProcessing`** framework and `AudioEffect` engine.
+  * Completely eliminates the need for unstable Magisk modules or risky `/vendor` HAL patches on Android 14, 15, and 16.
+* **Poweramp JSON Preset Compatibility:**
+  * Direct 1-tap parser for exported Poweramp Equalizer JSON profiles (both Graphic and Parametric formats).
+  * **Pre-Bundled Audiophile Profiles:**
+    1. 🎵 **DTS Sound Unbound profile:** Punchy 90Hz low-shelf bass (+5.2dB) + ultra-clear 10kHz air treble (+3.0dB).
+    2. 🎬 **DTS Theater Mode:** Cinema surround calibration with +7.5dB dynamic low-end boost and -1.0dB headroom preamp.
+    3. 🍿 **DTS Theater Mode 2:** Extreme sub-bass (+8.0dB @ 31Hz & +7.0dB @ 62Hz) with -6.0dB clean preamp protection.
+    4. 🎸 **My song 2 (Pure Parametric Biquad):** Ultra-precise frequency notches and resonance points (77Hz Q=1.96, 178Hz Q=0.71, 1006Hz Q=4.28, 5689Hz Q=5.27).
+    5. ⚡ **Studio Flat (Bypass):** Clean reference curve.
+* **Storage Access Framework (SAF) JSON File Picker & Paste:**
+  * Tap the `+` icon in the Studio Equalizer top bar to open Android's native system Document Picker (`com.android.documentsui`) and select `.json` preset files directly from Downloads, WhatsApp, or local storage.
+  * Also supports direct copy-pasting of raw Poweramp JSON profile text strings.
+* **Live Dynamic Bézier Curve Visualizer:**
+  * Renders a real-time glowing neon Bézier spline curve across 20Hz to 20kHz with logarithmic frequency interpolation.
+* **Hardware Preamp & Peak Limiter:**
+  * Adjustable Preamp Gain (-12.0 dB to +12.0 dB).
+  * Integrated brickwall peak limiter ensures zero crackling, clipping, or audio distortion even under +9dB sub-bass loads.
+* **Master Tone & Spatial Controls:**
+  * Tone Bass (90Hz Shelf) and Tone Treble (10kHz Shelf) sliders.
+  * Hardware Subwoofer Bass Boost and 3D Spatial Virtualizer.
+* **Smart Sleep Guard & Dual Coexistence:**
+  * Auto-sleeps the DSP engine to **0% CPU / 0% RAM usage** when music is paused, waking up in **0ms** upon audio track playback.
+  * Seamlessly co-exists with the App Freezer's external **Smart Equalizer Audio Guard** (protecting external apps like Poweramp Equalizer / Wavelet if user prefers external equalizers).
+
+---
+
 ## 🔄 Master Management & Safe Revert Architecture
 
 Phone Control incorporates a **Hierarchical Master Tweak Architecture**:

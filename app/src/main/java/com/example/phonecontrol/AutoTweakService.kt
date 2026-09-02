@@ -271,16 +271,18 @@ class AutoTweakService : Service() {
     }
 
     private fun handleAudioPlaybackStateChanged(configs: List<AudioPlaybackConfiguration>?) {
-        if (!FreezerManager.isEqualizerSleepEnabled(this)) return
-        val eqPkg = FreezerManager.getDetectedEqualizerPackage(this) ?: return
-
         val hasActiveAudio = audioManager?.isMusicActive == true
         if (hasActiveAudio) {
             isAudioCurrentlyActive = true
             equalizerFreezeRunnable?.let { equalizerFreezeHandler?.removeCallbacks(it) }
 
+            // Resume internal Studio DSP Engine in 0ms
+            StudioDspManager.resumeDsp(this)
+
+            if (!FreezerManager.isEqualizerSleepEnabled(this)) return
+            val eqPkg = FreezerManager.getDetectedEqualizerPackage(this) ?: return
+
             // CRITICAL: Only unfreeze if it was actually in frozen sleep!
-            // If already playing, DO NOT TOUCH IT! Zero commands, zero service reloads, zero audio drops!
             if (isEqualizerFrozen) {
                 Log.d("AutoTweak", "🎵 Audio resumed -> Instant unfreeze for Equalizer [$eqPkg]")
                 FreezerManager.instantUnfreezeEqualizer(eqPkg)
@@ -289,15 +291,21 @@ class AutoTweakService : Service() {
         } else {
             if (isAudioCurrentlyActive) {
                 isAudioCurrentlyActive = false
-                Log.d("AutoTweak", "⏸️ Audio paused -> Starting 30s grace timer for Equalizer [$eqPkg]")
+                Log.d("AutoTweak", "⏸️ Audio paused -> Starting 30s grace timer for Equalizer")
                 equalizerFreezeRunnable?.let { equalizerFreezeHandler?.removeCallbacks(it) }
                 equalizerFreezeRunnable = Runnable {
                     tweakExecutor.execute {
                         val isStillPlaying = audioManager?.isMusicActive == true
-                        if (!isStillPlaying && lastForegroundApp != eqPkg && !isEqualizerFrozen) {
-                            Log.d("AutoTweak", "❄️ 30s elapsed with no audio -> Freezing Equalizer [$eqPkg]")
-                            FreezerManager.instantFreezeEqualizer(eqPkg)
-                            isEqualizerFrozen = true
+                        if (!isStillPlaying) {
+                            // Put internal Studio DSP to sleep (0% CPU)
+                            StudioDspManager.pauseDsp()
+
+                            val eqPkg = FreezerManager.getDetectedEqualizerPackage(this@AutoTweakService)
+                            if (eqPkg != null && lastForegroundApp != eqPkg && !isEqualizerFrozen && FreezerManager.isEqualizerSleepEnabled(this@AutoTweakService)) {
+                                Log.d("AutoTweak", "❄️ 30s elapsed with no audio -> Freezing Equalizer [$eqPkg]")
+                                FreezerManager.instantFreezeEqualizer(eqPkg)
+                                isEqualizerFrozen = true
+                            }
                         }
                     }
                 }
