@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="#0D1527"
+    android:orientation="vertical"
+    android:padding="20dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="🎧 AutoEQ Headphone Calibration"
+        android:textColor="#FFFFFF"
+        android:textSize="18sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="Harman Target compensation calibrated by audiophile acoustics research."
+        android:textColor="#94A3B8"
+        android:textSize="12sp" />
+
+    <!-- Search Input -->
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/tilAutoEqSearch"
+        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:hint="Search brand or model (e.g. Nothing, Sony, AirPods)"
+        app:boxStrokeColor="#A855F7"
+        app:hintTextColor="#A855F7">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/etAutoEqSearch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <!-- Headphone List Container -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvAutoEqList"
+        android:layout_width="match_parent"
+        android:layout_height="320dp"
+        android:layout_marginTop="12dp"
+        android:scrollbars="vertical" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnCloseAutoEq"
+        style="@style/Widget.Material3.Button.TextButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Cancel"
+        android:textColor="#94A3B8" />
+
+</LinearLayout>

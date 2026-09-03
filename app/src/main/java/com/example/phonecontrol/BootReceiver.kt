@@ -56,6 +56,11 @@ class BootReceiver : BroadcastReceiver() {
                 ShellUtils.fastCmd("wm density reset")
                 prefs.edit().putString("screen_res", "rbRes1080").apply()
                 
+                // Re-initialize Studio Equalizer DSP if enabled
+                if (PowerampPresetManager.isMasterEnabled(context)) {
+                    StudioDspManager.init(context)
+                }
+
                 val serviceIntent = Intent(context, AutoTweakService::class.java).apply {
                     putExtra("delayed_start", true)
                 }

@@ -12,6 +12,7 @@ import android.content.pm.ServiceInfo
 import android.hardware.camera2.CameraManager
 import android.media.AudioManager
 import android.media.AudioPlaybackConfiguration
+import android.media.audiofx.AudioEffect
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -106,6 +107,58 @@ class AutoTweakService : Service() {
             }
         }
     } else null
+
+    private val audioSessionReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val action = intent.action ?: return
+            val sessionId = intent.getIntExtra(AudioEffect.EXTRA_AUDIO_SESSION, -1)
+            val pkg = intent.getStringExtra(AudioEffect.EXTRA_PACKAGE_NAME)
+            Log.d("AutoTweak", "AudioEffect Session Broadcast: $action -> Session ID: $sessionId, Package: $pkg")
+            if (sessionId > 0) {
+                if (action == AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION) {
+                    StudioDspManager.onAudioSessionOpened(context, sessionId, pkg)
+                } else if (action == AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION) {
+                    StudioDspManager.onAudioSessionClosed(sessionId)
+                }
+            }
+        }
+    }
+
+    private val audioRouteReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val action = intent.action ?: return
+            tweakExecutor.execute {
+                if (!PowerampPresetManager.isSmartOutputSwitchEnabled(context)) return@execute
+                if (action == Intent.ACTION_HEADSET_PLUG) {
+                    val state = intent.getIntExtra("state", -1)
+                    if (state == 1) {
+                        Log.d("AutoTweak", "🎧 Headset Plugged -> Auto-applying Headphone Preset")
+                        val hpPresetName = PowerampPresetManager.getSavedHeadphonePreset(context)
+                        val preset = PowerampPresetManager.getPresetByName(context, hpPresetName)
+                        if (preset != null) StudioDspManager.applyPreset(context, preset)
+                    } else if (state == 0) {
+                        Log.d("AutoTweak", "🔊 Headset Unplugged -> Auto-applying Speaker Preset")
+                        val spkPresetName = PowerampPresetManager.getSavedSpeakerPreset(context)
+                        val preset = PowerampPresetManager.getPresetByName(context, spkPresetName)
+                        if (preset != null) StudioDspManager.applyPreset(context, preset)
+                    }
+                } else if (action == android.bluetooth.BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED) {
+                    val state = intent.getIntExtra(android.bluetooth.BluetoothProfile.EXTRA_STATE, -1)
+                    if (state == android.bluetooth.BluetoothProfile.STATE_CONNECTED) {
+                        Log.d("AutoTweak", "🎧 Bluetooth Audio Connected -> Auto-applying Headphone Preset")
+                        val hpPresetName = PowerampPresetManager.getSavedHeadphonePreset(context)
+                        val preset = PowerampPresetManager.getPresetByName(context, hpPresetName)
+                        if (preset != null) StudioDspManager.applyPreset(context, preset)
+                    } else if (state == android.bluetooth.BluetoothProfile.STATE_DISCONNECTED) {
+                        Log.d("AutoTweak", "🔊 Bluetooth Audio Disconnected -> Auto-applying Speaker Preset")
+                        val spkPresetName = PowerampPresetManager.getSavedSpeakerPreset(context)
+                        val preset = PowerampPresetManager.getPresetByName(context, spkPresetName)
+                        if (preset != null) StudioDspManager.applyPreset(context, preset)
+                    }
+                }
+            }
+        }
+    }
 
     private val opActiveListener = AppOpsManager.OnOpActiveChangedListener { op, uid, pkg, active ->
         if (op == AppOpsManager.OPSTR_CAMERA || op == "android:phone_call_camera") {
@@ -259,6 +312,20 @@ class AutoTweakService : Service() {
                 })
                 Log.d("AutoTweak", "AudioManager.OnModeChangedListener successfully registered for Call detection")
             }
+
+            // Audio Effect Session Receiver for background media player control
+            val audioSessionFilter = IntentFilter().apply {
+                addAction(AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION)
+                addAction(AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION)
+            }
+            registerReceiver(audioSessionReceiver, audioSessionFilter)
+
+            // Smart Output Auto-Switch Receiver (Headphones vs Speaker)
+            val audioRouteFilter = IntentFilter().apply {
+                addAction(Intent.ACTION_HEADSET_PLUG)
+                addAction(android.bluetooth.BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED)
+            }
+            registerReceiver(audioRouteReceiver, audioRouteFilter)
         } catch (e: Exception) {
             Log.e("AutoTweak", "Failed to register audio callbacks: ${e.message}")
         }
@@ -267,16 +334,21 @@ class AutoTweakService : Service() {
             handleVideoCallStateChanged()
             AppEventService.enableViaRoot(packageName)
             ThermalManager.checkAndRecoverCooldown(this)
+
+            // Auto-initialize Studio Equalizer DSP in background on service startup
+            if (PowerampPresetManager.isMasterEnabled(this@AutoTweakService)) {
+                StudioDspManager.init(this@AutoTweakService)
+            }
         }
     }
 
     private fun handleAudioPlaybackStateChanged(configs: List<AudioPlaybackConfiguration>?) {
-        val hasActiveAudio = audioManager?.isMusicActive == true
+        val hasActiveAudio = audioManager?.isMusicActive == true || (!configs.isNullOrEmpty())
         if (hasActiveAudio) {
             isAudioCurrentlyActive = true
             equalizerFreezeRunnable?.let { equalizerFreezeHandler?.removeCallbacks(it) }
 
-            // Resume internal Studio DSP Engine in 0ms
+            // Resume internal Studio DSP Engine in 0ms (ensure background initialization!)
             StudioDspManager.resumeDsp(this)
 
             if (!FreezerManager.isEqualizerSleepEnabled(this)) return
@@ -782,6 +854,8 @@ class AutoTweakService : Service() {
         } catch (e: Exception) {}
         unregisterReceiver(screenReceiver)
         unregisterReceiver(batteryThermalReceiver)
+        try { unregisterReceiver(audioSessionReceiver) } catch (e: Exception) {}
+        try { unregisterReceiver(audioRouteReceiver) } catch (e: Exception) {}
         try { connectivityManager.unregisterNetworkCallback(networkCallback) } catch (e: Exception) {}
         try {
             cameraManager?.unregisterAvailabilityCallback(cameraAvailabilityCallback)

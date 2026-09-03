@@ -242,6 +242,16 @@
             </intent-filter>
         </receiver>
 
+        <!-- Audio Effect Control Session Receiver for System-wide Background Music Players -->
+        <receiver
+            android:name=".AudioEffectSessionReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.media.action.OPEN_AUDIO_EFFECT_CONTROL_SESSION" />
+                <action android:name="android.media.action.CLOSE_AUDIO_EFFECT_CONTROL_SESSION" />
+            </intent-filter>
+        </receiver>
+
         <service
             android:name=".CooldownTileService"
             android:exported="true"

@@ -168,13 +168,26 @@ Provides granular control over network modems and system telemetry:
 Maintains clean, uncluttered application lifecycles:
 
 * 🎛️ **Smart Audio Equalizer Guard (0ms Auto-Sleep Engine):**
-  * **The Problem:** Audio equalizer and DSP apps (such as Poweramp Equalizer, Wavelet, ViPER4Android, JamesDSP) keep persistent audio sessions and wake-locks alive even when music is paused, causing major standby battery drain.
+  * **The Problem:** Third-party equalizer and DSP apps keep persistent wake-locks alive even when music is paused, causing major standby battery drain.
   * **Hardware-Level Playback Listener:** Connects directly to Android's `AudioManager.AudioPlaybackCallback` with zero background polling loops.
   * **0ms Instant Unfreeze on Music:** The instant Spotify, YouTube, or any media player begins playback, Equalizer is unfrozen via Linux CGroups in **<1 millisecond** — delivering full bass and treble on the very first beat.
   * **30-Second Grace Pause Buffer:** When music pauses or tracks change, a 30-second countdown runs before entering sleep. Seeking, switching songs, or browsing playlists never triggers false hibernations.
-  * **Zero Audio Dropouts:** Active streams are strictly guarded. Destructive service reloads and `ACTION_RELOAD` broadcasts are eliminated, ensuring 100% continuous, crystal-clear audio.
-  * **App Transition Immunity:** Automatically excludes the active equalizer from generic `am force-stop` on app switching, even if added to the general hibernating apps list.
-  * **Universal Auto-Detection:** Automatically detects Poweramp Equalizer, Wavelet, ViPER4Android, Flat Equalizer, JamesDSP, SpotiQ, and offers an in-app picker for custom DSP engines.
+  * **Zero Audio Dropouts:** Active streams are strictly guarded, ensuring 100% continuous, crystal-clear audio.
+
+* 🎵 **Built-in Studio Equalizer & Audiophile DSP Engine:**
+  * **Hardware-Accelerated Biquad Filters:** Uses Android 9+ `DynamicsProcessing` for true multi-band parametric and graphic equalization with zero latency and high dynamic range.
+  * **48-Band Live Real-Time FFT Spectrum Visualizer:** Real-time dancing neon cyan/violet spectrum bars and floating peak-decay indicators rendered beneath the Bézier spline curve via `android.media.audiofx.Visualizer`.
+  * **AutoEQ Headphone Database:** Built-in Harman Target calibrated compensation profiles for Nothing Ear (2), Nothing Ear (a), Nothing Ear (1), Sony WH/WF-1000XM5/XM4, Apple AirPods Pro 2 / Max, Sennheiser HD600 / Momentum 4, Moondrop Chu II / Aria, boAt, Realme, and Phone Speaker Clarity Guard with instant 1-tap search and calibration.
+  * **ViPER FX Suite:**
+    * **Differential Surround:** Haas effect 3D spatial soundstage widening with phase delay matrix.
+    * **Reverberation:** Acoustic room reflections across Small Room, Medium Room, Large Room, Concert Hall, and Studio Plate.
+    * **Dynamic System:** Harmonic bass diaphragm resonance exciter.
+    * **ViPER Audio Clarity:** Natural vocal and high-frequency treble exciter.
+  * **Acoustics & Spatial Imaging:**
+    * **Bauer Stereo Crossfeed:** Acoustic crosstalk simulation to eliminate headphone ear fatigue.
+    * **L/R Channel Balance:** Fine-grained left/right channel balance (-100 to +100).
+    * **Smart Output Auto-Switcher:** Auto-switches between dedicated Headphone and Phone Speaker profiles upon 3.5mm plug or Bluetooth A2DP connect/disconnect.
+  * **Poweramp Profile Hub:** Full import/export compatibility with Poweramp Equalizer JSON presets (`.json`) and custom user preset naming & storage.
 * ❄️ **App Freezer & Special Hibernation Engine:**
   * **Normal Freeze (`am freeze` + `am force-stop`):** Halts processes via Linux `cgroups v2` process suspension, frees RAM, and kills background services while keeping the launcher icon normal.
   * **Special Freeze (`am force-stop` + `pm suspend`):** Suspends the entire package so Android OS grays out the icon and completely rejects waking intents or broadcasts.
@@ -360,6 +373,9 @@ Phone Control features a high-precision, studio-grade audio mastering suite buil
   * 🎧 **Differential Surround:** Stereo soundstage expansion via Haas effect phase delays, creating an immersive 3D surround atmosphere in headphones.
   * 🏛️ **Reverberation:** Acoustic simulation powered by Android's native `PresetReverb` engine (Small Room, Medium Room, Large Room, Concert Hall, Studio Plate).
   * 🔊 **Dynamic System:** ViPER-inspired harmonic bass drive and diaphragm resonance algorithm delivering deep, punchy subwoofer rumble without distortion.
+* **🎵 Persistent Background Auto-Attach & Audio Session Receiver:**
+  * Auto-initializes on system boot and service startup, running 100% seamlessly in the background without requiring the Phone Control app to be opened.
+  * Dynamically hooks into Android's `OPEN_AUDIO_EFFECT_CONTROL_SESSION` broadcasts to attach Studio DSP filters, 3D Surround, and Equalizer presets directly to any active media player (Spotify, YouTube Music, local players) in 0ms.
 * **Smart Sleep Guard & Dual Coexistence:**
   * Auto-sleeps the DSP engine to **0% CPU / 0% RAM usage** when music is paused, waking up in **0ms** upon audio track playback.
   * Seamlessly co-exists with the App Freezer's external **Smart Equalizer Audio Guard** (protecting external apps like Poweramp Equalizer / Wavelet if user prefers external equalizers).
