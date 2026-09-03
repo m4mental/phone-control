@@ -290,6 +290,20 @@ For safety and clean UI presentation, the **Stage Override Test Lab** is hidden 
 
 ---
 
+## 🎛️ Notification Shade Quick Settings (QS) Tile
+
+Phone Control integrates natively into Nothing OS & Android 16's Control Center / Notification Shade with a dedicated **Mode Control QS Tile** (`ModeControlTileService`):
+* **1-Tap Instant Mode Cycling:** Tap the tile anytime from any app, full-screen video, or game without opening Phone Control to cycle between:
+  $$\text{AI Auto} \longrightarrow \text{Balanced} \longrightarrow \text{Power Saver} \longrightarrow \text{Performance} \longrightarrow \text{AI Auto}$$
+* **Live Dynamic State & Subtitle:**
+  * 🤖 **Mode: AI Auto** — Subtitle shows live active AI stage (*AI: Eco Active*, *AI: Daily Fluent*, *AI: Extreme Turbo*).
+  * ⚡ **Mode: Balanced** — Subtitle: *Pure 6-Core Fluid (120Hz)*.
+  * 🔋 **Mode: Power Saver** — Subtitle: *650MHz Ice Eco*.
+  * 🚀 **Mode: Performance** — Subtitle: *Turbo 2.8GHz Unleashed*.
+* **Immediate Audio-Visual Feedback:** Dispatches clear on-screen Toast alerts upon each tap, and broadcasts `UPDATE_UI` events to immediately update radio buttons and status headers in the main app.
+
+---
+
 ## 🚀 90-Second Post-Boot Fast Startup Turbo Engine
 
 Upon phone reboot or restart (`ACTION_BOOT_COMPLETED`), Android executes heavy initialization workloads (DEX bytecode optimization, media scanner, Google Play sync, app widgets, and launcher caching).

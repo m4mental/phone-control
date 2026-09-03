@@ -245,6 +245,7 @@ class AutoTweakService : Service() {
                                 prefs.edit().putString("selected_mode", "rbPowerSaver").apply()
                                 TweakManager.applyGlobalMode("Power Saver")
                                 sendBroadcast(Intent("com.example.phonecontrol.UPDATE_UI").setPackage(packageName))
+                                ModeControlTileService.updateTile(this@AutoTweakService)
                             }
                         }
                     }
@@ -671,6 +672,7 @@ class AutoTweakService : Service() {
             }
             getSharedPreferences("prefs", MODE_PRIVATE).edit().putString("active_ai_label", displayLabel).apply()
             sendBroadcast(Intent("com.example.phonecontrol.UPDATE_UI").setPackage(packageName))
+            ModeControlTileService.updateTile(this)
         }
     }
 
@@ -781,17 +783,19 @@ class AutoTweakService : Service() {
         isScreenOn = true
         
         Log.d("AutoTweak", "Screen ON Event - Instant 0ms Async Wakeup")
-        // 1. Instant 2ms Atomic Wakeup Boost
-        TweakManager.triggerTemporaryWakeupBoost()
-        TweakManager.setClusterParking(false, deep = true) 
         ShellUtils.fastCmd("echo 'on' > /data/local/tmp/pc_screen")
 
-        // 2. Restore Operation Mode (or Re-enforce Manual Stage)
         val manualStage = prefs.getInt("manual_stage_override", 0)
         if (manualStage != 0) {
+            // Strictly re-enforce user's Test Lab Stage lock without overwriting governors
             TweakManager.manualStageOverride = manualStage
             TweakManager.applyRawStageScript(manualStage)
         } else {
+            // 1. Instant 2ms Atomic Wakeup Boost for normal modes
+            TweakManager.triggerTemporaryWakeupBoost()
+            TweakManager.setClusterParking(false, deep = true)
+
+            // 2. Restore Operation Mode
             val savedMode = prefs.getString("selected_mode", "rbBalance")
             when (savedMode) {
                 "rbPowerSaver" -> TweakManager.applyGlobalMode("Power Saver")

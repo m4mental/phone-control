@@ -344,4 +344,9 @@ class HomeTowerLockActivity : AppCompatActivity() {
             }
         }
     }
+
+    override fun onDestroy() {
+        scope.cancel()
+        super.onDestroy()
+    }
 }

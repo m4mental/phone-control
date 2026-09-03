@@ -263,6 +263,18 @@
             </intent-filter>
         </service>
 
+        <!-- Mode Control QS Tile (1-Tap Cycle: AI Auto -> Balanced -> Power Saver -> Performance) -->
+        <service
+            android:name=".ModeControlTileService"
+            android:exported="true"
+            android:label="Operating Mode"
+            android:icon="@drawable/ic_qs_mode_control"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <!-- Standard Freezer Widget (All Frozen Apps) -->
         <receiver android:name=".FreezerWidgetProvider" android:exported="false">
             <intent-filter>

@@ -30,10 +30,17 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvLiveRam: TextView
     private lateinit var tvLiveCpuCap: TextView
     private lateinit var tvLiveCpuUsage: TextView
+    private lateinit var tvActiveStageOverride: TextView
 
     private val uiReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             updateDisplayStatus()
+            val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+            val currentOverride = prefs.getInt("manual_stage_override", 0)
+            if (::tvActiveStageOverride.isInitialized) {
+                updateStageButtonsUI(currentOverride)
+            }
+            updateLiveStats()
         }
     }
 
@@ -100,7 +107,7 @@ class MainActivity : AppCompatActivity() {
         // Stage Manual Override (Test Lab)
         val cardStageOverride = findViewById<View>(R.id.cardStageOverride)
         val btnLockTestLab = findViewById<ImageView>(R.id.btnLockTestLab)
-        val tvActiveStageOverride = findViewById<TextView>(R.id.tvActiveStageOverride)
+        tvActiveStageOverride = findViewById(R.id.tvActiveStageOverride)
         val btnStage1E = findViewById<MaterialButton>(R.id.btnStage1E)
         val btnStage1D = findViewById<MaterialButton>(R.id.btnStage1D)
         val btnStage1C = findViewById<MaterialButton>(R.id.btnStage1C)
@@ -119,27 +126,6 @@ class MainActivity : AppCompatActivity() {
             cardStageOverride.visibility = View.GONE
             prefs.edit().putBoolean("is_test_lab_unlocked", false).apply()
             android.widget.Toast.makeText(this, "🔒 Test Lab Locked & Hidden", android.widget.Toast.LENGTH_SHORT).show()
-        }
-
-        fun updateStageButtonsUI(activeStage: Int) {
-            tvActiveStageOverride.text = when (activeStage) {
-                13 -> "Active: S1 (480M Min)"
-                12 -> "Active: S1 (550M)"
-                11 -> "Active: S1 (650M)"
-                10 -> "Active: S1 (850M)"
-                1 -> "Active: S1 (950M)"
-                2 -> "Active: Force S2"
-                3 -> "Active: Force S3"
-                4 -> "Active: Force S4"
-                else -> "Active: Auto"
-            }
-            tvActiveStageOverride.setTextColor(when (activeStage) {
-                13, 12, 11, 10, 1 -> Color.parseColor("#00E5FF")
-                2 -> Color.parseColor("#69F0AE")
-                3 -> Color.parseColor("#FFD700")
-                4 -> Color.parseColor("#FF5252")
-                else -> Color.parseColor("#69F0AE")
-            })
         }
 
         val currentOverride = prefs.getInt("manual_stage_override", 0)
@@ -220,6 +206,28 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         try { unregisterReceiver(uiReceiver) } catch (e: Exception) {}
         super.onDestroy()
+    }
+
+    private fun updateStageButtonsUI(activeStage: Int) {
+        if (!::tvActiveStageOverride.isInitialized) return
+        tvActiveStageOverride.text = when (activeStage) {
+            13 -> "Active: S1 (480M Min)"
+            12 -> "Active: S1 (550M)"
+            11 -> "Active: S1 (650M)"
+            10 -> "Active: S1 (850M)"
+            1 -> "Active: S1 (950M)"
+            2 -> "Active: Force S2"
+            3 -> "Active: Force S3"
+            4 -> "Active: Force S4"
+            else -> "Active: Auto"
+        }
+        tvActiveStageOverride.setTextColor(when (activeStage) {
+            13, 12, 11, 10, 1 -> Color.parseColor("#00E5FF")
+            2 -> Color.parseColor("#69F0AE")
+            3 -> Color.parseColor("#FFD700")
+            4 -> Color.parseColor("#FF5252")
+            else -> Color.parseColor("#69F0AE")
+        })
     }
 
     private fun checkRootAsync() {
@@ -428,7 +436,21 @@ class MainActivity : AppCompatActivity() {
         val savedMode = prefs.getString("selected_mode", "rbBalance")
         val activeAiLabel = prefs.getString("active_ai_label", "AI: Active")
 
-        val statusText = when (savedMode) {
+        val manualStage = prefs.getInt("manual_stage_override", 0)
+
+        val statusText = if (manualStage != 0) {
+            when (manualStage) {
+                13 -> "Test Lab: S1 (480M Floor)"
+                12 -> "Test Lab: S1 (550M Deep)"
+                11 -> "Test Lab: S1 (650M Ultra)"
+                10 -> "Test Lab: S1 (850M Ext)"
+                1 -> "Test Lab: S1 (950M Bal)"
+                2 -> "Test Lab: Stage 2 (Fluid)"
+                3 -> "Test Lab: Stage 3 (Compute)"
+                4 -> "Test Lab: Stage 4 (Turbo)"
+                else -> "Test Lab: Stage Lock"
+            }
+        } else when (savedMode) {
             "rbPowerSaver" -> "Manual: Power Saver"
             "rbBalance" -> "Manual: Balanced"
             "rbPerformance" -> "Manual: Performance"
@@ -438,7 +460,9 @@ class MainActivity : AppCompatActivity() {
         tvStatus.text = "Mode: $statusText"
         
         // Dynamic Status Color
-        if (savedMode == "rbAutomatic") {
+        if (manualStage != 0) {
+            tvStatus.setTextColor(Color.parseColor("#FFD700")) // Gold for Test Lab Override
+        } else if (savedMode == "rbAutomatic") {
             tvStatus.setTextColor(Color.parseColor("#00C853")) // Bright Green for AI
         } else {
             tvStatus.setTextColor(Color.WHITE)

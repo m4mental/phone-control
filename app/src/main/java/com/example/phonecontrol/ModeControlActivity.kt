@@ -1,6 +1,10 @@
 package com.example.phonecontrol
 
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.widget.*
@@ -15,6 +19,12 @@ class ModeControlActivity : AppCompatActivity() {
     private lateinit var layoutFocusSettings: LinearLayout
     private lateinit var tvCurrentRefreshSummary: TextView
 
+    private val uiReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            updateRadioButtonsFromPrefs()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_mode_control)
@@ -27,17 +37,9 @@ class ModeControlActivity : AppCompatActivity() {
         findViewById<MaterialToolbar>(R.id.toolbarModeControl).setNavigationOnClickListener { finish() }
 
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
-        val savedMode = prefs.getString("selected_mode", "rbBalance")
         val savedFocus = prefs.getString("selected_focus", "rbFocusDaily")
 
-        // Setup Global Modes
-        when (savedMode) {
-            "rbPowerSaver" -> findViewById<RadioButton>(R.id.rbPowerSaver).isChecked = true
-            "rbBalance" -> findViewById<RadioButton>(R.id.rbBalance).isChecked = true
-            "rbPerformance" -> findViewById<RadioButton>(R.id.rbPerformance).isChecked = true
-            "rbAutomatic" -> findViewById<RadioButton>(R.id.rbAutomatic).isChecked = true
-        }
-        layoutFocusSettings.visibility = if (savedMode == "rbAutomatic") View.VISIBLE else View.GONE
+        updateRadioButtonsFromPrefs()
 
         // Setup Focus
         when (savedFocus) {
@@ -55,6 +57,10 @@ class ModeControlActivity : AppCompatActivity() {
             }
             layoutFocusSettings.visibility = if (modeKey == "rbAutomatic") View.VISIBLE else View.GONE
             prefs.edit().putString("selected_mode", modeKey).apply()
+
+            // Reset manual stage lock so selected mode takes full effect
+            prefs.edit().putInt("manual_stage_override", 0).apply()
+            TweakManager.manualStageOverride = 0
 
             if (modeKey == "rbAutomatic") {
                 // Trigger AI logic immediately
@@ -74,6 +80,9 @@ class ModeControlActivity : AppCompatActivity() {
                     runOnUiThread { updateRefreshSummary() }
                 }
             }
+
+            // Sync with Notification Shade Quick Settings Tile
+            ModeControlTileService.updateTile(this)
         }
 
         rgFocus.setOnCheckedChangeListener { _, checkedId ->
@@ -118,6 +127,9 @@ class ModeControlActivity : AppCompatActivity() {
                     updateRefreshSummary()
                 }
             }
+
+            // Sync with Quick Settings Tile
+            ModeControlTileService.updateTile(this)
         }
 
         // Clickable Shortcut directly to Custom Display Refresh Rate Activity
@@ -130,7 +142,35 @@ class ModeControlActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        val filter = IntentFilter("com.example.phonecontrol.UPDATE_UI")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(uiReceiver, filter, RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("UnspecifiedRegisterReceiverFlag")
+            registerReceiver(uiReceiver, filter)
+        }
+        updateRadioButtonsFromPrefs()
         updateRefreshSummary()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        try {
+            unregisterReceiver(uiReceiver)
+        } catch (e: Exception) {}
+    }
+
+    private fun updateRadioButtonsFromPrefs() {
+        val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+        val savedMode = prefs.getString("selected_mode", "rbBalance")
+
+        when (savedMode) {
+            "rbPowerSaver" -> findViewById<RadioButton>(R.id.rbPowerSaver).isChecked = true
+            "rbBalance" -> findViewById<RadioButton>(R.id.rbBalance).isChecked = true
+            "rbPerformance" -> findViewById<RadioButton>(R.id.rbPerformance).isChecked = true
+            "rbAutomatic" -> findViewById<RadioButton>(R.id.rbAutomatic).isChecked = true
+        }
+        layoutFocusSettings.visibility = if (savedMode == "rbAutomatic") View.VISIBLE else View.GONE
     }
 
     private fun updateRefreshSummary() {
