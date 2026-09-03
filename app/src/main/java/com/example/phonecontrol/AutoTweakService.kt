@@ -42,6 +42,8 @@ class AutoTweakService : Service() {
     @Volatile private var lastForegroundApp = ""
     @Volatile private var isGameTurboActive = false
     @Volatile private var isPerAppActive = false
+    @Volatile private var isPerAppBypassActive = false
+    @Volatile private var isPerAppDndActive = false
     @Volatile private var isDynamicScalingActive = false
     @Volatile private var isFloatingWindowActive = false
     @Volatile private var isScreenOn = true
@@ -565,20 +567,33 @@ class AutoTweakService : Service() {
                 isGameTurboActive = true
                 isPerAppActive = false
             }
-        } else if (perAppConfig != null && perAppConfig.mode != "Auto") {
-            Log.d("AutoTweak", "Instant Per-App Event: $pkg -> Mode: ${perAppConfig.mode}, FPS: ${perAppConfig.fps}")
-            TweakManager.applyGlobalMode(perAppConfig.mode)
-            TweakManager.setRefreshRate(perAppConfig.fps)
+        } else if (perAppConfig != null && (perAppConfig.mode != "Auto" || perAppConfig.fps != "Auto Switch" || perAppConfig.bypassCharging || perAppConfig.autoDnd || perAppConfig.touch == "On")) {
+            Log.d("AutoTweak", "Instant Smart Rule Event: $pkg -> Mode: ${perAppConfig.mode}, FPS: ${perAppConfig.fps}, Bypass: ${perAppConfig.bypassCharging}, DND: ${perAppConfig.autoDnd}")
+            if (perAppConfig.mode != "Auto") TweakManager.applyGlobalMode(perAppConfig.mode)
+            if (perAppConfig.fps != "Auto Switch") TweakManager.setRefreshRate(perAppConfig.fps)
             if (perAppConfig.thermal == "Disabled") ThermalManager.setThrottlingEnabled(false) else ThermalManager.setThrottlingEnabled(true)
             if (perAppConfig.touch == "On") TweakManager.applyInputBoost(true)
             if (perAppConfig.mode == "Performance") TweakManager.applyProcessPriority(pkg, true)
+
+            // Automation: Auto Bypass Charging
+            if (perAppConfig.bypassCharging) {
+                BatteryManager.setBypassCharging(this, true)
+                isPerAppBypassActive = true
+            }
+
+            // Automation: Gaming DND
+            if (perAppConfig.autoDnd) {
+                ShellUtils.fastCmd("cmd notification set_zen_mode 1")
+                isPerAppDndActive = true
+            }
+
             isPerAppActive = true
             isGameTurboActive = false
         } else {
             val isAutomaticMode = prefs.getString("selected_mode", "rbBalance") == "rbAutomatic"
             
             if (isGameTurboActive || isPerAppActive) {
-                Log.d("AutoTweak", "Instant Exit Event - Restoring User's Selected Mode")
+                Log.d("AutoTweak", "Instant Exit Event - Restoring User's Baseline State")
                 val savedModeKey = prefs.getString("selected_mode", "rbBalance") ?: "rbBalance"
                 when (savedModeKey) {
                     "rbPowerSaver" -> TweakManager.applyGlobalMode("Power Saver")
@@ -592,6 +607,20 @@ class AutoTweakService : Service() {
                 }
                 ThermalManager.setThrottlingEnabled(true)
                 TweakManager.setRefreshRate("Default")
+
+                // Atomically restore Bypass Charging
+                if (isPerAppBypassActive) {
+                    val savedBypass = prefs.getBoolean("battery_bypass_charging", false)
+                    BatteryManager.setBypassCharging(this, savedBypass)
+                    isPerAppBypassActive = false
+                }
+
+                // Atomically restore DND
+                if (isPerAppDndActive) {
+                    ShellUtils.fastCmd("cmd notification set_zen_mode 0")
+                    isPerAppDndActive = false
+                }
+
                 isGameTurboActive = false
                 isPerAppActive = false
             } else if (isAutomaticMode) {

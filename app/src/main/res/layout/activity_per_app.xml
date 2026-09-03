@@ -11,7 +11,7 @@
         android:id="@+id/toolbarPerApp"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
-        app:title="Per-App Configuration"
+        app:title="Smart App Rules Engine"
         app:titleTextColor="@color/color_per_app"
         app:navigationIcon="@android:drawable/ic_menu_revert"
         app:navigationIconTint="@color/color_per_app" />
@@ -25,16 +25,16 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Define unique performance, refresh rate, thermal and touch settings for specific apps. Profiles activate instantly on launch and restore system defaults upon closing."
+            android:text="Automate CPU performance, refresh rates, 🔌 Bypass Charging (zero battery heat), and 🔕 Gaming DND per app with 0ms auto-restoration upon exit."
             android:textColor="#AAAAAA"
-            android:textSize="13sp"
-            android:layout_marginBottom="20dp" />
+            android:textSize="12sp"
+            android:layout_marginBottom="16dp" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnAddPerApp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="+ Add App Override"
+            android:text="+ Add Smart App Rule"
             android:textColor="@android:color/black"
             android:textStyle="bold"
             app:backgroundTint="@android:color/white"

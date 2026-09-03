@@ -95,7 +95,11 @@ class PerAppActivity : AppCompatActivity() {
             }
             
             fun updateSummaryLabel(c: PerAppManager.AppConfig) {
-                tvSummary.text = "${c.mode} | ${c.fps} | Thermal: ${c.thermal} | Touch: ${c.touch}"
+                val extras = mutableListOf<String>()
+                if (c.bypassCharging) extras.add("🔌 Bypass")
+                if (c.autoDnd) extras.add("🔕 DND")
+                val extraTag = if (extras.isNotEmpty()) " | " + extras.joinToString(" • ") else ""
+                tvSummary.text = "${c.mode} | ${c.fps} | Thermal: ${c.thermal} | Touch: ${c.touch}$extraTag"
             }
             updateSummaryLabel(config)
 
@@ -115,6 +119,8 @@ class PerAppActivity : AppCompatActivity() {
             val rgFps = view.findViewById<RadioGroup>(R.id.rgFps)
             val swThermal = view.findViewById<SwitchMaterial>(R.id.switchThermal)
             val swTouch = view.findViewById<SwitchMaterial>(R.id.switchTouch)
+            val swBypass = view.findViewById<SwitchMaterial>(R.id.switchBypass)
+            val swDnd = view.findViewById<SwitchMaterial>(R.id.switchDnd)
             val btnRemove = view.findViewById<Button>(R.id.btnRemove)
 
             // Initial Radio Selection
@@ -133,6 +139,8 @@ class PerAppActivity : AppCompatActivity() {
             }
             swThermal.isChecked = config.thermal == "Disabled"
             swTouch.isChecked = config.touch == "On"
+            swBypass.isChecked = config.bypassCharging
+            swDnd.isChecked = config.autoDnd
 
             // Save on change logic
             val onConfigChange = {
@@ -151,17 +159,23 @@ class PerAppActivity : AppCompatActivity() {
                 }
                 val thermal = if (swThermal.isChecked) "Disabled" else "Default"
                 val touch = if (swTouch.isChecked) "On" else "Off"
+                val bypass = swBypass.isChecked
+                val dnd = swDnd.isChecked
                 
-                val newConfig = PerAppManager.AppConfig(mode, fps, thermal, touch)
-                PerAppManager.saveConfig(this, packageName, mode, fps, thermal, touch)
+                val newConfig = PerAppManager.AppConfig(mode, fps, thermal, touch, bypass, dnd)
+                PerAppManager.saveConfig(this, packageName, newConfig)
                 updateSummaryLabel(newConfig)
                 
-                // Phase 6: Live Tuning - Apply if app is currently in foreground
+                // Live Tuning - Apply if app is currently in foreground
                 thread {
                     val topApp = ShellUtils.runAsRoot("dumpsys window | grep mCurrentFocus").output
                     if (topApp.contains(packageName)) {
                         TweakManager.applyGlobalMode(mode)
                         TweakManager.setRefreshRate(fps)
+                        if (thermal == "Disabled") ThermalManager.setThrottlingEnabled(false) else ThermalManager.setThrottlingEnabled(true)
+                        if (touch == "On") TweakManager.applyInputBoost(true)
+                        if (bypass) BatteryManager.setBypassCharging(this, true)
+                        if (dnd) ShellUtils.fastCmd("cmd notification set_zen_mode 1")
                         if (mode == "Performance") TweakManager.applyProcessPriority(packageName, true)
                     }
                 }
@@ -171,10 +185,12 @@ class PerAppActivity : AppCompatActivity() {
             rgFps.setOnCheckedChangeListener { _, _ -> onConfigChange() }
             swThermal.setOnCheckedChangeListener { _, _ -> onConfigChange() }
             swTouch.setOnCheckedChangeListener { _, _ -> onConfigChange() }
+            swBypass.setOnCheckedChangeListener { _, _ -> onConfigChange() }
+            swDnd.setOnCheckedChangeListener { _, _ -> onConfigChange() }
 
             btnRemove.setOnClickListener {
-                AlertDialog.Builder(this).setTitle("Remove Override")
-                    .setMessage("Remove custom mode for ${tvName.text}?")
+                AlertDialog.Builder(this).setTitle("Remove Smart Rule")
+                    .setMessage("Remove automation profile for ${tvName.text}?")
                     .setPositiveButton("Remove") { _, _ ->
                         PerAppManager.removeConfig(this, packageName)
                         refreshList()
@@ -220,13 +236,68 @@ class PerAppActivity : AppCompatActivity() {
 
         val dialog = AlertDialog.Builder(this).setView(dialogView).create()
         listView.setOnItemClickListener { _, _, pos, _ -> 
-            val pkg = filteredApps[pos].packageName
-            // Save with defaults initially (Auto mode)
-            PerAppManager.saveConfig(this, pkg, "Auto", "Auto Switch", "Default", "Off")
-            refreshList()
-            dialog.dismiss() 
+            val app = filteredApps[pos]
+            val pkg = app.packageName
+            val label = pm.getApplicationLabel(app)
+            dialog.dismiss()
+
+            // Prompt 1-Tap Rule Template for selected app
+            showRuleTemplateDialog(pkg, label.toString())
         }
         dialog.show()
         dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, (resources.displayMetrics.heightPixels * 0.8).toInt())
+    }
+
+    private fun showRuleTemplateDialog(packageName: String, appName: String) {
+        val templates = arrayOf(
+            "🎮 Pro Gamer (Turbo 2.8G + 120Hz + Bypass + DND)",
+            "🎬 Cinema & Video (60Hz Battery Saver + Bypass)",
+            "📖 Deep Reader / Eco (650M Floor + 60Hz + DND)",
+            "⚙️ Custom Rule (Configure Manually)"
+        )
+
+        AlertDialog.Builder(this)
+            .setTitle("Apply Smart Rule: $appName")
+            .setItems(templates) { _, which ->
+                val config = when (which) {
+                    0 -> PerAppManager.AppConfig(
+                        mode = "Performance",
+                        fps = "120Hz",
+                        thermal = "Disabled",
+                        touch = "On",
+                        bypassCharging = true,
+                        autoDnd = true
+                    )
+                    1 -> PerAppManager.AppConfig(
+                        mode = "Balance",
+                        fps = "60Hz",
+                        thermal = "Default",
+                        touch = "Off",
+                        bypassCharging = true,
+                        autoDnd = false
+                    )
+                    2 -> PerAppManager.AppConfig(
+                        mode = "Power Saver",
+                        fps = "60Hz",
+                        thermal = "Default",
+                        touch = "Off",
+                        bypassCharging = false,
+                        autoDnd = true
+                    )
+                    else -> PerAppManager.AppConfig(
+                        mode = "Auto",
+                        fps = "Auto Switch",
+                        thermal = "Default",
+                        touch = "Off",
+                        bypassCharging = false,
+                        autoDnd = false
+                    )
+                }
+                PerAppManager.saveConfig(this, packageName, config)
+                refreshList()
+                Toast.makeText(this, "Smart Rule saved for $appName", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 }

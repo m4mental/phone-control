@@ -107,7 +107,7 @@
                 <RadioButton android:id="@+id/rbFps120" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="120" android:textColor="#FFFFFF" android:textSize="10sp" android:buttonTint="@color/color_per_app" />
             </RadioGroup>
 
-            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginBottom="8dp">
                 <!-- Thermal -->
                 <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
                     <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Throttling" android:textColor="#888888" android:textSize="10sp" />
@@ -117,6 +117,20 @@
                 <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
                     <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Touch Boost" android:textColor="#888888" android:textSize="10sp" />
                     <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchTouch" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Enable" android:textColor="#FFFFFF" android:textSize="11sp" app:thumbTint="@color/color_per_app" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Automation Rules: Bypass Charging & DND -->
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginBottom="12dp">
+                <!-- Bypass Charging -->
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="🔌 Bypass Charge" android:textColor="#FFD700" android:textSize="10sp" android:textStyle="bold" />
+                    <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchBypass" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Zero Heat" android:textColor="#FFFFFF" android:textSize="11sp" app:thumbTint="#FFD700" />
+                </LinearLayout>
+                <!-- Gaming DND -->
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="🔕 Auto DND" android:textColor="#FF9100" android:textSize="10sp" android:textStyle="bold" />
+                    <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchDnd" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Silent" android:textColor="#FFFFFF" android:textSize="11sp" app:thumbTint="#FF9100" />
                 </LinearLayout>
             </LinearLayout>
 

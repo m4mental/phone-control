@@ -199,6 +199,14 @@ Maintains clean, uncluttered application lifecycles:
   * Safely disables or uninstalls carrier bloatware and unnecessary pre-installed OEM system packages.
 * 🔐 **App & Data Backup Vault:**
   * Backup and restore application APKs and internal private data (`/data/data/`) locally.
+* 🤖 **Smart Per-App Profile Automation (Auto Rules Engine):**
+  * **Intelligent Foreground App Trigger:** Detects application launches in 0ms and automatically applies bespoke hardware, display, battery, and focus rules.
+  * **Performance & Display Profiles:** Automatically sets Performance Mode (Turbo 2.8GHz), Balanced, or Power Saver (650M Floor), and locks refresh rate to 60Hz (saves 35-40% battery on YouTube/Netflix), 90Hz, or 120Hz.
+  * **🔌 Auto Bypass Charging:** Direct wall adapter power delivery (0mA goes into battery) when demanding games or streaming apps run, eliminating 100% of charging heat during intense sessions.
+  * **🔕 Gaming DND (Do Not Disturb):** Auto-suppresses calls and heads-up banner notifications while inside matches or reading sessions.
+  * **⚡ Touch Boost & Thermal Override:** Unlocks ultra-low latency touch sampling and prevents premature thermal clock-drop for competitive gaming.
+  * **1-Tap Smart Rule Templates:** Instant 1-click profiles for `🎮 Pro Gamer`, `🎬 Cinema & Video Streaming`, `📖 Deep Reader / Battery Saver`, and `⚙️ Custom Rules`.
+  * **0ms Atomic State Restoration:** The instant the user presses Home or switches out of the app, all original baseline system settings (CPU mode, refresh rate, bypass charging, DND) are seamlessly and completely restored.
 
 ---
 
