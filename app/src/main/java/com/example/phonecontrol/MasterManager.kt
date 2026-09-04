@@ -27,6 +27,10 @@ object MasterManager {
         
         // 2. Revert Thermal, CPU & GPU Governors to Stock Kernel Defaults
         val cpuKernelCmds = listOf(
+            "chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null",
+            "chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_min_freq 2>/dev/null",
+            "chmod 666 /sys/devices/system/cpu/cpu*/cpufreq/scaling_max_freq 2>/dev/null",
+            "chmod 666 /sys/devices/system/cpu/cpu*/cpufreq/scaling_min_freq 2>/dev/null",
             "for i in 0 1 2 3 4 5 6 7; do echo 1 > /sys/devices/system/cpu/cpu\$i/online 2>/dev/null; done",
             "for p in 0 1 2 3 4 5 6 7; do echo schedutil > /sys/devices/system/cpu/cpufreq/policy\$p/scaling_governor 2>/dev/null; done",
             "for p in 0 1 2 3 4 5 6 7; do cat /sys/devices/system/cpu/cpufreq/policy\$p/cpuinfo_max_freq > /sys/devices/system/cpu/cpufreq/policy\$p/scaling_max_freq 2>/dev/null; done",
@@ -62,10 +66,13 @@ object MasterManager {
         
         // 4. Revert Battery & Charging Engine
         val batteryCmds = listOf(
+            "echo 0 > /sys/class/power_supply/battery/disable 2>/dev/null",
             "echo 1 > /sys/class/power_supply/battery/charging_enabled 2>/dev/null",
             "echo 1 > /sys/class/power_supply/battery/battery_charging_enabled 2>/dev/null",
             "echo 0 > /sys/class/power_supply/battery/input_suspend 2>/dev/null",
             "echo 0 > /sys/class/power_supply/battery/bypass_charging 2>/dev/null",
+            "echo 3000000 > /sys/class/power_supply/primary_chg/input_current_limit 2>/dev/null",
+            "echo 3000000 > /sys/class/power_supply/mtk-master-charger/input_current_limit 2>/dev/null",
             "echo 100 > /sys/class/power_supply/battery/charge_control_limit_max 2>/dev/null",
             "echo 0 > /sys/class/power_supply/battery/charge_control_limit 2>/dev/null",
             "echo 0 > /sys/kernel/fast_charge/force_fast_charge 2>/dev/null",

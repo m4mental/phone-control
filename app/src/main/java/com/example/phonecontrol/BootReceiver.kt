@@ -30,16 +30,59 @@ class BootReceiver : BroadcastReceiver() {
 
                 // Re-apply Network settings
                 val dns = prefs.getString("network_dns", "rbDnsDefault") ?: "rbDnsDefault"
-                val tcp = prefs.getBoolean("network_tcp_tweaks", false)
+                val tcp = prefs.getBoolean("network_tcp_tweaks", false) || prefs.getBoolean("tcp_bbr_active", false)
                 val lowLat = prefs.getBoolean("network_low_latency", false)
                 TweakManager.applyNetworkSettings(dns, tcp, lowLat)
 
-                // Re-apply Battery Engine settings
-                if (prefs.getBoolean("batt_usb_fast_charge", false)) {
-                    BatteryManager.setUsbFastCharge(true)
+                // Re-apply Storage Boost if previously enabled
+                val isStorageBoost = prefs.getBoolean("storage_boost_active", false) || prefs.getBoolean("storage_boost_enabled", false)
+                if (isStorageBoost) {
+                    StorageManager.applyStorageBoost(true)
                 }
-                if (prefs.getBoolean("batt_bypass_enabled", false)) {
-                    BatteryManager.setBypassEnabled(true)
+
+                // Re-apply Firewall blocked packages
+                try {
+                    val firewallPrefs = context.getSharedPreferences("firewall_prefs", Context.MODE_PRIVATE)
+                    val blockedPkgs = firewallPrefs.getStringSet("blocked_packages", emptySet()) ?: emptySet()
+                    if (blockedPkgs.isNotEmpty()) {
+                        val pm = context.packageManager
+                        for (pkg in blockedPkgs) {
+                            try {
+                                val uid = pm.getApplicationInfo(pkg, 0).uid
+                                TweakManager.setFirewallRule(uid, true)
+                            } catch (_: Exception) {}
+                        }
+                    }
+                } catch (_: Exception) {}
+
+                // Re-apply 5G Anti-Sleep Modem locks
+                try {
+                    val towerPrefs = context.getSharedPreferences("tower_prefs", Context.MODE_PRIVATE)
+                    if (towerPrefs.getBoolean("5g_antisleep_enabled", false)) {
+                        val cmds = listOf(
+                            "echo -e \"AT+E5GSWITCH=1\\r\\n\" > /dev/radio/pttycmd1 2>/dev/null",
+                            "echo -e \"AT+EPOWERCONF=0\\r\\n\" > /dev/radio/pttycmd1 2>/dev/null",
+                            "echo -e \"AT+E5GSWITCH=1\\r\\n\" > /dev/ttyC0 2>/dev/null",
+                            "setprop persist.vendor.radio.md_sleep_threshold -100",
+                            "setprop persist.vendor.radio.smart5g 0",
+                            "setprop persist.vendor.radio.smart5g.mode 0"
+                        )
+                        ShellUtils.runCommandsAsRoot(cmds)
+                    }
+                } catch (_: Exception) {}
+
+                // Re-apply Battery Engine settings
+                val isFastCharge = prefs.getBoolean("battery_fast_charge_boost", false) || prefs.getBoolean("batt_usb_fast_charge", false)
+                if (isFastCharge) {
+                    BatteryManager.setFastChargeBoost(context, true)
+                }
+                val isBypass = prefs.getBoolean("battery_bypass_charging", false) || prefs.getBoolean("batt_bypass_enabled", false)
+                if (isBypass) {
+                    BatteryManager.setBypassCharging(context, true)
+                }
+                if (prefs.getBoolean("battery_limit_enabled", false)) {
+                    val limit = prefs.getInt("battery_limit_percent", 80)
+                    BatteryManager.setChargingLimit(context, limit)
                 }
                 if (prefs.getBoolean("batt_charge_speed_enabled", false)) {
                     val chargeMode = prefs.getString("batt_charge_speed_mode", "rbChargeDefault") ?: "rbChargeDefault"

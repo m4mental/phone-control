@@ -110,21 +110,6 @@ class AutoTweakService : Service() {
         }
     } else null
 
-    private val audioSessionReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            val action = intent.action ?: return
-            val sessionId = intent.getIntExtra(AudioEffect.EXTRA_AUDIO_SESSION, -1)
-            val pkg = intent.getStringExtra(AudioEffect.EXTRA_PACKAGE_NAME)
-            Log.d("AutoTweak", "AudioEffect Session Broadcast: $action -> Session ID: $sessionId, Package: $pkg")
-            if (sessionId > 0) {
-                if (action == AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION) {
-                    StudioDspManager.onAudioSessionOpened(context, sessionId, pkg)
-                } else if (action == AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION) {
-                    StudioDspManager.onAudioSessionClosed(sessionId)
-                }
-            }
-        }
-    }
 
     private val audioRouteReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -316,12 +301,6 @@ class AutoTweakService : Service() {
                 Log.d("AutoTweak", "AudioManager.OnModeChangedListener successfully registered for Call detection")
             }
 
-            // Audio Effect Session Receiver for background media player control
-            val audioSessionFilter = IntentFilter().apply {
-                addAction(AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION)
-                addAction(AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION)
-            }
-            registerReceiver(audioSessionReceiver, audioSessionFilter)
 
             // Smart Output Auto-Switch Receiver (Headphones vs Speaker)
             val audioRouteFilter = IntentFilter().apply {
@@ -440,7 +419,7 @@ class AutoTweakService : Service() {
     }
 
     fun isVideoCallActive(): Boolean {
-        return isCameraInUse
+        return isVideoCallActive || isCameraInUse
     }
 
     private fun handleCameraOrCallStateChanged() {
@@ -558,22 +537,25 @@ class AutoTweakService : Service() {
             }
         }
 
-        if (games.contains(pkg)) {
-            if (!isGameTurboActive) {
-                Log.d("AutoTweak", "Instant Game Event: $pkg - Activating Turbo")
-                if (turboPrefs.getBoolean("auto_perf_enabled", true)) TweakManager.applyGlobalMode("Performance")
-                if (turboPrefs.getBoolean("auto_ping_enabled", true)) TweakManager.setNetworkPriority(this, pkg, true)
-                if (turboPrefs.getBoolean("auto_thermal_enabled", false)) ThermalManager.setThrottlingEnabled(false)
-                isGameTurboActive = true
-                isPerAppActive = false
+        val hasPerAppRule = perAppConfig != null && (perAppConfig.mode != "Auto" || perAppConfig.fps != "Auto Switch" || perAppConfig.bypassCharging || perAppConfig.autoDnd || perAppConfig.touch == "On")
+        val isGame = games.contains(pkg)
+
+        if (hasPerAppRule) {
+            Log.d("AutoTweak", "Instant Smart Rule Event: $pkg -> Mode: ${perAppConfig!!.mode}, FPS: ${perAppConfig.fps}, Bypass: ${perAppConfig.bypassCharging}, DND: ${perAppConfig.autoDnd}")
+            if (perAppConfig.mode != "Auto") {
+                TweakManager.applyGlobalMode(perAppConfig.mode)
+            } else if (isGame && turboPrefs.getBoolean("auto_perf_enabled", true)) {
+                TweakManager.applyGlobalMode("Performance")
             }
-        } else if (perAppConfig != null && (perAppConfig.mode != "Auto" || perAppConfig.fps != "Auto Switch" || perAppConfig.bypassCharging || perAppConfig.autoDnd || perAppConfig.touch == "On")) {
-            Log.d("AutoTweak", "Instant Smart Rule Event: $pkg -> Mode: ${perAppConfig.mode}, FPS: ${perAppConfig.fps}, Bypass: ${perAppConfig.bypassCharging}, DND: ${perAppConfig.autoDnd}")
-            if (perAppConfig.mode != "Auto") TweakManager.applyGlobalMode(perAppConfig.mode)
             if (perAppConfig.fps != "Auto Switch") TweakManager.setRefreshRate(perAppConfig.fps)
             if (perAppConfig.thermal == "Disabled") ThermalManager.setThrottlingEnabled(false) else ThermalManager.setThrottlingEnabled(true)
             if (perAppConfig.touch == "On") TweakManager.applyInputBoost(true)
-            if (perAppConfig.mode == "Performance") TweakManager.applyProcessPriority(pkg, true)
+            if (perAppConfig.mode == "Performance" || isGame) TweakManager.applyProcessPriority(pkg, true)
+
+            // Game Turbo network priority if also a game
+            if (isGame && turboPrefs.getBoolean("auto_ping_enabled", true)) {
+                TweakManager.setNetworkPriority(this, pkg, true)
+            }
 
             // Automation: Auto Bypass Charging
             if (perAppConfig.bypassCharging) {
@@ -588,7 +570,16 @@ class AutoTweakService : Service() {
             }
 
             isPerAppActive = true
-            isGameTurboActive = false
+            isGameTurboActive = isGame
+        } else if (isGame) {
+            if (!isGameTurboActive) {
+                Log.d("AutoTweak", "Instant Game Event: $pkg - Activating Turbo")
+                if (turboPrefs.getBoolean("auto_perf_enabled", true)) TweakManager.applyGlobalMode("Performance")
+                if (turboPrefs.getBoolean("auto_ping_enabled", true)) TweakManager.setNetworkPriority(this, pkg, true)
+                if (turboPrefs.getBoolean("auto_thermal_enabled", false)) ThermalManager.setThrottlingEnabled(false)
+                isGameTurboActive = true
+                isPerAppActive = false
+            }
         } else {
             val isAutomaticMode = prefs.getString("selected_mode", "rbBalance") == "rbAutomatic"
             
@@ -605,8 +596,20 @@ class AutoTweakService : Service() {
                     }
                     else -> TweakManager.applyGlobalMode("Balance")
                 }
-                ThermalManager.setThrottlingEnabled(true)
-                TweakManager.setRefreshRate("Default")
+
+                // Restore user's saved thermal throttling preference
+                val isThrottlingDisabled = prefs.getBoolean("disable_throttling", false)
+                ThermalManager.setThrottlingEnabled(!isThrottlingDisabled)
+
+                // Restore user's saved refresh rate
+                val savedHzKey = prefs.getString("screen_refresh", "rbHzDynamic")
+                val targetRate = when (savedHzKey) {
+                    "rbHz120" -> "120Hz"
+                    "rbHz90" -> "90Hz"
+                    "rbHz60" -> "60Hz"
+                    else -> "Default"
+                }
+                TweakManager.setRefreshRate(targetRate)
 
                 // Atomically restore Bypass Charging
                 if (isPerAppBypassActive) {
@@ -772,7 +775,7 @@ class AutoTweakService : Service() {
         }
 
         // 7. Standby Guard
-        if (prefs.getBoolean("standby_guard_enabled", false)) {
+        if (prefs.getBoolean("standby_guard_active", false) || prefs.getBoolean("standby_guard_enabled", false)) {
             val result = ShellUtils.runAsRoot("pm list packages -3 | cut -d ':' -f2")
             val packages = result.output.split("\n").filter { it.isNotBlank() }
 
@@ -887,7 +890,6 @@ class AutoTweakService : Service() {
         } catch (e: Exception) {}
         unregisterReceiver(screenReceiver)
         unregisterReceiver(batteryThermalReceiver)
-        try { unregisterReceiver(audioSessionReceiver) } catch (e: Exception) {}
         try { unregisterReceiver(audioRouteReceiver) } catch (e: Exception) {}
         try { connectivityManager.unregisterNetworkCallback(networkCallback) } catch (e: Exception) {}
         try {

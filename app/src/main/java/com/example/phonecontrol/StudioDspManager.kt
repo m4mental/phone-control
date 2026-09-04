@@ -141,6 +141,10 @@ object StudioDspManager {
     @Synchronized
     fun onAudioSessionOpened(context: Context, sessionId: Int, packageName: String?) {
         if (sessionId <= 0 || sessionId == GLOBAL_AUDIO_SESSION) return
+        if (sessionDynamicsMap.containsKey(sessionId) || sessionEqualizerMap.containsKey(sessionId)) {
+            Log.d(TAG, "🎧 Session ID $sessionId is already attached to Studio DSP, skipping duplicate")
+            return
+        }
         Log.d(TAG, "🎧 New Media Session opened by [$packageName]: Session ID $sessionId -> Attaching Studio DSP")
 
         try {

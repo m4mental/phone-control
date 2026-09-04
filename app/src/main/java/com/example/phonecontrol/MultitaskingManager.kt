@@ -10,7 +10,8 @@ object MultitaskingManager {
     val protectedApps = listOf(
         "io.github.sds100.keymapper",
         "io.github.sds100.keymapper.debug",
-        "com.keymapper"
+        "com.keymapper",
+        "com.example.phonecontrol"
     )
 
     private const val PREF_KEY_UNIVERSAL_WHITELIST = "universal_protected_whitelist"

@@ -22,11 +22,11 @@ class ForceDozeActivity : AppCompatActivity() {
         val swForceDoze = findViewById<SwitchMaterial>(R.id.switchForceDoze)
         val swSkipLight = findViewById<SwitchMaterial>(R.id.switchSkipLightDoze)
 
-        swForceDoze.isChecked = prefs.getBoolean("force_doze_enabled", false)
+        val isForceDozeOn = prefs.getBoolean("batt_force_doze_enabled", false)
+        swForceDoze.isChecked = isForceDozeOn
         swSkipLight.isChecked = prefs.getBoolean("force_doze_skip_light", false)
 
         swForceDoze.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit().putBoolean("force_doze_enabled", isChecked).apply()
             prefs.edit().putBoolean("batt_force_doze_enabled", isChecked).apply()
             Toast.makeText(this, if (isChecked) "Instant Force Doze Enabled" else "Force Doze Disabled", Toast.LENGTH_SHORT).show()
         }

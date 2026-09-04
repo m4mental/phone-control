@@ -77,10 +77,12 @@ object BatteryManager {
 
     fun setChargingEnabled(enabled: Boolean) {
         val value = if (enabled) "1" else "0"
+        val disableVal = if (enabled) "0" else "1"
         val commands = listOf(
-            "echo $value > ${BATT_PATH}charging_enabled",
-            "echo $value > ${BATT_PATH}battery_charging_enabled",
-            "echo ${if (enabled) "0" else "1"} > ${BATT_PATH}input_suspend"
+            "echo $disableVal > ${BATT_PATH}disable 2>/dev/null",
+            "echo $value > ${BATT_PATH}charging_enabled 2>/dev/null",
+            "echo $value > ${BATT_PATH}battery_charging_enabled 2>/dev/null",
+            "echo ${if (enabled) "0" else "1"} > ${BATT_PATH}input_suspend 2>/dev/null"
         )
         ShellUtils.runCommandsAsRoot(commands)
     }
@@ -100,7 +102,27 @@ object BatteryManager {
 
     fun setBypassEnabled(enabled: Boolean) {
         val value = if (enabled) "1" else "0"
-        ShellUtils.fastCmd("echo $value > ${BATT_PATH}bypass_charging")
+        val disableVal = if (enabled) "1" else "0"
+        val cmds = if (enabled) {
+            """
+            echo 1 > ${BATT_PATH}disable 2>/dev/null
+            echo 0 > /sys/class/power_supply/primary_chg/input_current_limit 2>/dev/null
+            echo 0 > /sys/class/power_supply/mtk-master-charger/input_current_limit 2>/dev/null
+            echo 1 > ${BATT_PATH}bypass_charging 2>/dev/null
+            echo 0 > ${BATT_PATH}charging_enabled 2>/dev/null
+            echo 1 > ${BATT_PATH}input_suspend 2>/dev/null
+            """.trimIndent()
+        } else {
+            """
+            echo 0 > ${BATT_PATH}disable 2>/dev/null
+            echo 3000000 > /sys/class/power_supply/primary_chg/input_current_limit 2>/dev/null
+            echo 3000000 > /sys/class/power_supply/mtk-master-charger/input_current_limit 2>/dev/null
+            echo 0 > ${BATT_PATH}bypass_charging 2>/dev/null
+            echo 1 > ${BATT_PATH}charging_enabled 2>/dev/null
+            echo 0 > ${BATT_PATH}input_suspend 2>/dev/null
+            """.trimIndent()
+        }
+        ShellUtils.fastCmd(cmds)
     }
 
     fun setBypassCharging(context: Context, enabled: Boolean) {
@@ -140,7 +162,7 @@ object BatteryManager {
     fun setForceDoze(enabled: Boolean) {
         if (enabled) {
             ShellUtils.fastCmd("dumpsys deviceidle force-idle deep")
-            ShellUtils.fastCmd("echo 1 > /sys/module/lpm_levels/parameters/sleep_disabled 2>/dev/null")
+            ShellUtils.fastCmd("echo 0 > /sys/module/lpm_levels/parameters/sleep_disabled 2>/dev/null")
             ShellUtils.fastCmd("echo N > /sys/module/printk/parameters/enabled 2>/dev/null")
         } else {
             ShellUtils.fastCmd("dumpsys deviceidle unforce")

@@ -36,7 +36,6 @@ object DeepOptManager {
         // Only vacuum the most important ones manually to save time
         val dbPaths = listOf(
             "/data/system/notification_policy.db",
-            "/data/system/users/0/settings_global.xml", // Actually XML but for example
             "/data/user/0/com.android.providers.settings/databases/settings.db",
             "/data/user/0/com.android.providers.contacts/databases/contacts2.db"
         )

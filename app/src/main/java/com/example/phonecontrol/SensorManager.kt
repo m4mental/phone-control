@@ -25,8 +25,8 @@ object SensorManager {
         val value = if (enabled) "0" else "1"
         ShellUtils.fastCmd("settings put global sensor_privacy $value")
         
-        val privacyValue = if (enabled) "0" else "1"
-        ShellUtils.fastCmd("service call sensor_privacy 2 i32 $privacyValue")
+        val privacyAction = if (enabled) "disable" else "enable"
+        ShellUtils.fastCmd("cmd sensor_privacy $privacyAction 0 all 2>/dev/null")
 
         // 2. Strictly preserve and enforce user's exact Auto-Rotate state
         if (enabled) {

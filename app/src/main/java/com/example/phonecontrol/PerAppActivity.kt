@@ -170,8 +170,8 @@ class PerAppActivity : AppCompatActivity() {
                 thread {
                     val topApp = ShellUtils.runAsRoot("dumpsys window | grep mCurrentFocus").output
                     if (topApp.contains(packageName)) {
-                        TweakManager.applyGlobalMode(mode)
-                        TweakManager.setRefreshRate(fps)
+                        if (mode != "Auto") TweakManager.applyGlobalMode(mode)
+                        if (fps != "Auto Switch") TweakManager.setRefreshRate(fps)
                         if (thermal == "Disabled") ThermalManager.setThrottlingEnabled(false) else ThermalManager.setThrottlingEnabled(true)
                         if (touch == "On") TweakManager.applyInputBoost(true)
                         if (bypass) BatteryManager.setBypassCharging(this, true)

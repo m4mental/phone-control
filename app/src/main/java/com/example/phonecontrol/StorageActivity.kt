@@ -29,11 +29,11 @@ class StorageActivity : AppCompatActivity() {
         val btnVacuum = findViewById<Button>(R.id.btnVacuumDbs)
 
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
-        val isEnabled = prefs.getBoolean("storage_boost_enabled", false)
+        val isEnabled = prefs.getBoolean("storage_boost_active", false)
         swBoost.isChecked = isEnabled
 
         swBoost.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit().putBoolean("storage_boost_enabled", isChecked).apply()
+            prefs.edit().putBoolean("storage_boost_active", isChecked).apply()
             thread {
                 StorageManager.applyStorageBoost(isChecked)
                 runOnUiThread {

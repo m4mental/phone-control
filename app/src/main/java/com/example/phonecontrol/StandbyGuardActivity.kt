@@ -21,9 +21,10 @@ class StandbyGuardActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
         val swStandby = findViewById<SwitchMaterial>(R.id.switchStandbyGuard)
 
-        swStandby.isChecked = prefs.getBoolean("standby_guard_enabled", false)
+        val isStandbyActive = prefs.getBoolean("standby_guard_active", false)
+        swStandby.isChecked = isStandbyActive
         swStandby.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit().putBoolean("standby_guard_enabled", isChecked).apply()
+            prefs.edit().putBoolean("standby_guard_active", isChecked).apply()
             Toast.makeText(this, if (isChecked) "Standby Bucket Guard Enabled" else "Standby Guard Disabled", Toast.LENGTH_SHORT).show()
         }
 

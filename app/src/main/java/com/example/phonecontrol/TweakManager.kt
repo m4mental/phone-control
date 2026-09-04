@@ -6,11 +6,14 @@ import android.util.Log
 
 object TweakManager {
 
+    @Volatile var currentMode: String = "Balance"
+
     /**
      * Centralized function to apply all tweaks for a given mode.
      * High-level modes: Power Saver, Balance, Performance
      */
     fun applyGlobalMode(mode: String) {
+        currentMode = mode
         when (mode) {
             "Power Saver" -> {
                 applyBatterySaver()
@@ -18,7 +21,7 @@ object TweakManager {
                 applyIoOptimization("power")
                 applyAsymmetricCpuFreqTuning("power")
             }
-            "Balance" -> {
+            "Balance", "Balanced" -> {
                 applyBalance()
                 applyCpuTuning("balance")
                 applyIoOptimization("balance")
@@ -92,6 +95,8 @@ object TweakManager {
      */
     fun applyInputBoost(enabled: Boolean, aggressive: Boolean = false) {
         if (enabled) {
+            val rateLimit = if (aggressive) "500" else "1000"
+            ShellUtils.fastCmd("echo $rateLimit > /sys/devices/system/cpu/cpufreq/policy0/schedutil/rate_limit_us 2>/dev/null")
             if (aggressive) {
                 // High Gaming / Turbo Boost
                 ShellUtils.fastCmd("echo 1 > /sys/module/cpu_boost/parameters/input_boost_enabled 2>/dev/null")
@@ -109,6 +114,7 @@ object TweakManager {
                 ShellUtils.fastCmd("echo 0 > /sys/devices/virtual/touchpanel/smart_wake/touch_responsiveness 2>/dev/null")
             }
         } else {
+            ShellUtils.fastCmd("echo 2000 > /sys/devices/system/cpu/cpufreq/policy0/schedutil/rate_limit_us 2>/dev/null")
             ShellUtils.fastCmd("echo 0 > /sys/module/cpu_boost/parameters/input_boost_enabled 2>/dev/null")
             ShellUtils.fastCmd("echo 40 > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null")
             ShellUtils.fastCmd("echo 0 > /proc/touchpanel/game_switch_enable 2>/dev/null")
@@ -239,12 +245,12 @@ object TweakManager {
         val unlockPerms = "chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* 2>/dev/null\n"
         when (stage) {
             1 -> {
-                // S1 Option A: 650MHz Base Idle -> Scales to 950MHz Max (Balanced Eco)
+                // S1 Option A: 650MHz Base Idle -> Spikes to 950MHz on Touch/App-Switch
                 val script = """
                     $unlockPerms
                     for c in 0 1 2 3 4 5; do
                         echo 650000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
-                        echo 950000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
+                        echo 650000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
                         echo schedutil > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_governor 2>/dev/null
                     done
                     for c in 6 7; do
@@ -253,7 +259,7 @@ object TweakManager {
                         echo powersave > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_governor 2>/dev/null
                     done
                     echo 650000 > /sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq 2>/dev/null
-                    echo 950000 > /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null
+                    echo 650000 > /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null
                     echo schedutil > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor 2>/dev/null
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_min_freq 2>/dev/null
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq 2>/dev/null
@@ -431,17 +437,27 @@ object TweakManager {
     }
 
     /**
-     * Rapid 200ms App-Switch & Launch Transition Boost:
-     * Momentarily unlocks Little Cores to 950MHz for 200ms for 100% fluid 120fps window animations,
-     * then immediately settles back to 650MHz Base Floor (Zero idle drain, Big Cores sleeping).
+     * Rapid 250ms App-Switch & Launch Transition Boost:
+     * Momentarily unlocks Little Cores to 1.4GHz for silky smooth 120fps gesture animations,
+     * then gracefully settles back to the active mode's maximum (950MHz for Eco, 2.0GHz for Balanced/Daily)
+     * keeping permissions open (chmod 666) so dynamic 650 <-> 950 EAS scaling continues seamlessly.
      */
     fun triggerAppSwitchBoost() {
-        if (manualStageOverride != 0) return
+        if (isVideoCallBoostActive) return
+        val isEcoOrS1 = manualStageOverride == 1 || manualStageOverride == 10 || manualStageOverride == 13 || 
+                        currentMode == "Power Saver" || currentMode == "AI_EcoActive"
+        val spikeFreq = if (isEcoOrS1) "950000" else "1400000"
+        val baseFreq = when {
+            manualStageOverride == 13 -> "480000"
+            isEcoOrS1 -> "650000"
+            else -> "2000000"
+        }
+
         kotlin.concurrent.thread {
             try {
-                ShellUtils.fastCmd("chmod 666 /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null; echo 950000 > /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null")
-                Thread.sleep(200)
-                ShellUtils.fastCmd("echo 650000 > /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null; chmod 444 /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null")
+                ShellUtils.fastCmd("chmod 666 /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null; echo $spikeFreq > /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null")
+                Thread.sleep(250)
+                ShellUtils.fastCmd("echo $baseFreq > /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null; chmod 666 /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null")
             } catch (e: Exception) {}
         }
     }
@@ -502,8 +518,18 @@ object TweakManager {
         when (mode) {
             "rbPowerSaver" -> applyGlobalMode("Power Saver")
             "rbPerformance" -> applyGlobalMode("Performance")
-            "rbAutomatic" -> applyGlobalMode("Automatic")
-            else -> applyGlobalMode("Balanced")
+            "rbAutomatic" -> {
+                val intentAi = Intent(context, AutoTweakService::class.java).apply {
+                    action = "com.example.phonecontrol.ACTION_AI_TICK"
+                    putExtra("load", 10)
+                }
+                try {
+                    context.startService(intentAi)
+                } catch (e: Exception) {
+                    applyGlobalMode("AI_Daily")
+                }
+            }
+            else -> applyGlobalMode("Balance")
         }
         android.util.Log.d("TweakManager", "📹 Video Call Boost Restored -> Profile re-applied")
     }
@@ -904,7 +930,7 @@ object TweakManager {
         }
 
         // 2. Apply ZRAM Resize only if different
-        val currentSize = ShellUtils.runAsRoot("cat /sys/block/zram0/disksize").output
+        val currentSize = ShellUtils.runAsRoot("cat /sys/block/zram0/disksize").output.trim()
         if (currentSize != size) {
             ShellUtils.runAsRoot("swapoff /dev/block/zram0")
             if (size != "0") {
@@ -1013,7 +1039,8 @@ object TweakManager {
      */
     fun setFirewallRule(uid: Int, blocked: Boolean) {
         val action = if (blocked) "-A" else "-D"
-        ShellUtils.runAsRoot("iptables $action OUTPUT -m owner --uid-owner $uid -j REJECT")
+        ShellUtils.runAsRoot("iptables $action OUTPUT -m owner --uid-owner $uid -j REJECT 2>/dev/null")
+        ShellUtils.runAsRoot("ip6tables $action OUTPUT -m owner --uid-owner $uid -j REJECT 2>/dev/null")
     }
 
     /**

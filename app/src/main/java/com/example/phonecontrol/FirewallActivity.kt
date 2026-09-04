@@ -41,9 +41,12 @@ class FirewallActivity : AppCompatActivity() {
 
         val swTcpBbr = findViewById<SwitchMaterial>(R.id.switchTcpBbr)
         val masterPrefs = getSharedPreferences("prefs", MODE_PRIVATE)
-        swTcpBbr.isChecked = masterPrefs.getBoolean("tcp_bbr_active", true)
+        swTcpBbr.isChecked = masterPrefs.getBoolean("network_tcp_tweaks", true) || masterPrefs.getBoolean("tcp_bbr_active", true)
         swTcpBbr.setOnCheckedChangeListener { _, isChecked ->
-            masterPrefs.edit().putBoolean("tcp_bbr_active", isChecked).apply()
+            masterPrefs.edit()
+                .putBoolean("tcp_bbr_active", isChecked)
+                .putBoolean("network_tcp_tweaks", isChecked)
+                .apply()
             thread {
                 val algo = if (isChecked) "bbr" else "cubic"
                 ShellUtils.runAsRoot("sysctl -w net.ipv4.tcp_congestion_control=$algo")
