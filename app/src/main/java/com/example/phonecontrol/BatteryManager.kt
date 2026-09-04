@@ -77,9 +77,8 @@ object BatteryManager {
 
     fun setChargingEnabled(enabled: Boolean) {
         val value = if (enabled) "1" else "0"
-        val disableVal = if (enabled) "0" else "1"
         val commands = listOf(
-            "echo $disableVal > ${BATT_PATH}disable 2>/dev/null",
+            "echo 0 > ${BATT_PATH}disable 2>/dev/null",
             "echo $value > ${BATT_PATH}charging_enabled 2>/dev/null",
             "echo $value > ${BATT_PATH}battery_charging_enabled 2>/dev/null",
             "echo ${if (enabled) "0" else "1"} > ${BATT_PATH}input_suspend 2>/dev/null"
@@ -101,15 +100,14 @@ object BatteryManager {
     }
 
     fun setBypassEnabled(enabled: Boolean) {
-        val value = if (enabled) "1" else "0"
-        val disableVal = if (enabled) "1" else "0"
         val cmds = if (enabled) {
             """
-            echo 1 > ${BATT_PATH}disable 2>/dev/null
+            echo 0 > ${BATT_PATH}disable 2>/dev/null
             echo 0 > /sys/class/power_supply/primary_chg/input_current_limit 2>/dev/null
             echo 0 > /sys/class/power_supply/mtk-master-charger/input_current_limit 2>/dev/null
             echo 1 > ${BATT_PATH}bypass_charging 2>/dev/null
             echo 0 > ${BATT_PATH}charging_enabled 2>/dev/null
+            echo 0 > ${BATT_PATH}battery_charging_enabled 2>/dev/null
             echo 1 > ${BATT_PATH}input_suspend 2>/dev/null
             """.trimIndent()
         } else {
@@ -119,6 +117,7 @@ object BatteryManager {
             echo 3000000 > /sys/class/power_supply/mtk-master-charger/input_current_limit 2>/dev/null
             echo 0 > ${BATT_PATH}bypass_charging 2>/dev/null
             echo 1 > ${BATT_PATH}charging_enabled 2>/dev/null
+            echo 1 > ${BATT_PATH}battery_charging_enabled 2>/dev/null
             echo 0 > ${BATT_PATH}input_suspend 2>/dev/null
             """.trimIndent()
         }

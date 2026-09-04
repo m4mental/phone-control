@@ -265,13 +265,14 @@ object TweakManager {
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq 2>/dev/null
                     echo powersave > /sys/devices/system/cpu/cpufreq/policy6/scaling_governor 2>/dev/null
                     echo 1000 > /sys/devices/system/cpu/cpufreq/policy0/schedutil/rate_limit_us 2>/dev/null
+                    chmod 444 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
                 """.trimIndent()
                 ShellUtils.fastCmd(script)
             }
             10 -> {
                 // S1 Option B: 650MHz Base Idle -> Scales to 850MHz Max (Extreme Eco)
                 val script = """
-                    $unlockPerms
+                    ${'$'}unlockPerms
                     for c in 0 1 2 3 4 5; do
                         echo 650000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
                         echo 850000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
@@ -289,13 +290,14 @@ object TweakManager {
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq 2>/dev/null
                     echo powersave > /sys/devices/system/cpu/cpufreq/policy6/scaling_governor 2>/dev/null
                     echo 1000 > /sys/devices/system/cpu/cpufreq/policy0/schedutil/rate_limit_us 2>/dev/null
+                    chmod 444 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
                 """.trimIndent()
                 ShellUtils.fastCmd(script)
             }
             11 -> {
                 // S1 Option C: 650 MHz Strict Lock (Ultra Super Eco)
                 val script = """
-                    $unlockPerms
+                    ${'$'}unlockPerms
                     for c in 0 1 2 3 4 5; do
                         echo 650000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
                         echo 650000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
@@ -312,13 +314,14 @@ object TweakManager {
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_min_freq 2>/dev/null
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq 2>/dev/null
                     echo powersave > /sys/devices/system/cpu/cpufreq/policy6/scaling_governor 2>/dev/null
+                    chmod 444 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
                 """.trimIndent()
                 ShellUtils.fastCmd(script)
             }
             12 -> {
                 // S1 Option D: 550 MHz (Deep Eco)
                 val script = """
-                    $unlockPerms
+                    ${'$'}unlockPerms
                     for c in 0 1 2 3 4 5; do
                         echo 480000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
                         echo 550000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
@@ -335,13 +338,14 @@ object TweakManager {
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_min_freq 2>/dev/null
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq 2>/dev/null
                     echo powersave > /sys/devices/system/cpu/cpufreq/policy6/scaling_governor 2>/dev/null
+                    chmod 444 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
                 """.trimIndent()
                 ShellUtils.fastCmd(script)
             }
             13 -> {
                 // S1 Option E: 480 MHz (Hardware Absolute Minimum Floor)
                 val script = """
-                    $unlockPerms
+                    ${'$'}unlockPerms
                     for c in 0 1 2 3 4 5; do
                         echo 480000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
                         echo 480000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
@@ -358,13 +362,14 @@ object TweakManager {
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_min_freq 2>/dev/null
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq 2>/dev/null
                     echo powersave > /sys/devices/system/cpu/cpufreq/policy6/scaling_governor 2>/dev/null
+                    chmod 444 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
                 """.trimIndent()
                 ShellUtils.fastCmd(script)
             }
             2 -> {
                 // Force Stage 2: 6 Little Cores 650M - 2.0GHz, 2 Big Cores 400MHz Sleeping
                 val script = """
-                    $unlockPerms
+                    ${'$'}unlockPerms
                     for c in 0 1 2 3 4 5; do
                         echo 650000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
                         echo 2000000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
@@ -381,13 +386,14 @@ object TweakManager {
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_min_freq 2>/dev/null
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq 2>/dev/null
                     echo powersave > /sys/devices/system/cpu/cpufreq/policy6/scaling_governor 2>/dev/null
+                    chmod 444 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
                 """.trimIndent()
                 ShellUtils.fastCmd(script)
             }
             3 -> {
                 // Force Stage 3: 6 Little Cores 2.0GHz, 2 Big Cores 1.5GHz
                 val script = """
-                    $unlockPerms
+                    ${'$'}unlockPerms
                     for c in 0 1 2 3 4 5; do
                         echo 650000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
                         echo 2000000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
@@ -404,13 +410,14 @@ object TweakManager {
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_min_freq 2>/dev/null
                     echo 1500000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq 2>/dev/null
                     echo schedutil > /sys/devices/system/cpu/cpufreq/policy6/scaling_governor 2>/dev/null
+                    chmod 444 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
                 """.trimIndent()
                 ShellUtils.fastCmd(script)
             }
             4 -> {
                 // Force Stage 4: All 8 Cores Full Turbo Unleashed (2.0GHz Little + 2.8GHz Big Cores)
                 val script = """
-                    $unlockPerms
+                    ${'$'}unlockPerms
                     echo performance > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor 2>/dev/null
                     echo performance > /sys/devices/system/cpu/cpufreq/policy6/scaling_governor 2>/dev/null
                     echo 2000000 > /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null
@@ -430,6 +437,7 @@ object TweakManager {
                     echo 1 > /sys/kernel/gpu/gpu_max_clock 2>/dev/null
                     echo 55 > /proc/sys/kernel/sched_upmigrate 2>/dev/null
                     echo 45 > /proc/sys/kernel/sched_downmigrate 2>/dev/null
+                    chmod 444 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
                 """.trimIndent()
                 ShellUtils.fastCmd(script)
             }
@@ -444,11 +452,14 @@ object TweakManager {
      */
     fun triggerAppSwitchBoost() {
         if (isVideoCallBoostActive) return
-        val isEcoOrS1 = manualStageOverride == 1 || manualStageOverride == 10 || manualStageOverride == 13 || 
+        val isEcoOrS1 = manualStageOverride == 1 || manualStageOverride == 10 || manualStageOverride == 11 || 
+                        manualStageOverride == 12 || manualStageOverride == 13 || 
                         currentMode == "Power Saver" || currentMode == "AI_EcoActive"
         val spikeFreq = if (isEcoOrS1) "950000" else "1400000"
         val baseFreq = when {
             manualStageOverride == 13 -> "480000"
+            manualStageOverride == 12 -> "550000"
+            manualStageOverride == 10 -> "850000"
             isEcoOrS1 -> "650000"
             else -> "2000000"
         }
@@ -457,7 +468,7 @@ object TweakManager {
             try {
                 ShellUtils.fastCmd("chmod 666 /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null; echo $spikeFreq > /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null")
                 Thread.sleep(250)
-                ShellUtils.fastCmd("echo $baseFreq > /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null; chmod 666 /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null")
+                ShellUtils.fastCmd("echo $baseFreq > /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null; chmod 444 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null")
             } catch (e: Exception) {}
         }
     }
@@ -570,6 +581,7 @@ object TweakManager {
                     echo powersave > /sys/devices/system/cpu/cpufreq/policy6/scaling_governor 2>/dev/null
                     echo 1000 > /sys/devices/system/cpu/cpufreq/policy0/schedutil/rate_limit_us 2>/dev/null
                     echo 20000 > /sys/devices/system/cpu/cpufreq/policy6/schedutil/up_rate_limit_us 2>/dev/null
+                    chmod 444 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
                 """.trimIndent()
                 ShellUtils.fastCmd(script)
             }
