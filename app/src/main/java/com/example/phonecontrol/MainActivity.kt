@@ -402,8 +402,13 @@ class MainActivity : AppCompatActivity() {
                     return "<font color='#00E5FF'>S</font><font color='$oneColor'>1</font>"
                 }
 
+                // Self-healing: If Little Core frequency has returned to 650MHz or lower, video call boost has ended
+                if (TweakManager.isVideoCallBoostActive && currentFreqKhz in 1..650000) {
+                    TweakManager.isVideoCallBoostActive = false
+                }
+
                 val stageHtml = when {
-                    TweakManager.isVideoCallBoostActive -> "<font color='#00E5FF'>S</font><font color='#FF5252'>1</font>"
+                    TweakManager.isVideoCallBoostActive -> getS1Html(currentFreqKhz)
                     manualStage == 13 -> "<font color='#00E5FF'>S</font><font color='#00E5FF'>1</font>"
                     manualStage == 12 -> "<font color='#00E5FF'>S</font><font color='#00E5FF'>1</font>"
                     manualStage == 11 -> "<font color='#00E5FF'>S</font><font color='#00E5FF'>1</font>"

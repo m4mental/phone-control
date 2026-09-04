@@ -78,12 +78,20 @@ class AutoTweakService : Service() {
             isCameraInUse = activeCameras.isNotEmpty()
             Log.d("AutoTweak", "📷 Camera available (closed): $cameraId. Remaining: ${activeCameras.size}")
             tweakExecutor.execute { handleVideoCallStateChanged() }
+            // Post-call audio cleanup delay guard (WhatsApp/Telegram audio releases ~200-500ms after camera)
+            equalizerFreezeHandler?.postDelayed({
+                tweakExecutor.execute { handleVideoCallStateChanged() }
+            }, 500)
+            equalizerFreezeHandler?.postDelayed({
+                tweakExecutor.execute { handleVideoCallStateChanged() }
+            }, 1200)
         }
     }
 
     private fun handleVideoCallStateChanged() {
-        val hasCamera = activeCameras.isNotEmpty()
-        val isCallAudio = audioManager?.mode == AudioManager.MODE_IN_COMMUNICATION || audioManager?.mode == AudioManager.MODE_IN_CALL
+        val hasCamera = activeCameras.isNotEmpty() || isCameraInUse
+        val audioMode = audioManager?.mode ?: AudioManager.MODE_NORMAL
+        val isCallAudio = audioMode == AudioManager.MODE_IN_COMMUNICATION || audioMode == AudioManager.MODE_IN_CALL
         val isVideoCallNow = hasCamera || isCallAudio
 
         if (isVideoCallNow && !isVideoCallActive) {
@@ -91,7 +99,7 @@ class AutoTweakService : Service() {
             Log.d("AutoTweak", "📹 Video Call / Camera ACTIVE -> Locking Little Cores to 950MHz!")
             TweakManager.applyVideoCallEcoLock()
             sendBroadcast(Intent("com.example.phonecontrol.UPDATE_UI").setPackage(packageName))
-        } else if (!isVideoCallNow && isVideoCallActive) {
+        } else if (!isVideoCallNow && (isVideoCallActive || TweakManager.isVideoCallBoostActive)) {
             isVideoCallActive = false
             Log.d("AutoTweak", "📹 Video Call / Camera ENDED -> Restoring previous state!")
             TweakManager.restorePreVideoCallState(this)
@@ -419,7 +427,14 @@ class AutoTweakService : Service() {
     }
 
     fun isVideoCallActive(): Boolean {
-        return isVideoCallActive || isCameraInUse
+        val hasCamera = activeCameras.isNotEmpty() || isCameraInUse
+        val audioMode = audioManager?.mode ?: AudioManager.MODE_NORMAL
+        val isCallAudio = audioMode == AudioManager.MODE_IN_COMMUNICATION || audioMode == AudioManager.MODE_IN_CALL
+        val isNowActive = hasCamera || isCallAudio
+        if (!isNowActive && isVideoCallActive) {
+            isVideoCallActive = false
+        }
+        return isNowActive
     }
 
     private fun handleCameraOrCallStateChanged() {
@@ -465,6 +480,13 @@ class AutoTweakService : Service() {
     private fun handleForegroundAppTransition(previousPkg: String, newPkg: String) {
         // Instant 200ms Window Animation Boost for butter-smooth 120fps app-switch transition
         TweakManager.triggerAppSwitchBoost()
+
+        // Guard: Re-verify Video Call state on app switch to guarantee no stale lock persists
+        if (isVideoCallActive || TweakManager.isVideoCallBoostActive) {
+            if (!isVideoCallActive()) {
+                handleVideoCallStateChanged()
+            }
+        }
 
         val frozenApps = FreezerManager.getFrozenApps(this) + FreezerManager.getSpecialFreezeApps(this)
         val allSafeApps = MultitaskingManager.getUserWhitelist(this) + MultitaskingManager.protectedApps
