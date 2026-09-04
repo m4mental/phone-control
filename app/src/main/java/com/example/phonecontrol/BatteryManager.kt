@@ -133,9 +133,34 @@ object BatteryManager {
     fun setFastChargeBoost(context: Context, enabled: Boolean) {
         val prefs = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
         prefs.edit().putBoolean("battery_fast_charge_boost", enabled).apply()
-        setUsbFastCharge(enabled)
-        val current = if (enabled) 6000 else 3000
-        setChargeCurrent(current)
+        val throttleVal = if (enabled) "0" else "1"
+        val hvVal = if (enabled) "1" else "0"
+        val cmds = listOf(
+            "echo $throttleVal > /sys/devices/platform/charger/Thermal_throttle 2>/dev/null",
+            "echo $hvVal > /sys/devices/platform/charger/High_voltage_chg_enable 2>/dev/null",
+            "echo ${if (enabled) "4500" else "2050"} > /sys/devices/platform/charger/sc_ibat_limit 2>/dev/null",
+            "echo ${if (enabled) "4500000" else "2050000"} > /sys/class/power_supply/mtk-master-charger/constant_charge_current_max 2>/dev/null"
+        )
+        ShellUtils.runCommandsAsRoot(cmds)
+    }
+
+    fun setUsbPcCharge(context: Context, enabled: Boolean) {
+        val prefs = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
+        prefs.edit().putBoolean("battery_usb_pc_charge", enabled).apply()
+        val currentLimit = if (enabled) "1500" else "500"
+        val currentLimitUa = if (enabled) "1500000" else "500000"
+        val termCurrent = if (enabled) "150" else "800"
+        val fastVal = if (enabled) "1" else "0"
+        
+        val cmds = listOf(
+            "echo $currentLimit > /sys/class/power_supply/primary_chg/input_current_limit 2>/dev/null",
+            "echo $currentLimitUa > /sys/class/power_supply/mtk-master-charger/input_current_limit 2>/dev/null",
+            "echo $currentLimitUa > /sys/devices/platform/charger/input_current 2>/dev/null",
+            "echo $termCurrent > /sys/class/power_supply/primary_chg/charge_term_current 2>/dev/null",
+            "echo $fastVal > /sys/kernel/fast_charge/force_fast_charge 2>/dev/null",
+            "echo $fastVal > /sys/class/power_supply/battery/allow_fast_chg 2>/dev/null"
+        )
+        ShellUtils.runCommandsAsRoot(cmds)
     }
 
     fun setKillSensorsScreenOff(context: Context, enabled: Boolean) {

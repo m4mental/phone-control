@@ -25,6 +25,7 @@ class ChargingProtectionActivity : AppCompatActivity() {
         val tvLimitValue = findViewById<TextView>(R.id.tvLimitValue)
         val switchBypass = findViewById<SwitchMaterial>(R.id.switchBypassCharging)
         val switchFast = findViewById<SwitchMaterial>(R.id.switchFastCharge)
+        val switchUsb = findViewById<SwitchMaterial>(R.id.switchUsbPcCharge)
 
         val isLimitEnabled = prefs.getBoolean("battery_limit_enabled", false)
         val limitPercent = prefs.getInt("battery_limit_percent", 80)
@@ -65,7 +66,14 @@ class ChargingProtectionActivity : AppCompatActivity() {
         switchFast.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean("battery_fast_charge_boost", isChecked).apply()
             thread { BatteryManager.setFastChargeBoost(this, isChecked) }
-            Toast.makeText(this, if (isChecked) "Fast Charging Boost Enabled" else "Fast Charging Boost Disabled", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, if (isChecked) "Wall Fast Charge Boost Enabled (45W)" else "Wall Fast Charge Boost Disabled", Toast.LENGTH_SHORT).show()
+        }
+
+        switchUsb.isChecked = prefs.getBoolean("battery_usb_pc_charge", false)
+        switchUsb.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean("battery_usb_pc_charge", isChecked).apply()
+            thread { BatteryManager.setUsbPcCharge(this, isChecked) }
+            Toast.makeText(this, if (isChecked) "USB PC/Car Fast Charge Enabled (1.5A)" else "USB PC/Car Fast Charge Disabled", Toast.LENGTH_SHORT).show()
         }
     }
 }

@@ -72,9 +72,13 @@ class BootReceiver : BroadcastReceiver() {
                 } catch (_: Exception) {}
 
                 // Re-apply Battery Engine settings
-                val isFastCharge = prefs.getBoolean("battery_fast_charge_boost", false) || prefs.getBoolean("batt_usb_fast_charge", false)
+                val isFastCharge = prefs.getBoolean("battery_fast_charge_boost", false)
                 if (isFastCharge) {
                     BatteryManager.setFastChargeBoost(context, true)
+                }
+                val isUsbPcCharge = prefs.getBoolean("battery_usb_pc_charge", false) || prefs.getBoolean("batt_usb_fast_charge", false)
+                if (isUsbPcCharge) {
+                    BatteryManager.setUsbPcCharge(context, true)
                 }
                 val isBypass = prefs.getBoolean("battery_bypass_charging", false) || prefs.getBoolean("batt_bypass_enabled", false)
                 if (isBypass) {
