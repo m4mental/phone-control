@@ -17,7 +17,14 @@ object FreezerManager {
         if (packageName.isBlank()) return
         
         if (isSpecialFreeze(context, packageName)) {
-            ShellUtils.fastCmd("am force-stop $packageName; pm suspend $packageName")
+            val specialScript = """
+                am force-stop "$packageName" 2>/dev/null
+                pm suspend "$packageName" 2>/dev/null
+                am freeze "$packageName" 2>/dev/null
+                am set-standby-bucket "$packageName" restricted 2>/dev/null
+            """.trimIndent()
+            ShellUtils.fastCmd(specialScript)
+            return
         }
 
         val script = """
@@ -94,8 +101,8 @@ object FreezerManager {
      */
     fun getRecentPackages(): Set<String> {
         return try {
-            val result = ShellUtils.runAsRoot("dumpsys activity recents | grep -o 'realActivity={[a-zA-Z0-9_.]*' | cut -d '{' -f2")
-            result.output.split("\n").map { it.trim() }.filter { it.isNotBlank() }.toSet()
+            val result = ShellUtils.fastCmdResult("dumpsys activity recents | grep -o 'realActivity={[a-zA-Z0-9_.]*' | cut -d '{' -f2")
+            result.split("\n").map { it.trim() }.filter { it.isNotBlank() }.toSet()
         } catch (e: Exception) {
             emptySet()
         }
@@ -164,32 +171,27 @@ object FreezerManager {
         lastLaunchedPackage = packageName
         lastLaunchTime = System.currentTimeMillis()
 
-        // 1. Synchronously unsuspend, enable, and unfreeze via Root BEFORE attempting launch
+        // 1. Fast, synchronous unsuspend & unfreeze via Root BEFORE launching Activity
         val script = """
-            pm enable "$packageName" 2>/dev/null
             pm unsuspend "$packageName" 2>/dev/null
+            pm enable "$packageName" 2>/dev/null
             am unfreeze "$packageName" 2>/dev/null
             am set-standby-bucket "$packageName" active 2>/dev/null
-            for p in $(pidof "$packageName"); do
-                echo 0 > /proc/${'$'}p/oom_score_adj 2>/dev/null
-            done
         """.trimIndent()
-        ShellUtils.runAsRoot(script)
+        ShellUtils.runAsRoot(script, 1000)
         TweakManager.triggerTurboBoost()
         
-        // 2. Direct Root Launcher launch (0ms delay, bypasses OS suspend cache dialogs)
-        val monkeyResult = ShellUtils.runAsRoot("monkey -p $packageName -c android.intent.category.LAUNCHER 1")
-        if (monkeyResult.exitCode != 0 || monkeyResult.output.contains("No activities found")) {
-            // Fallback to PackageManager launch intent
-            try {
-                val intent = context.packageManager.getLaunchIntentForPackage(packageName)
-                intent?.let {
-                    it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-                    context.startActivity(it)
-                }
-            } catch (e: Exception) {
-                // Ignore
+        // 2. Instant 0ms Native Android Intent Launch (Eliminates heavy 2-3s monkey VM process)
+        try {
+            val intent = context.packageManager.getLaunchIntentForPackage(packageName)
+            if (intent != null) {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+                context.startActivity(intent)
+            } else {
+                ShellUtils.fastCmd("monkey -p $packageName -c android.intent.category.LAUNCHER 1")
             }
+        } catch (e: Exception) {
+            ShellUtils.fastCmd("monkey -p $packageName -c android.intent.category.LAUNCHER 1")
         }
     }
 

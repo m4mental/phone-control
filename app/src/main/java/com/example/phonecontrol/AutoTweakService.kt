@@ -17,6 +17,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import android.net.wifi.WifiManager
 import android.os.BatteryManager as AndroidBatteryManager
 import android.os.Build
 import android.os.Handler
@@ -36,6 +37,7 @@ class AutoTweakService : Service() {
 
     companion object {
         const val ACTION_FOREGROUND_APP_CHANGED = "com.example.phonecontrol.ACTION_FOREGROUND_APP_CHANGED"
+        const val ACTION_RECENTS_CHANGED = "com.example.phonecontrol.ACTION_RECENTS_CHANGED"
         const val EXTRA_PACKAGE_NAME = "extra_package_name"
     }
 
@@ -53,8 +55,10 @@ class AutoTweakService : Service() {
     @Volatile private var lastAiMode = ""
     @Volatile private var isAudioCurrentlyActive = false
     @Volatile private var isEqualizerFrozen = false
+    @Volatile private var activePerAppMergedConfig: PerAppManager.AppConfig? = null
 
     private val tweakExecutor = Executors.newSingleThreadExecutor()
+    private val freezerExecutor = Executors.newSingleThreadExecutor()
     private lateinit var connectivityManager: ConnectivityManager
     private lateinit var appOpsManager: AppOpsManager
     private var cameraManager: CameraManager? = null
@@ -165,35 +169,75 @@ class AutoTweakService : Service() {
         }
     }
 
-    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
-        override fun onAvailable(network: Network) {
-            tweakExecutor.execute {
-                val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
-                if (!prefs.getBoolean("smart_switch_enabled", false)) return@execute
+    @Volatile private var isWifiCurrentlyConnected: Boolean? = null
 
+    private fun isWifiActive(): Boolean {
+        return try {
+            val active = connectivityManager.activeNetwork
+            if (active != null) {
+                val caps = connectivityManager.getNetworkCapabilities(active)
+                if (caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true) {
+                    return true
+                }
+            }
+            val allNetworks = connectivityManager.allNetworks
+            for (network in allNetworks) {
                 val caps = connectivityManager.getNetworkCapabilities(network)
                 if (caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true) {
-                    Log.d("AutoTweak", "WiFi Connected - Auto-disabling Mobile Data")
-                    val dataState = ShellUtils.runAsRoot("settings get global mobile_data").output
-                    if (dataState == "1") {
-                        prefs.edit().putBoolean("data_was_on_before_wifi", true).apply()
-                        ShellUtils.fastCmd("svc data disable")
-                    }
+                    return true
                 }
+            }
+            false
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun handleSmartNetworkSwitch(isWifiNow: Boolean) {
+        tweakExecutor.execute {
+            val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+            if (!prefs.getBoolean("smart_switch_enabled", false)) return@execute
+
+            if (isWifiNow) {
+                if (isWifiCurrentlyConnected == true) return@execute
+                isWifiCurrentlyConnected = true
+                Log.d("AutoTweak", "📶 WiFi Connected -> Auto-disabling Mobile Data")
+                val dataState = ShellUtils.runAsRoot("settings get global mobile_data").output.trim()
+                if (dataState == "1" || prefs.getBoolean("data_was_on_before_wifi", false)) {
+                    prefs.edit().putBoolean("data_was_on_before_wifi", true).apply()
+                }
+                ShellUtils.fastCmd("settings put global mobile_data 0; svc data disable")
+            } else {
+                if (isWifiCurrentlyConnected == false) return@execute
+                isWifiCurrentlyConnected = false
+                Log.d("AutoTweak", "📶 WiFi Lost/Disconnected -> Restoring Mobile Data")
+                // Full-proof enable for Android 14 / Nothing OS (both settings and telephony/svc)
+                ShellUtils.fastCmd("settings put global mobile_data 1; svc data enable")
+                prefs.edit().putBoolean("data_was_on_before_wifi", false).apply()
+            }
+        }
+    }
+
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            val caps = connectivityManager.getNetworkCapabilities(network)
+            if (caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true) {
+                handleSmartNetworkSwitch(true)
             }
         }
 
         override fun onLost(network: Network) {
-            tweakExecutor.execute {
-                val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
-                if (!prefs.getBoolean("smart_switch_enabled", false)) return@execute
-
-                if (prefs.getBoolean("data_was_on_before_wifi", false)) {
-                    Log.d("AutoTweak", "WiFi Lost - Restoring Mobile Data")
-                    ShellUtils.fastCmd("svc data enable")
-                    prefs.edit().putBoolean("data_was_on_before_wifi", false).apply()
-                }
+            val stillConnected = isWifiActive()
+            if (!stillConnected) {
+                handleSmartNetworkSwitch(false)
             }
+        }
+    }
+
+    private val wifiStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val isConnected = isWifiActive()
+            handleSmartNetworkSwitch(isConnected)
         }
     }
 
@@ -271,6 +315,18 @@ class AutoTweakService : Service() {
             .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
             .build()
         connectivityManager.registerNetworkCallback(networkRequest, networkCallback)
+
+        val wifiFilter = IntentFilter().apply {
+            addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION)
+            addAction(WifiManager.WIFI_STATE_CHANGED_ACTION)
+            addAction(ConnectivityManager.CONNECTIVITY_ACTION)
+        }
+        registerReceiver(wifiStateReceiver, wifiFilter)
+
+        // Check initial WiFi state upon service startup
+        if (isWifiActive()) {
+            handleSmartNetworkSwitch(true)
+        }
 
         try {
             cameraManager = getSystemService(Context.CAMERA_SERVICE) as? CameraManager
@@ -392,6 +448,15 @@ class AutoTweakService : Service() {
             return START_STICKY
         }
 
+        // 2. Instant Recents Task / Dismiss Event
+        if (action == ACTION_RECENTS_CHANGED) {
+            tweakExecutor.execute {
+                reevaluatePerAppHierarchy(lastForegroundApp)
+            }
+            triggerFreezerDispatch(lastForegroundApp)
+            return START_STICKY
+        }
+
         // 2. AI Update Signal
         if (action == "com.example.phonecontrol.ACTION_AI_TICK") {
             val load = intent.getIntExtra("load", 0)
@@ -488,47 +553,76 @@ class AutoTweakService : Service() {
             }
         }
 
-        val frozenApps = FreezerManager.getFrozenApps(this) + FreezerManager.getSpecialFreezeApps(this)
-        val allSafeApps = MultitaskingManager.getUserWhitelist(this) + MultitaskingManager.protectedApps
-        val activeAudioApps = FreezerManager.getActivePlayingAudioPackages(this)
+        // 1. TOP PRIORITY: Apply Tweak & Per-App Profile IMMEDIATELY (0ms latency)!
+        reevaluatePerAppHierarchy(newPkg)
 
-        // 1. INSTANT APP-ENTER UNFREEZE: If entering an app in Freezer list, resume it immediately!
-        if (frozenApps.contains(newPkg)) {
-            Log.d("AutoTweak", "⚡ Instant App-Enter Auto Unfreeze -> $newPkg")
-            FreezerManager.unfreezeApp(newPkg)
-        }
+        // 2. BACKGROUND FREEZER DISPATCH:
+        triggerFreezerDispatch(newPkg)
+    }
 
-        // 2. SMART RECENTS & VISIBILITY-AWARE FREEZE (with Active Media & Video Player Guard):
-        // Only freeze apps if they are NO LONGER in Recents, NOT visible on screen, NOT playing audio/video, and NOT whitelisted!
-        if (frozenApps.isNotEmpty()) {
+    private fun triggerFreezerDispatch(currentForeground: String) {
+        val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+        if (!prefs.getBoolean("freezer_enabled", false)) return
+
+        freezerExecutor.execute {
+            val specialApps = FreezerManager.getSpecialFreezeApps(this)
+            val standardApps = FreezerManager.getFrozenApps(this)
+            val allFrozenApps = specialApps + standardApps
+            if (allFrozenApps.isEmpty()) return@execute
+
+            // Instant App-Enter Auto Unfreeze: If entering an app in Freezer list, resume it immediately!
+            if (allFrozenApps.contains(currentForeground)) {
+                Log.d("AutoTweak", "⚡ Instant App-Enter Auto Unfreeze -> $currentForeground")
+                FreezerManager.unfreezeApp(currentForeground)
+            }
+
+            val allSafeApps = MultitaskingManager.getUserWhitelist(this) + MultitaskingManager.protectedApps
+            val activeAudioApps = FreezerManager.getActivePlayingAudioPackages(this)
             val recentPkgs = FreezerManager.getRecentPackages()
             val detectedEqPkg = FreezerManager.getDetectedEqualizerPackage(this)
+            // Query visible window ONCE across all apps to eliminate 5-10s shell loop delay
+            val visibleWindow = ShellUtils.fastCmdResult("dumpsys window | grep -E 'mCurrentFocus|mFocusedApp'")
 
-            for (pkg in frozenApps) {
-                // If this is the active Equalizer, it is safely managed by Smart Equalizer Guard — DO NOT force-stop on app switch!
-                if (pkg == detectedEqPkg && FreezerManager.isEqualizerSleepEnabled(this)) {
-                    continue
+            // 1. FAST-TRACK SPECIAL FREEZE: Priority 1 execution (instant force-stop + suspend)
+            for (pkg in specialApps) {
+                if (pkg != currentForeground &&
+                    !recentPkgs.contains(pkg) &&
+                    !allSafeApps.contains(pkg) &&
+                    !activeAudioApps.contains(pkg) &&
+                    !visibleWindow.contains(pkg)) {
+
+                    Log.d("AutoTweak", "⚡ Instant Special Freeze (Hard Suspend) -> $pkg")
+                    FreezerManager.freezeApp(this, pkg)
                 }
+            }
 
-                if (pkg != newPkg && 
-                    !recentPkgs.contains(pkg) && 
-                    !allSafeApps.contains(pkg) && 
-                    !activeAudioApps.contains(pkg) && 
-                    !FreezerManager.isAppCurrentlyVisible(pkg)) {
-                    
+            // 2. Standard Hibernate Apps
+            for (pkg in standardApps) {
+                if (specialApps.contains(pkg)) continue // Already handled in fast-track
+                if (pkg == detectedEqPkg && FreezerManager.isEqualizerSleepEnabled(this)) continue
+
+                if (pkg != currentForeground &&
+                    !recentPkgs.contains(pkg) &&
+                    !allSafeApps.contains(pkg) &&
+                    !activeAudioApps.contains(pkg) &&
+                    !visibleWindow.contains(pkg)) {
+
                     Log.d("AutoTweak", "⚡ Closed & Inactive -> Freezing App: $pkg")
                     FreezerManager.freezeApp(this, pkg)
                 }
             }
+
             SpecialFreezerWidgetProvider.updateAllWidgets(this@AutoTweakService)
             FreezerWidgetProvider.updateAllWidgets(this@AutoTweakService)
         }
-
-        // 3. Perform Tweak & Profile Adaptations for new app
-        handleForegroundAppEvent(newPkg)
     }
 
-    private fun handleForegroundAppEvent(pkg: String) {
+    /**
+     * Evaluates all configured apps in Recents + Foreground, resolves multi-app conflicts
+     * using the highest performance hierarchy, and reverts to Global Baseline when all configured
+     * apps are closed & removed from Recents.
+     */
+    private fun reevaluatePerAppHierarchy(foregroundPkg: String) {
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
         val manualStage = prefs.getInt("manual_stage_override", 0)
         if (manualStage != 0 || TweakManager.manualStageOverride != 0) {
@@ -538,16 +632,15 @@ class AutoTweakService : Service() {
 
         val turboPrefs = getSharedPreferences("game_turbo_prefs", MODE_PRIVATE)
         val games = turboPrefs.getStringSet("game_packages", emptySet()) ?: emptySet()
-        val perAppConfig = PerAppManager.getConfig(this, pkg)
         
         // Dynamic Resolution Scaling Whitelist Check
         val isDynamicScalingEnabled = prefs.getBoolean("dynamic_scaling_enabled", false)
         val scalingWhitelist = prefs.getStringSet("scaling_whitelist", emptySet()) ?: emptySet()
 
         if (isDynamicScalingEnabled) {
-            if (scalingWhitelist.contains(pkg)) {
+            if (scalingWhitelist.contains(foregroundPkg)) {
                 if (!isDynamicScalingActive) {
-                    Log.d("AutoTweak", "Dynamic Resolution Scaling -> 720p for $pkg")
+                    Log.d("AutoTweak", "Dynamic Resolution Scaling -> 720p for $foregroundPkg")
                     TweakManager.setSystemResolution(true)
                     isDynamicScalingActive = true
                 }
@@ -559,61 +652,110 @@ class AutoTweakService : Service() {
             }
         }
 
-        val hasPerAppRule = perAppConfig != null && (perAppConfig.mode != "Auto" || perAppConfig.fps != "Auto Switch" || perAppConfig.bypassCharging || perAppConfig.autoDnd || perAppConfig.touch == "On")
-        val isGame = games.contains(pkg)
+        // 1. Collect all live packages in Recent Tasks + Current Foreground
+        val recentPkgs = FreezerManager.getRecentPackages().toMutableSet()
+        if (foregroundPkg.isNotBlank() && !foregroundPkg.contains("launcher", ignoreCase = true) && foregroundPkg != "com.android.systemui") {
+            recentPkgs.add(foregroundPkg)
+        }
 
-        if (hasPerAppRule) {
-            Log.d("AutoTweak", "Instant Smart Rule Event: $pkg -> Mode: ${perAppConfig!!.mode}, FPS: ${perAppConfig.fps}, Bypass: ${perAppConfig.bypassCharging}, DND: ${perAppConfig.autoDnd}")
-            if (perAppConfig.mode != "Auto") {
-                TweakManager.applyGlobalMode(perAppConfig.mode)
-            } else if (isGame && turboPrefs.getBoolean("auto_perf_enabled", true)) {
-                TweakManager.applyGlobalMode("Performance")
+        val activeConfigs = mutableListOf<PerAppManager.AppConfig>()
+        val activeRulePackages = mutableListOf<String>()
+
+        for (pkg in recentPkgs) {
+            val cfg = PerAppManager.getConfig(this, pkg)
+            val isGame = games.contains(pkg)
+
+            if (cfg != null) {
+                val effectiveCfg = if (isGame && cfg.mode == "Auto" && turboPrefs.getBoolean("auto_perf_enabled", true)) {
+                    cfg.copy(mode = "Performance")
+                } else {
+                    cfg
+                }
+                activeConfigs.add(effectiveCfg)
+                activeRulePackages.add(pkg)
+            } else if (isGame) {
+                val gameConfig = PerAppManager.AppConfig(
+                    mode = if (turboPrefs.getBoolean("auto_perf_enabled", true)) "Performance" else "Auto",
+                    fps = "Auto Switch",
+                    thermal = if (turboPrefs.getBoolean("auto_thermal_enabled", false)) "Disabled" else "Default",
+                    touch = "On",
+                    bypassCharging = false,
+                    autoDnd = false
+                )
+                activeConfigs.add(gameConfig)
+                activeRulePackages.add(pkg)
             }
-            if (perAppConfig.fps != "Auto Switch") TweakManager.setRefreshRate(perAppConfig.fps)
-            if (perAppConfig.thermal == "Disabled") ThermalManager.setThrottlingEnabled(false) else ThermalManager.setThrottlingEnabled(true)
-            if (perAppConfig.touch == "On") TweakManager.applyInputBoost(true)
-            if (perAppConfig.mode == "Performance" || isGame) TweakManager.applyProcessPriority(pkg, true)
+        }
 
-            // Game Turbo network priority if also a game
-            if (isGame && turboPrefs.getBoolean("auto_ping_enabled", true)) {
-                TweakManager.setNetworkPriority(this, pkg, true)
-            }
+        // 2. Resolve Highest Priority Rule via mergeConfigs
+        val mergedConfig = PerAppManager.mergeConfigs(activeConfigs)
 
-            // Automation: Auto Bypass Charging
-            if (perAppConfig.bypassCharging) {
-                BatteryManager.setBypassCharging(this, true)
-                isPerAppBypassActive = true
-            }
+        if (mergedConfig != null) {
+            val configChanged = mergedConfig != activePerAppMergedConfig || !isPerAppActive
+            if (configChanged) {
+                Log.d("AutoTweak", "⚡ Per-App Hierarchy Applied: Mode=${mergedConfig.mode}, FPS=${mergedConfig.fps}, Thermal=${mergedConfig.thermal}, Touch=${mergedConfig.touch}, Bypass=${mergedConfig.bypassCharging}, DND=${mergedConfig.autoDnd}. Active Configured Apps in Recents: $activeRulePackages")
+                
+                if (mergedConfig.mode != "Auto") {
+                    TweakManager.applyGlobalMode(mergedConfig.mode)
+                }
+                if (mergedConfig.fps != "Auto Switch") {
+                    TweakManager.setRefreshRate(mergedConfig.fps)
+                }
+                if (mergedConfig.thermal == "Disabled") {
+                    ThermalManager.setThrottlingEnabled(false)
+                } else {
+                    val isThrottlingDisabled = prefs.getBoolean("disable_throttling", false)
+                    ThermalManager.setThrottlingEnabled(!isThrottlingDisabled)
+                }
+                if (mergedConfig.touch == "On") {
+                    TweakManager.applyInputBoost(true)
+                }
 
-            // Automation: Gaming DND
-            if (perAppConfig.autoDnd) {
-                ShellUtils.fastCmd("cmd notification set_zen_mode 1")
-                isPerAppDndActive = true
-            }
+                // Process Priority for games & performance apps
+                for (p in activeRulePackages) {
+                    if (mergedConfig.mode == "Performance" || games.contains(p)) {
+                        TweakManager.applyProcessPriority(p, true)
+                    }
+                    if (games.contains(p) && turboPrefs.getBoolean("auto_ping_enabled", true)) {
+                        TweakManager.setNetworkPriority(this, p, true)
+                    }
+                }
 
-            isPerAppActive = true
-            isGameTurboActive = isGame
-        } else if (isGame) {
-            if (!isGameTurboActive) {
-                Log.d("AutoTweak", "Instant Game Event: $pkg - Activating Turbo")
-                if (turboPrefs.getBoolean("auto_perf_enabled", true)) TweakManager.applyGlobalMode("Performance")
-                if (turboPrefs.getBoolean("auto_ping_enabled", true)) TweakManager.setNetworkPriority(this, pkg, true)
-                if (turboPrefs.getBoolean("auto_thermal_enabled", false)) ThermalManager.setThrottlingEnabled(false)
-                isGameTurboActive = true
-                isPerAppActive = false
+                // Automation: Auto Bypass Charging
+                if (mergedConfig.bypassCharging) {
+                    BatteryManager.setBypassCharging(this, true)
+                    isPerAppBypassActive = true
+                } else if (isPerAppBypassActive) {
+                    val savedBypass = prefs.getBoolean("battery_bypass_charging", false)
+                    BatteryManager.setBypassCharging(this, savedBypass)
+                    isPerAppBypassActive = false
+                }
+
+                // Automation: Gaming DND
+                if (mergedConfig.autoDnd) {
+                    ShellUtils.fastCmd("cmd notification set_zen_mode 1")
+                    isPerAppDndActive = true
+                } else if (isPerAppDndActive) {
+                    ShellUtils.fastCmd("cmd notification set_zen_mode 0")
+                    isPerAppDndActive = false
+                }
+
+                activePerAppMergedConfig = mergedConfig
+                isPerAppActive = true
+                isGameTurboActive = activeRulePackages.any { games.contains(it) }
             }
         } else {
-            val isAutomaticMode = prefs.getString("selected_mode", "rbBalance") == "rbAutomatic"
-            
-            if (isGameTurboActive || isPerAppActive) {
-                Log.d("AutoTweak", "Instant Exit Event - Restoring User's Baseline State")
+            // NO configured apps in Recents or Foreground -> REVERT TO GLOBAL BASELINE!
+            if (isPerAppActive || isGameTurboActive) {
+                Log.d("AutoTweak", "⚡ All configured apps closed & removed from Recents -> Instant Revert to Global Mode")
+
                 val savedModeKey = prefs.getString("selected_mode", "rbBalance") ?: "rbBalance"
                 when (savedModeKey) {
                     "rbPowerSaver" -> TweakManager.applyGlobalMode("Power Saver")
                     "rbPerformance" -> TweakManager.applyGlobalMode("Performance")
                     "rbAutomatic" -> {
                         val focus = prefs.getString("selected_focus", "rbFocusDaily") ?: "rbFocusDaily"
-                        val load = calculateAppAiLoad(pkg)
+                        val load = calculateAppAiLoad(foregroundPkg)
                         applyAiTweak(load, focus)
                     }
                     else -> TweakManager.applyGlobalMode("Balance")
@@ -640,17 +782,18 @@ class AutoTweakService : Service() {
                     isPerAppBypassActive = false
                 }
 
-                // Atomically restore DND
+                // Restore Gaming DND
                 if (isPerAppDndActive) {
                     ShellUtils.fastCmd("cmd notification set_zen_mode 0")
                     isPerAppDndActive = false
                 }
 
-                isGameTurboActive = false
+                activePerAppMergedConfig = null
                 isPerAppActive = false
-            } else if (isAutomaticMode) {
+                isGameTurboActive = false
+            } else if (prefs.getString("selected_mode", "rbBalance") == "rbAutomatic") {
                 val focus = prefs.getString("selected_focus", "rbFocusDaily") ?: "rbFocusDaily"
-                val load = calculateAppAiLoad(pkg)
+                val load = calculateAppAiLoad(foregroundPkg)
                 applyAiTweak(load, focus)
             }
         }
@@ -813,7 +956,7 @@ class AutoTweakService : Service() {
         // 8. Auto Hibernation on Screen OFF (Targeted Media Guard)
         val freezerPrefs = getSharedPreferences("freezer_prefs", MODE_PRIVATE)
         if (freezerPrefs.getBoolean("auto_freeze_enabled", false)) {
-            val frozenApps = FreezerManager.getFrozenApps(this@AutoTweakService)
+            val frozenApps = FreezerManager.getFrozenApps(this@AutoTweakService) + FreezerManager.getSpecialFreezeApps(this@AutoTweakService)
             val activeAudioApps = FreezerManager.getActivePlayingAudioPackages(this@AutoTweakService)
 
             for (pkg in frozenApps) {
@@ -912,12 +1055,14 @@ class AutoTweakService : Service() {
         } catch (e: Exception) {}
         unregisterReceiver(screenReceiver)
         unregisterReceiver(batteryThermalReceiver)
+        try { unregisterReceiver(wifiStateReceiver) } catch (e: Exception) {}
         try { unregisterReceiver(audioRouteReceiver) } catch (e: Exception) {}
         try { connectivityManager.unregisterNetworkCallback(networkCallback) } catch (e: Exception) {}
         try {
             cameraManager?.unregisterAvailabilityCallback(cameraAvailabilityCallback)
         } catch (e: Exception) {}
         tweakExecutor.shutdown()
+        freezerExecutor.shutdown()
         ShellUtils.closePersistentShell()
         super.onDestroy()
     }

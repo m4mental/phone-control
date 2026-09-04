@@ -26,20 +26,63 @@ class AppEventService : AccessibilityService() {
         "com.baidu.input"
     )
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event == null || event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+    private var lastRecentsCheckTime = 0L
 
-        val pkgName = event.packageName?.toString() ?: return
+    private fun dispatchRecentsCheck() {
+        val now = System.currentTimeMillis()
+        if (now - lastRecentsCheckTime < 200) return
+        lastRecentsCheckTime = now
+        val intent = Intent(this, AutoTweakService::class.java).apply {
+            action = AutoTweakService.ACTION_RECENTS_CHANGED
+        }
+        try {
+            startService(intent)
+        } catch (e: Exception) {
+            Log.e("AppEventService", "Error dispatching recents check: ${e.message}")
+        }
+    }
+
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event == null) return
+
+        val eventType = event.eventType
+        val pkgName = event.packageName?.toString() ?: ""
         val clsName = event.className?.toString() ?: ""
+
+        // 1. Instant Recents Task Dismissal / Task Clear Detection
+        if (eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) {
+            dispatchRecentsCheck()
+            return
+        }
+
+        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            if (pkgName.contains("launcher", ignoreCase = true) || pkgName == "com.android.systemui") {
+                dispatchRecentsCheck()
+            }
+            return
+        }
+
+        if (eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+
         if (pkgName.isBlank() || pkgName == packageName) return
         
         // Ignore system overlays, keyboards, volume sliders, and transient dialogs
-        if (ignoredSystemPackages.contains(pkgName)) return
+        if (ignoredSystemPackages.contains(pkgName)) {
+            if (pkgName == "com.android.systemui") {
+                dispatchRecentsCheck()
+            }
+            return
+        }
 
         val isCallOrCameraActivity = clsName.contains("Voip", ignoreCase = true) ||
                                      clsName.contains("Call", ignoreCase = true) ||
                                      clsName.contains("Camera", ignoreCase = true) ||
                                      clsName.contains("Video", ignoreCase = true)
+
+        // When returning to launcher / home screen, trigger instant recents check
+        if (pkgName.contains("launcher", ignoreCase = true)) {
+            dispatchRecentsCheck()
+        }
 
         if (pkgName == lastDispatchedPkg && !isCallOrCameraActivity) return
 

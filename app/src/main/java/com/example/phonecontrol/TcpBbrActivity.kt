@@ -58,6 +58,9 @@ class TcpBbrActivity : AppCompatActivity() {
                     else -> ""
                 }
                 TweakManager.applyNetworkTweaks(tcpEnabled, dnsVal)
+                if (!smartEnabled) {
+                    ShellUtils.fastCmd("settings put global mobile_data 1; svc data enable")
+                }
                 runOnUiThread {
                     Toast.makeText(this, "Network Tweaks Applied!", Toast.LENGTH_SHORT).show()
                 }
