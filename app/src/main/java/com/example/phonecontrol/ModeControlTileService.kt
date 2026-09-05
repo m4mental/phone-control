@@ -30,11 +30,76 @@ class ModeControlTileService : TileService() {
 
     override fun onStartListening() {
         super.onStartListening()
+        if (ShellUtils.isRootGrantedCached == false) {
+            showNoRootTile()
+            return
+        }
         refreshTileState()
+
+        // Asynchronously verify root to detect OTA unroot or revoked permissions
+        thread {
+            val hasRoot = ShellUtils.checkRootStandalone(1500, forceCheck = true)
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                if (!hasRoot) {
+                    showNoRootTile()
+                } else if (qsTile?.state == Tile.STATE_UNAVAILABLE) {
+                    refreshTileState()
+                }
+            }
+        }
+    }
+
+    private fun showNoRootTile() {
+        val tile = qsTile ?: return
+        tile.label = "Mode: No Root"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            tile.subtitle = "Root Required (OTA)"
+        }
+        tile.state = Tile.STATE_UNAVAILABLE
+        try {
+            tile.icon = Icon.createWithResource(this, R.drawable.ic_qs_mode_control)
+        } catch (e: Exception) {}
+        tile.updateTile()
     }
 
     override fun onClick() {
         super.onClick()
+
+        // Immediate root verification guard
+        if (ShellUtils.isRootGrantedCached == false) {
+            showNoRootTile()
+            android.widget.Toast.makeText(
+                applicationContext,
+                "⚠️ Root Access Missing! Please re-root after OTA update.",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        if (ShellUtils.isRootGrantedCached == true) {
+            performCycleOnClick()
+            return
+        }
+
+        // Cache unknown - perform quick standalone check
+        thread {
+            val hasRoot = ShellUtils.checkRootStandalone(1500)
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                if (!hasRoot) {
+                    showNoRootTile()
+                    android.widget.Toast.makeText(
+                        applicationContext,
+                        "⚠️ Root Access Missing! Please re-root after OTA update.",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                } else {
+                    performCycleOnClick()
+                }
+            }
+        }
+    }
+
+    private fun performCycleOnClick() {
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
         val manualStage = prefs.getInt("manual_stage_override", 0)
 
@@ -107,6 +172,10 @@ class ModeControlTileService : TileService() {
     }
 
     private fun refreshTileState(forcedMode: String? = null) {
+        if (ShellUtils.isRootGrantedCached == false) {
+            showNoRootTile()
+            return
+        }
         val tile = qsTile ?: return
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
         val manualStage = prefs.getInt("manual_stage_override", 0)

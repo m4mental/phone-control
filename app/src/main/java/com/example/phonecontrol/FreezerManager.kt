@@ -14,7 +14,12 @@ object FreezerManager {
      * Hibernates a single app immediately.
      */
     fun freezeApp(context: Context, packageName: String) {
-        if (packageName.isBlank()) return
+        if (packageName.isBlank() || packageName == context.packageName) return
+        
+        // Never freeze an app that was just launched in the last 10 seconds
+        if (packageName == lastLaunchedPackage && (System.currentTimeMillis() - lastLaunchTime < 10000)) {
+            return
+        }
         
         if (isSpecialFreeze(context, packageName)) {
             val specialScript = """
@@ -98,11 +103,27 @@ object FreezerManager {
 
     /**
      * Returns the set of all packages currently open in the system's Recent Apps / Recents Task list.
+     * Strictly filters for alive tasks (hasTask=true) to avoid dead task tombstones.
      */
     fun getRecentPackages(): Set<String> {
         return try {
-            val result = ShellUtils.fastCmdResult("dumpsys activity recents | grep -o 'realActivity={[a-zA-Z0-9_.]*' | cut -d '{' -f2")
-            result.split("\n").map { it.trim() }.filter { it.isNotBlank() }.toSet()
+            val output = ShellUtils.fastCmdResult("dumpsys activity recents")
+            if (output.isBlank()) return emptySet()
+
+            val pkgs = mutableSetOf<String>()
+            val blocks = output.split("RecentTaskInfo")
+            for (block in blocks) {
+                // Must have hasTask=true to be an active recent task
+                if (block.contains("hasTask=true")) {
+                    val match = Regex("realActivity=\\{([a-zA-Z0-9_.]+)/").find(block)
+                        ?: Regex("baseActivity=\\{([a-zA-Z0-9_.]+)/").find(block)
+                        ?: Regex("topActivity=\\{([a-zA-Z0-9_.]+)/").find(block)
+                    if (match != null) {
+                        pkgs.add(match.groupValues[1])
+                    }
+                }
+            }
+            pkgs
         } catch (e: Exception) {
             emptySet()
         }

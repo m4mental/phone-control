@@ -11,8 +11,16 @@ class BootReceiver : BroadcastReceiver() {
             Log.d("BootReceiver", "Device rebooted. Initializing Phone Control...")
             
             kotlin.concurrent.thread {
+                val isRoot = ShellUtils.checkRootStandalone(2000, forceCheck = true)
+                if (!isRoot) {
+                    Log.w("BootReceiver", "Root access missing after boot (e.g. OTA update). Updating QS tiles to No Root.")
+                    ModeControlTileService.updateTile(context)
+                    CooldownTileService.updateTile(context)
+                    return@thread
+                }
+
                 // Aggressive root-level activation
-                ShellUtils.runAsRoot("dumpsys deviceidle whitelist +com.example.phonecontrol")
+                ShellUtils.runAsRoot("dumpsys deviceidle whitelist +com.example.phonecontrol; am set-standby-bucket com.example.phonecontrol active 2>/dev/null")
                 AppEventService.enableViaRoot(context.packageName)
                 
                 val prefs = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)

@@ -238,7 +238,7 @@ class MainActivity : AppCompatActivity() {
 
         kotlin.concurrent.thread {
             try {
-                val isRooted = ShellUtils.checkRootStandalone(4000)
+                val isRooted = ShellUtils.checkRootStandalone(4000, forceCheck = true)
                 runOnUiThread {
                     if (isFinishing || isDestroyed) return@runOnUiThread
                     if (isRooted) {
@@ -248,6 +248,8 @@ class MainActivity : AppCompatActivity() {
                         tvRootStatus.text = "Root: Denied"; tvRootStatus.setTextColor(Color.RED)
                         tvKernelStatus.text = "Kernel Engine: Restricted"; tvKernelStatus.setTextColor(Color.GRAY)
                     }
+                    ModeControlTileService.updateTile(this@MainActivity)
+                    CooldownTileService.updateTile(this@MainActivity)
                 }
             } catch (e: Exception) {
                 runOnUiThread { 

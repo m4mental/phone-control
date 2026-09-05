@@ -50,13 +50,13 @@ class AppEventService : AccessibilityService() {
         val clsName = event.className?.toString() ?: ""
 
         // 1. Instant Recents Task Dismissal / Task Clear Detection
-        if (eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) {
-            dispatchRecentsCheck()
-            return
-        }
-
-        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
-            if (pkgName.contains("launcher", ignoreCase = true) || pkgName == "com.android.systemui") {
+        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED ||
+            eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
+            val isRecentsProvider = pkgName == "com.android.systemui" ||
+                                    pkgName.contains("launcher", ignoreCase = true) ||
+                                    clsName.contains("Recents", ignoreCase = true) ||
+                                    clsName.contains("Overview", ignoreCase = true)
+            if (isRecentsProvider) {
                 dispatchRecentsCheck()
             }
             return
@@ -64,11 +64,14 @@ class AppEventService : AccessibilityService() {
 
         if (eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
 
-        if (pkgName.isBlank() || pkgName == packageName) return
+        if (pkgName.isBlank()) return
         
         // Ignore system overlays, keyboards, volume sliders, and transient dialogs
         if (ignoredSystemPackages.contains(pkgName)) {
-            if (pkgName == "com.android.systemui") {
+            val isRecentsProvider = pkgName == "com.android.systemui" ||
+                                    clsName.contains("Recents", ignoreCase = true) ||
+                                    clsName.contains("Overview", ignoreCase = true)
+            if (isRecentsProvider) {
                 dispatchRecentsCheck()
             }
             return
@@ -80,7 +83,7 @@ class AppEventService : AccessibilityService() {
                                      clsName.contains("Video", ignoreCase = true)
 
         // When returning to launcher / home screen, trigger instant recents check
-        if (pkgName.contains("launcher", ignoreCase = true)) {
+        if (pkgName.contains("launcher", ignoreCase = true) || clsName.contains("Recents", ignoreCase = true)) {
             dispatchRecentsCheck()
         }
 

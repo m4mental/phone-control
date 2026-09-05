@@ -39,8 +39,8 @@ object ShellUtils {
      * Standalone, isolated root checker.
      * Executes directly on an independent process so it never gets blocked by the single-thread shellExecutor queue.
      */
-    fun checkRootStandalone(timeoutMs: Long = 4000): Boolean {
-        if (isRootGrantedCached == true) return true
+    fun checkRootStandalone(timeoutMs: Long = 4000, forceCheck: Boolean = false): Boolean {
+        if (!forceCheck && isRootGrantedCached == true) return true
 
         return try {
             val p = Runtime.getRuntime().exec(arrayOf("su", "-c", "id"))
@@ -53,18 +53,17 @@ object ShellUtils {
                 true
             }
             val isRoot = (out.contains("uid=0") || (exited && p.exitValue() == 0))
-            if (isRoot) {
-                isRootGrantedCached = true
-            }
+            isRootGrantedCached = isRoot
             isRoot
         } catch (e: Exception) {
             Log.e("ShellUtils", "checkRootStandalone direct exec error: ${e.message}")
             try {
                 val res = runAsRoot("id", 2000)
                 val isRoot = (res.exitCode == 0 && res.output.contains("uid=0"))
-                if (isRoot) isRootGrantedCached = true
+                isRootGrantedCached = isRoot
                 isRoot
             } catch (ignored: Exception) {
+                isRootGrantedCached = false
                 false
             }
         }

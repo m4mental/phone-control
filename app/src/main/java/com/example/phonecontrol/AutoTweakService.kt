@@ -321,7 +321,11 @@ class AutoTweakService : Service() {
             addAction(WifiManager.WIFI_STATE_CHANGED_ACTION)
             addAction(ConnectivityManager.CONNECTIVITY_ACTION)
         }
-        registerReceiver(wifiStateReceiver, wifiFilter)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(wifiStateReceiver, wifiFilter, RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(wifiStateReceiver, wifiFilter)
+        }
 
         // Check initial WiFi state upon service startup
         if (isWifiActive()) {
@@ -371,7 +375,11 @@ class AutoTweakService : Service() {
                 addAction(Intent.ACTION_HEADSET_PLUG)
                 addAction(android.bluetooth.BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED)
             }
-            registerReceiver(audioRouteReceiver, audioRouteFilter)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(audioRouteReceiver, audioRouteFilter, RECEIVER_NOT_EXPORTED)
+            } else {
+                registerReceiver(audioRouteReceiver, audioRouteFilter)
+            }
         } catch (e: Exception) {
             Log.e("AutoTweak", "Failed to register audio callbacks: ${e.message}")
         }
@@ -379,6 +387,7 @@ class AutoTweakService : Service() {
         tweakExecutor.execute {
             handleVideoCallStateChanged()
             AppEventService.enableViaRoot(packageName)
+            ShellUtils.fastCmd("dumpsys deviceidle whitelist +$packageName; am set-standby-bucket $packageName active 2>/dev/null")
             ThermalManager.checkAndRecoverCooldown(this)
 
             // Auto-initialize Studio Equalizer DSP in background on service startup
@@ -558,6 +567,16 @@ class AutoTweakService : Service() {
 
         // 2. BACKGROUND FREEZER DISPATCH:
         triggerFreezerDispatch(newPkg)
+
+        // 3. Fallback verification for Recents swipe: When returning to launcher/home, re-check recents after 1.2s
+        if (newPkg.contains("launcher", ignoreCase = true)) {
+            equalizerFreezeHandler?.postDelayed({
+                tweakExecutor.execute {
+                    reevaluatePerAppHierarchy(newPkg)
+                }
+                triggerFreezerDispatch(newPkg)
+            }, 1200)
+        }
     }
 
     private fun triggerFreezerDispatch(currentForeground: String) {
@@ -582,9 +601,16 @@ class AutoTweakService : Service() {
             val detectedEqPkg = FreezerManager.getDetectedEqualizerPackage(this)
             // Query visible window ONCE across all apps to eliminate 5-10s shell loop delay
             val visibleWindow = ShellUtils.fastCmdResult("dumpsys window | grep -E 'mCurrentFocus|mFocusedApp'")
+            val myPkg = packageName
+            val lastLaunched = FreezerManager.lastLaunchedPackage
+            val lastLaunchTime = FreezerManager.lastLaunchTime
+            val now = System.currentTimeMillis()
 
             // 1. FAST-TRACK SPECIAL FREEZE: Priority 1 execution (instant force-stop + suspend)
             for (pkg in specialApps) {
+                if (pkg == myPkg) continue
+                if (pkg == lastLaunched && (now - lastLaunchTime < 10000)) continue
+
                 if (pkg != currentForeground &&
                     !recentPkgs.contains(pkg) &&
                     !allSafeApps.contains(pkg) &&
@@ -598,6 +624,8 @@ class AutoTweakService : Service() {
 
             // 2. Standard Hibernate Apps
             for (pkg in standardApps) {
+                if (pkg == myPkg) continue
+                if (pkg == lastLaunched && (now - lastLaunchTime < 10000)) continue
                 if (specialApps.contains(pkg)) continue // Already handled in fast-track
                 if (pkg == detectedEqPkg && FreezerManager.isEqualizerSleepEnabled(this)) continue
 
@@ -654,7 +682,7 @@ class AutoTweakService : Service() {
 
         // 1. Collect all live packages in Recent Tasks + Current Foreground
         val recentPkgs = FreezerManager.getRecentPackages().toMutableSet()
-        if (foregroundPkg.isNotBlank() && !foregroundPkg.contains("launcher", ignoreCase = true) && foregroundPkg != "com.android.systemui") {
+        if (foregroundPkg.isNotBlank() && !foregroundPkg.contains("launcher", ignoreCase = true) && foregroundPkg != "com.android.systemui" && foregroundPkg != packageName) {
             recentPkgs.add(foregroundPkg)
         }
 
@@ -746,8 +774,11 @@ class AutoTweakService : Service() {
             }
         } else {
             // NO configured apps in Recents or Foreground -> REVERT TO GLOBAL BASELINE!
-            if (isPerAppActive || isGameTurboActive) {
+            if (isPerAppActive || isGameTurboActive || activePerAppMergedConfig != null) {
                 Log.d("AutoTweak", "⚡ All configured apps closed & removed from Recents -> Instant Revert to Global Mode")
+                activePerAppMergedConfig = null
+                isPerAppActive = false
+                isGameTurboActive = false
 
                 val savedModeKey = prefs.getString("selected_mode", "rbBalance") ?: "rbBalance"
                 when (savedModeKey) {
@@ -894,7 +925,11 @@ class AutoTweakService : Service() {
         // 2. Super Doze & Sync Logic with State Preservation
         if (isSuperDoze || isForceDoze) {
             if (isSuperDoze && superDozePrefs.getBoolean("sync_off_enabled", true)) {
-                val currentSync = android.content.ContentResolver.getMasterSyncAutomatically()
+                val currentSync = try {
+                    android.content.ContentResolver.getMasterSyncAutomatically()
+                } catch (e: Exception) {
+                    ShellUtils.fastCmdResult("settings get global master_sync_enabled").trim() == "1"
+                }
                 superDozePrefs.edit().putBoolean("user_saved_sync_state", currentSync).apply()
                 if (currentSync) {
                     ShellUtils.fastCmd("settings put global master_sync_enabled 0")
