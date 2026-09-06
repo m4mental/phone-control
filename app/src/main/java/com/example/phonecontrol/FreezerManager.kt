@@ -7,16 +7,39 @@ import android.os.Build
 
 object FreezerManager {
 
+    val activeSessionApps = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     var lastLaunchedPackage: String? = null
     var lastLaunchTime: Long = 0
 
     /**
+     * Registers an app as actively opened in user session.
+     * Guaranteed 0ms immunity from freeze/force-stop and instant unfreeze.
+     */
+    fun registerAppOpen(packageName: String) {
+        if (packageName.isBlank()) return
+        activeSessionApps.add(packageName)
+        lastLaunchedPackage = packageName
+        lastLaunchTime = System.currentTimeMillis()
+        unfreezeApp(packageName)
+    }
+
+    fun isAppActiveSession(packageName: String): Boolean {
+        return activeSessionApps.contains(packageName)
+    }
+
+    fun removeActiveSession(packageName: String) {
+        activeSessionApps.remove(packageName)
+    }
+
+    /**
      * Hibernates a single app immediately.
+     * Strictly protects active session apps.
      */
     fun freezeApp(context: Context, packageName: String) {
         if (packageName.isBlank() || packageName == context.packageName) return
         
-        // Never freeze an app that was just launched in the last 10 seconds
+        // Absolute Guard: NEVER freeze an app that is in active user session or opened recently
+        if (isAppActiveSession(packageName)) return
         if (packageName == lastLaunchedPackage && (System.currentTimeMillis() - lastLaunchTime < 10000)) {
             return
         }
@@ -24,7 +47,6 @@ object FreezerManager {
         if (isSpecialFreeze(context, packageName)) {
             val specialScript = """
                 am force-stop "$packageName" 2>/dev/null
-                pm suspend "$packageName" 2>/dev/null
                 am freeze "$packageName" 2>/dev/null
                 am set-standby-bucket "$packageName" restricted 2>/dev/null
             """.trimIndent()
@@ -32,9 +54,9 @@ object FreezerManager {
             return
         }
 
+        // Standard Freeze: Clean Linux cgroup suspend (no force-stop destruction)
         val script = """
             am freeze "$packageName" 2>/dev/null
-            am force-stop "$packageName" 2>/dev/null
             am set-standby-bucket "$packageName" restricted 2>/dev/null
             for p in $(pidof "$packageName"); do
                 echo 900 > /proc/${'$'}p/oom_score_adj 2>/dev/null
@@ -48,13 +70,12 @@ object FreezerManager {
      */
     fun freezeMultipleApps(context: Context, packages: Collection<String>) {
         if (packages.isEmpty()) return
-        val pkgList = packages.filter { it != lastLaunchedPackage }.joinToString(" ")
+        val pkgList = packages.filter { it != lastLaunchedPackage && !isAppActiveSession(it) }.joinToString(" ")
         if (pkgList.isBlank()) return
 
         val script = """
             for pkg in $pkgList; do
                 am freeze "${'$'}pkg" 2>/dev/null
-                am force-stop "${'$'}pkg" 2>/dev/null
                 am set-standby-bucket "${'$'}pkg" restricted 2>/dev/null
                 for p in ${'$'}(pidof "${'$'}pkg"); do
                     echo 900 > /proc/${'$'}p/oom_score_adj 2>/dev/null
@@ -62,6 +83,44 @@ object FreezerManager {
             done
         """.trimIndent()
         ShellUtils.fastCmd(script)
+    }
+
+    /**
+     * Targeted Recents Dismissal:
+     * Only freezes apps that were active in session, but have now been swiped away / removed from Recents.
+     * Takes ~20ms, zero global 60-app loop!
+     */
+    fun processRecentsDismissal(
+        context: Context,
+        currentRecents: Set<String>,
+        currentForeground: String
+    ) {
+        if (activeSessionApps.isEmpty()) return
+
+        // Dismissed = was in activeSessionApps, but no longer in recents and not currently on screen
+        val dismissedApps = activeSessionApps.filter { pkg ->
+            !currentRecents.contains(pkg) && pkg != currentForeground
+        }
+
+        if (dismissedApps.isEmpty()) return
+
+        val specialApps = getSpecialFreezeApps(context)
+        val standardApps = getFrozenApps(context)
+        val allConfigured = specialApps + standardApps
+        val allSafeApps = MultitaskingManager.getUserWhitelist(context) + MultitaskingManager.protectedApps
+        val activeAudio = getActivePlayingAudioPackages(context)
+
+        for (pkg in dismissedApps) {
+            activeSessionApps.remove(pkg)
+            if (pkg == lastLaunchedPackage) {
+                lastLaunchedPackage = null
+            }
+
+            if (allConfigured.contains(pkg) && !allSafeApps.contains(pkg) && !activeAudio.contains(pkg)) {
+                android.util.Log.d("FreezerManager", "❄️ Recents Dismissed -> Targeted Freeze for $pkg")
+                freezeApp(context, pkg)
+            }
+        }
     }
 
     /**
@@ -107,19 +166,23 @@ object FreezerManager {
      */
     fun getRecentPackages(): Set<String> {
         return try {
-            val output = ShellUtils.fastCmdResult("dumpsys activity recents")
+            val output = ShellUtils.fastCmdResult("dumpsys activity recents | grep -E 'Recent #[0-9]+:|realActivity=|baseActivity=|cmp=|I=' 2>/dev/null", 2500)
             if (output.isBlank()) return emptySet()
 
             val pkgs = mutableSetOf<String>()
-            val blocks = output.split("RecentTaskInfo")
-            for (block in blocks) {
-                // Must have hasTask=true to be an active recent task
-                if (block.contains("hasTask=true")) {
-                    val match = Regex("realActivity=\\{([a-zA-Z0-9_.]+)/").find(block)
-                        ?: Regex("baseActivity=\\{([a-zA-Z0-9_.]+)/").find(block)
-                        ?: Regex("topActivity=\\{([a-zA-Z0-9_.]+)/").find(block)
-                    if (match != null) {
-                        pkgs.add(match.groupValues[1])
+            val regexes = listOf(
+                Regex("(?:realActivity=|baseActivity=|topActivity=|cmp=|I=)\\{?([a-zA-Z0-9_.]+)/"),
+                Regex("Recent #[0-9]+:.*Task\\{[a-f0-9]+ #[0-9]+ [^}]*I=([a-zA-Z0-9_.]+)/")
+            )
+            for (line in output.lineSequence()) {
+                for (r in regexes) {
+                    val m = r.find(line)
+                    if (m != null) {
+                        val p = m.groupValues[1]
+                        if (p.isNotBlank() && !p.contains("launcher", ignoreCase = true) && p != "com.android.systemui") {
+                            pkgs.add(p)
+                        }
+                        break
                     }
                 }
             }

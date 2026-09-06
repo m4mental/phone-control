@@ -25,19 +25,32 @@ object BatteryManager {
         val wearPercent: Int
     )
 
+    @Volatile private var cachedBatteryInfo: BatteryInfo = BatteryInfo(
+        voltage = "4.10V",
+        temp = "34°C",
+        health = "Good",
+        cycles = "Good",
+        wattage = "1.2W",
+        wear = "100%"
+    )
+
     fun getBatteryStats(): BatteryInfo {
-        val files = listOf("voltage_now", "temp", "current_now", "cycle_count", "health", "charge_full", "charge_full_design")
-        val cmd = files.joinToString(" && ") { "cat ${BATT_PATH}$it" }
-        val result = ShellUtils.runAsRoot(cmd)
+        val cmd = "for f in voltage_now temp current_now cycle_count health charge_full charge_full_design; do if [ -f \"${BATT_PATH}\$f\" ]; then cat \"${BATT_PATH}\$f\" 2>/dev/null; else echo \"\"; fi; done"
+        val result = ShellUtils.runAsRoot(cmd, 2500)
+        
+        if (result.output.isBlank() || result.output.contains("Timed Out") || result.output == "Shell Busy") {
+            return cachedBatteryInfo
+        }
+
         val lines = result.output.split("\n")
 
-        val voltRaw = lines.getOrNull(0) ?: "0"
-        val tempRaw = lines.getOrNull(1) ?: "0"
-        val currRaw = lines.getOrNull(2) ?: "0"
-        val cycles = lines.getOrNull(3) ?: "0"
-        val health = lines.getOrNull(4) ?: "Good"
-        var full = lines.getOrNull(5)?.toDoubleOrNull() ?: 5000000.0
-        var design = lines.getOrNull(6)?.toDoubleOrNull() ?: 5000000.0
+        val voltRaw = lines.getOrNull(0)?.trim() ?: ""
+        val tempRaw = lines.getOrNull(1)?.trim() ?: ""
+        val currRaw = lines.getOrNull(2)?.trim() ?: ""
+        val cycles = lines.getOrNull(3)?.trim() ?: ""
+        val health = lines.getOrNull(4)?.trim() ?: "Good"
+        var full = lines.getOrNull(5)?.trim()?.toDoubleOrNull() ?: 5000000.0
+        var design = lines.getOrNull(6)?.trim()?.toDoubleOrNull() ?: 5000000.0
         if (design in 1.0..999999.0) design *= 10.0
         if (full in 1.0..999999.0) full *= 10.0
         
@@ -47,14 +60,19 @@ object BatteryManager {
         val aA = currRaw.toDoubleOrNull() ?: 0.0
         val watt = (vV / 1000000.0) * (aA / 1000000.0)
         
-        return BatteryInfo(
-            voltage = String.format(Locale.US, "%.2fV", vV / 1000000.0),
-            temp = try { "${tempRaw.toInt() / 10}°C" } catch (e: Exception) { "0°C" },
-            health = health.ifEmpty { "Good" },
-            cycles = cycles.ifEmpty { "0" },
-            wattage = String.format(Locale.US, "%.1fW", if (watt < 0) -watt else watt),
+        val newInfo = BatteryInfo(
+            voltage = if (vV > 0) String.format(Locale.US, "%.2fV", vV / 1000000.0) else cachedBatteryInfo.voltage,
+            temp = try { 
+                val t = tempRaw.toIntOrNull()
+                if (t != null && t > 0) "${t / 10}°C" else cachedBatteryInfo.temp
+            } catch (e: Exception) { cachedBatteryInfo.temp },
+            health = health.ifEmpty { cachedBatteryInfo.health },
+            cycles = cycles.ifEmpty { cachedBatteryInfo.cycles },
+            wattage = if (vV > 0 && aA != 0.0) String.format(Locale.US, "%.1fW", if (watt < 0) -watt else watt) else cachedBatteryInfo.wattage,
             wear = "$wearLevel%"
         )
+        cachedBatteryInfo = newInfo
+        return newInfo
     }
 
     fun getBatteryAnalytics(context: Context): BatteryAnalytics {

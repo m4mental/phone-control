@@ -584,61 +584,23 @@ class AutoTweakService : Service() {
         if (!prefs.getBoolean("freezer_enabled", false)) return
 
         freezerExecutor.execute {
-            val specialApps = FreezerManager.getSpecialFreezeApps(this)
-            val standardApps = FreezerManager.getFrozenApps(this)
-            val allFrozenApps = specialApps + standardApps
-            if (allFrozenApps.isEmpty()) return@execute
-
-            // Instant App-Enter Auto Unfreeze: If entering an app in Freezer list, resume it immediately!
-            if (allFrozenApps.contains(currentForeground)) {
-                Log.d("AutoTweak", "⚡ Instant App-Enter Auto Unfreeze -> $currentForeground")
-                FreezerManager.unfreezeApp(currentForeground)
+            // 1. Register foreground app if it's a real user application (grants 0ms immunity + unfreezes)
+            if (currentForeground.isNotBlank() &&
+                !currentForeground.contains("launcher", ignoreCase = true) &&
+                currentForeground != "com.android.systemui" &&
+                currentForeground != packageName
+            ) {
+                FreezerManager.registerAppOpen(currentForeground)
             }
 
-            val allSafeApps = MultitaskingManager.getUserWhitelist(this) + MultitaskingManager.protectedApps
-            val activeAudioApps = FreezerManager.getActivePlayingAudioPackages(this)
+            // 2. Sync all alive recents tasks into activeSessionApps
             val recentPkgs = FreezerManager.getRecentPackages()
-            val detectedEqPkg = FreezerManager.getDetectedEqualizerPackage(this)
-            // Query visible window ONCE across all apps to eliminate 5-10s shell loop delay
-            val visibleWindow = ShellUtils.fastCmdResult("dumpsys window | grep -E 'mCurrentFocus|mFocusedApp'")
-            val myPkg = packageName
-            val lastLaunched = FreezerManager.lastLaunchedPackage
-            val lastLaunchTime = FreezerManager.lastLaunchTime
-            val now = System.currentTimeMillis()
-
-            // 1. FAST-TRACK SPECIAL FREEZE: Priority 1 execution (instant force-stop + suspend)
-            for (pkg in specialApps) {
-                if (pkg == myPkg) continue
-                if (pkg == lastLaunched && (now - lastLaunchTime < 10000)) continue
-
-                if (pkg != currentForeground &&
-                    !recentPkgs.contains(pkg) &&
-                    !allSafeApps.contains(pkg) &&
-                    !activeAudioApps.contains(pkg) &&
-                    !visibleWindow.contains(pkg)) {
-
-                    Log.d("AutoTweak", "⚡ Instant Special Freeze (Hard Suspend) -> $pkg")
-                    FreezerManager.freezeApp(this, pkg)
-                }
+            for (p in recentPkgs) {
+                FreezerManager.activeSessionApps.add(p)
             }
 
-            // 2. Standard Hibernate Apps
-            for (pkg in standardApps) {
-                if (pkg == myPkg) continue
-                if (pkg == lastLaunched && (now - lastLaunchTime < 10000)) continue
-                if (specialApps.contains(pkg)) continue // Already handled in fast-track
-                if (pkg == detectedEqPkg && FreezerManager.isEqualizerSleepEnabled(this)) continue
-
-                if (pkg != currentForeground &&
-                    !recentPkgs.contains(pkg) &&
-                    !allSafeApps.contains(pkg) &&
-                    !activeAudioApps.contains(pkg) &&
-                    !visibleWindow.contains(pkg)) {
-
-                    Log.d("AutoTweak", "⚡ Closed & Inactive -> Freezing App: $pkg")
-                    FreezerManager.freezeApp(this, pkg)
-                }
-            }
+            // 3. Ultra-fast targeted freeze ONLY on apps swiped away / dismissed from Recents (~20ms)
+            FreezerManager.processRecentsDismissal(this@AutoTweakService, recentPkgs, currentForeground)
 
             SpecialFreezerWidgetProvider.updateAllWidgets(this@AutoTweakService)
             FreezerWidgetProvider.updateAllWidgets(this@AutoTweakService)
@@ -722,6 +684,7 @@ class AutoTweakService : Service() {
             val configChanged = mergedConfig != activePerAppMergedConfig || !isPerAppActive
             if (configChanged) {
                 Log.d("AutoTweak", "⚡ Per-App Hierarchy Applied: Mode=${mergedConfig.mode}, FPS=${mergedConfig.fps}, Thermal=${mergedConfig.thermal}, Touch=${mergedConfig.touch}, Bypass=${mergedConfig.bypassCharging}, DND=${mergedConfig.autoDnd}. Active Configured Apps in Recents: $activeRulePackages")
+                lastAiMode = ""
                 
                 if (mergedConfig.mode != "Auto") {
                     TweakManager.applyGlobalMode(mergedConfig.mode)
@@ -779,6 +742,7 @@ class AutoTweakService : Service() {
                 activePerAppMergedConfig = null
                 isPerAppActive = false
                 isGameTurboActive = false
+                lastAiMode = "" // Force AI Engine to re-evaluate and apply hardware frequencies
 
                 val savedModeKey = prefs.getString("selected_mode", "rbBalance") ?: "rbBalance"
                 when (savedModeKey) {
