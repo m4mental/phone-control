@@ -242,7 +242,7 @@ object TweakManager {
      * Helper to enforce raw stage script for any stage
      */
     fun applyRawStageScript(stage: Int) {
-        val unlockPerms = "chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* 2>/dev/null\n"
+        val unlockPerms = "chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* /sys/devices/system/cpu/cpu*/cpufreq/scaling_* 2>/dev/null\n"
         when (stage) {
             1 -> {
                 // S1 Option A: 650MHz Base Idle -> Spikes to 950MHz on Touch/App-Switch
@@ -639,6 +639,7 @@ object TweakManager {
             "perf" -> {
                 // Stage 4 Extreme Full Turbo (Gaming & Benchmarks):
                 val script = """
+                    chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* /sys/devices/system/cpu/cpu*/cpufreq/scaling_* 2>/dev/null
                     for p in /sys/devices/system/cpu/cpufreq/policy*; do
                         if [ -f "${'$'}p/scaling_available_frequencies" ]; then
                             max_f=$(awk '{print ${'$'}1}' "${'$'}p/scaling_available_frequencies" 2>/dev/null)
@@ -1017,7 +1018,29 @@ object TweakManager {
      */
     fun limitCpuFrequency(percentage: Int) {
         if (manualStageOverride != 0) return
-        val script = "for i in 0 1 2 3 4 5 6 7; do max=\$(cat /sys/devices/system/cpu/cpu\$i/cpufreq/cpuinfo_max_freq 2>/dev/null); if [ -n \"\$max\" ]; then target=\$((max * $percentage / 100)); echo \$target > /sys/devices/system/cpu/cpu\$i/cpufreq/scaling_max_freq 2>/dev/null; fi; done"
+        val unlock = "chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* /sys/devices/system/cpu/cpu*/cpufreq/scaling_* 2>/dev/null"
+        val script = if (percentage >= 100) {
+            """
+                $unlock
+                for i in 0 1 2 3 4 5 6 7; do
+                    max=$(cat /sys/devices/system/cpu/cpu${'$'}i/cpufreq/cpuinfo_max_freq 2>/dev/null)
+                    [ -n "${'$'}max" ] && echo "${'$'}max" > /sys/devices/system/cpu/cpu${'$'}i/cpufreq/scaling_max_freq 2>/dev/null
+                done
+                echo 650000 > /sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq 2>/dev/null
+                echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_min_freq 2>/dev/null
+            """.trimIndent()
+        } else {
+            """
+                $unlock
+                for i in 0 1 2 3 4 5 6 7; do
+                    max=$(cat /sys/devices/system/cpu/cpu${'$'}i/cpufreq/cpuinfo_max_freq 2>/dev/null)
+                    if [ -n "${'$'}max" ]; then
+                        target=${'$'}((max * $percentage / 100))
+                        echo "${'$'}target" > /sys/devices/system/cpu/cpu${'$'}i/cpufreq/scaling_max_freq 2>/dev/null
+                    fi
+                done
+            """.trimIndent()
+        }
         ShellUtils.fastCmd(script)
     }
 

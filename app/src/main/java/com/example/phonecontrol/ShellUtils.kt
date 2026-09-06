@@ -23,9 +23,9 @@ object ShellUtils {
     /**
      * Executes a fast root command and returns output string.
      */
-    fun fastCmdResult(command: String): String {
+    fun fastCmdResult(command: String, timeoutMs: Long = 3000): String {
         return try {
-            runAsRoot(command, 1000).output
+            runAsRoot(command, timeoutMs).output
         } catch (e: Exception) { "" }
     }
 

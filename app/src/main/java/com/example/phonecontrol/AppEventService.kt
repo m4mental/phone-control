@@ -82,8 +82,14 @@ class AppEventService : AccessibilityService() {
                                      clsName.contains("Camera", ignoreCase = true) ||
                                      clsName.contains("Video", ignoreCase = true)
 
+        // Instant session registration: Protect app from freeze & unfreeze immediately
+        val isHomeOrRecents = pkgName.contains("launcher", ignoreCase = true) || clsName.contains("Recents", ignoreCase = true)
+        if (!isHomeOrRecents && pkgName != packageName) {
+            FreezerManager.registerAppOpen(pkgName)
+        }
+
         // When returning to launcher / home screen, trigger instant recents check
-        if (pkgName.contains("launcher", ignoreCase = true) || clsName.contains("Recents", ignoreCase = true)) {
+        if (isHomeOrRecents) {
             dispatchRecentsCheck()
         }
 
