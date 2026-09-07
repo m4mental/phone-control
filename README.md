@@ -196,9 +196,27 @@ Maintains clean, uncluttered application lifecycles:
   * **Special Freeze (`am force-stop` + `pm suspend`):** Suspends the entire package so Android OS grays out the icon and completely rejects waking intents or broadcasts.
   * **Auto-Suspend on Recents Dismissal:** Apps dismissed from Recents auto-suspend in the background and dynamically update their launcher widget icons.
   * **Smart Equalizer Audio Guard & Rich Target Picker:** Keeps external audio equalizers (e.g., Poweramp Equalizer, ViPER4Android, Wavelet) responsive with 0ms instant unfreeze when music plays and 15s auto-sleep on pause. Features a searchable app picker with app icons, application names, and package IDs.
-* 📥 **Universal Package Installer (Auto-Recovery):**
-  * Built-in silent package installer with a 60-second watchdog timer for large APKs.
-  * Automatic `INSTALL_FAILED_UPDATE_INCOMPATIBLE` signature conflict recovery: automatically uninstalls the old build and retries a clean install seamlessly.
+* 📥 **Universal System Default Package Installer & Deep Auditor:**
+  * **System-Wide "Open With" / Default Installer:** Registers global intent filters for `VIEW` and `INSTALL_PACKAGE` handling `.apk`, `.xapk`, `.apks`, and `.apkm` files from any third-party app (Chrome, WhatsApp, Telegram, Google Files, Solid Explorer). Users can set Phone Control as their permanent system package installer ("Always").
+  * **Translucent Floating Window (`Theme.PhoneControl.Transparent`):** Slides a sleek, dark glass bottom sheet over whatever app you are currently browsing, without disturbing your task context or launching a full-screen window.
+  * **Deep Pre-Install Inspection & Sub-Package Discovery:**
+    * Extracts app icon, app label, and primary package ID.
+    * Detects and displays `sharedUserId` and bundled split modules (e.g. `base`, `config.arm64_v8a`, `config.xxhdpi`).
+  * **Dual Version Comparison:**
+    * Side-by-side display of currently installed version (Name + Build code) vs incoming new version (Name + Build code).
+    * Color-coded status badges: 🟢 `App Upgrade`, 🔵 `Re-install / Same Version`, 🔴 `Version Downgrade`, and ✨ `Fresh App Installation`.
+  * **Full 3-SDK Compatibility Span:**
+    * **MIN SDK:** Displays minimum required Android version (e.g. `API 32 (Android 12L)`).
+    * **TARGET SDK:** Displays targeted platform level (e.g. `API 36 (Android 16)`).
+    * **MAX SDK:** Extracted directly from binary `AndroidManifest.xml` (`<uses-sdk android:maxSdkVersion="...">`). If no upper limit is specified by the developer, it prominently highlights **`No Limit (All Versions)`** in vibrant green (`#00E676`).
+  * **File Specs:** Real-time package size calculation and **Single APK** vs **Split Bundle** classification.
+  * **Clean DEX Tracker & Privacy Audit:**
+    * Real-time byte inspection of `classes*.dex` streams detecting 14+ ad networks and telemetry SDKs (AdMob, Firebase, Meta Ads, AppsFlyer, Adjust, Unity Ads, AppLovin, ByteDance/Pangle, Vungle, etc.).
+    * Zero-false-positive dictionary architecture (Base64 signature isolation + self-scan bypass).
+    * Audit badges for critical sensitive permissions (Camera, Mic, Location, Storage, Overlay, etc.).
+  * **Stoppage Diagnostics & Safe Force Install:**
+    * When Android blocks an installation, an interactive diagnostic sheet explains the root cause in plain language (Signature mismatch conflict, version downgrade protection, deprecated target SDK).
+    * **Zero Data Loss Guarantee:** Archives `/data/data/<pkg>` with `tar -czf` before force reinstallation, providing a 1-click **Restore Data** button upon completion.
 * 🗑️ **Root Bloatware Debloater:**
   * Safely disables or uninstalls carrier bloatware and unnecessary pre-installed OEM system packages.
 * 🔐 **App & Data Backup Vault:**

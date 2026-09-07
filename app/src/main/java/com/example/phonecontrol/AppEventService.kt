@@ -73,10 +73,10 @@ class AppEventService : AccessibilityService() {
         // 2. Instant Recents Task Dismissal / Task Clear Detection
         if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED ||
             eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
-            val isRecentsProvider = pkgName == "com.android.systemui" ||
-                                    pkgName.contains("launcher", ignoreCase = true) ||
+            val isRecentsProvider = pkgName.contains("launcher", ignoreCase = true) ||
                                     clsName.contains("Recents", ignoreCase = true) ||
-                                    clsName.contains("Overview", ignoreCase = true)
+                                    clsName.contains("Overview", ignoreCase = true) ||
+                                    clsName.contains("Quickstep", ignoreCase = true)
             if (isRecentsProvider) {
                 dispatchRecentsCheck()
             }
@@ -100,9 +100,9 @@ class AppEventService : AccessibilityService() {
 
         // Ignore system overlays, keyboards, volume sliders, and transient dialogs
         if (ignoredSystemPackages.contains(pkgName)) {
-            val isRecentsProvider = pkgName == "com.android.systemui" ||
-                                    clsName.contains("Recents", ignoreCase = true) ||
-                                    clsName.contains("Overview", ignoreCase = true)
+            val isRecentsProvider = clsName.contains("Recents", ignoreCase = true) ||
+                                    clsName.contains("Overview", ignoreCase = true) ||
+                                    clsName.contains("Quickstep", ignoreCase = true)
             if (isRecentsProvider) {
                 dispatchRecentsCheck()
             }

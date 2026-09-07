@@ -46,7 +46,7 @@ class AdbShellActivity : AppCompatActivity() {
 
     private val packagePickerLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) {
-            handlePackageInstallation(uri)
+            handlePackageSelection(uri)
         }
     }
 
@@ -114,7 +114,145 @@ class AdbShellActivity : AppCompatActivity() {
         ))
     }
 
-    private fun handlePackageInstallation(uri: Uri, forceReinstall: Boolean = false) {
+    private fun handlePackageSelection(uri: Uri) {
+        var fileName = "package.apk"
+        try {
+            contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (nameIndex != -1 && cursor.moveToFirst()) {
+                    fileName = cursor.getString(nameIndex)
+                }
+            }
+        } catch (e: Exception) {}
+
+        appendColoredText("\n🔍 Inspecting package bundle: $fileName...\n", Color.parseColor("#00E5FF"))
+        scrollOutput.post { scrollOutput.fullScroll(NestedScrollView.FOCUS_DOWN) }
+
+        thread {
+            val inspection = PackageInstallerManager.inspectApk(this, uri, fileName)
+            runOnUiThread {
+                if (inspection != null) {
+                    showPreInstallInspectionDialog(uri, fileName, inspection)
+                } else {
+                    handlePackageInstallation(uri, forceReinstall = false)
+                }
+            }
+        }
+    }
+
+    private fun showPreInstallInspectionDialog(
+        uri: Uri,
+        fileName: String,
+        inspection: PackageInstallerManager.ApkInspection
+    ) {
+        val dialogView = layoutInflater.inflate(R.layout.layout_dialog_install_sheet, null)
+        val dialog = BottomSheetDialog(this)
+        dialog.setContentView(dialogView)
+
+        val ivIcon = dialogView.findViewById<ImageView>(R.id.ivInspectIcon)
+        val tvAppName = dialogView.findViewById<TextView>(R.id.tvInspectAppName)
+        val tvPkg = dialogView.findViewById<TextView>(R.id.tvInspectPkgName)
+        val tvSharedUid = dialogView.findViewById<TextView>(R.id.tvInspectSharedUid)
+        val layoutSplits = dialogView.findViewById<View>(R.id.layoutInspectSplits)
+        val tvSplits = dialogView.findViewById<TextView>(R.id.tvInspectSplits)
+        val tvInstallType = dialogView.findViewById<TextView>(R.id.tvInspectInstallType)
+        val tvInstalledVer = dialogView.findViewById<TextView>(R.id.tvInspectInstalledVersion)
+        val tvIncomingVer = dialogView.findViewById<TextView>(R.id.tvInspectIncomingVersion)
+        val tvSize = dialogView.findViewById<TextView>(R.id.tvInspectSize)
+        val tvTargetSdk = dialogView.findViewById<TextView>(R.id.tvInspectTargetSdk)
+        val tvMinSdk = dialogView.findViewById<TextView>(R.id.tvInspectMinSdk)
+        val tvMaxSdk = dialogView.findViewById<TextView>(R.id.tvInspectMaxSdk)
+        val tvPackageType = dialogView.findViewById<TextView>(R.id.tvInspectPackageType)
+        val tvTrackers = dialogView.findViewById<TextView>(R.id.tvInspectTrackers)
+        val tvPermissions = dialogView.findViewById<TextView>(R.id.tvInspectPermissions)
+        val btnCancel = dialogView.findViewById<Button>(R.id.btnInspectCancel)
+        val btnInstall = dialogView.findViewById<Button>(R.id.btnInspectInstall)
+
+        tvAppName.text = inspection.appName
+        tvPkg.text = inspection.packageName
+        if (inspection.icon != null) {
+            ivIcon.setImageDrawable(inspection.icon)
+        }
+
+        // Shared User ID
+        if (!inspection.sharedUserId.isNullOrBlank()) {
+            tvSharedUid.visibility = View.VISIBLE
+            tvSharedUid.text = "Shared UID: ${inspection.sharedUserId}"
+        } else {
+            tvSharedUid.visibility = View.GONE
+        }
+
+        // Splits / Sub-Packages
+        if (inspection.splitNames.isNotEmpty()) {
+            layoutSplits.visibility = View.VISIBLE
+            tvSplits.text = inspection.splitNames.joinToString(", ")
+        } else {
+            layoutSplits.visibility = View.GONE
+        }
+
+        // Dual Version Comparison
+        tvIncomingVer.text = "v${inspection.incomingVersionName} (Build ${inspection.incomingVersionCode})"
+        if (inspection.isInstalled) {
+            tvInstalledVer.text = "v${inspection.installedVersionName ?: "?"} (Build ${inspection.installedVersionCode ?: 0})"
+            if (inspection.isDowngrade) {
+                tvInstallType.text = "🔴 Version Downgrade (Older than installed build)"
+                tvInstallType.setTextColor(Color.parseColor("#FF5252"))
+            } else if (inspection.isSameVersion) {
+                tvInstallType.text = "🔵 Re-install / Same Version Already Installed"
+                tvInstallType.setTextColor(Color.parseColor("#00B0FF"))
+            } else {
+                tvInstallType.text = "🟢 App Upgrade: v${inspection.installedVersionName} ➔ v${inspection.incomingVersionName}"
+                tvInstallType.setTextColor(Color.parseColor("#00E676"))
+            }
+        } else {
+            tvInstalledVer.text = "Not Installed"
+            tvInstallType.text = "✨ Fresh App Installation"
+            tvInstallType.setTextColor(Color.parseColor("#00E676"))
+        }
+
+        tvSize.text = inspection.fileSizeFormatted
+        tvPackageType?.text = inspection.packageTypeLabel
+        tvTargetSdk.text = inspection.targetSdkLabel
+        tvMinSdk.text = inspection.minSdkLabel
+        tvMaxSdk?.text = inspection.maxSdkLabel
+        if (inspection.maxSdk == null) {
+            tvMaxSdk?.setTextColor(Color.parseColor("#00E676"))
+        } else {
+            tvMaxSdk?.setTextColor(Color.parseColor("#FFD54F"))
+        }
+
+        if (inspection.trackers.isEmpty()) {
+            tvTrackers.text = "✅ Clean: No known ad/tracking SDKs detected."
+            tvTrackers.setTextColor(Color.parseColor("#00E676"))
+        } else {
+            tvTrackers.text = "⚠️ Detected SDKs (${inspection.trackers.size}):\n• " + inspection.trackers.joinToString("\n• ")
+            tvTrackers.setTextColor(Color.parseColor("#FFAB00"))
+        }
+
+        if (inspection.sensitivePermissions.isEmpty()) {
+            tvPermissions.text = "✅ No critical sensitive permissions requested."
+            tvPermissions.setTextColor(Color.parseColor("#00E676"))
+        } else {
+            tvPermissions.text = inspection.sensitivePermissions.joinToString(", ")
+            tvPermissions.setTextColor(Color.parseColor("#E0E0E0"))
+        }
+
+        btnCancel.setOnClickListener {
+            dialog.dismiss()
+            appendColoredText("🚫 Installation cancelled by user: ${inspection.appName}\n", Color.parseColor("#888888"))
+            appendColoredText("root@phonecontrol:~# ", Color.parseColor("#00E676"))
+            scrollOutput.post { scrollOutput.fullScroll(NestedScrollView.FOCUS_DOWN) }
+        }
+
+        btnInstall.setOnClickListener {
+            dialog.dismiss()
+            handlePackageInstallation(uri, forceReinstall = false, inspection = inspection)
+        }
+
+        dialog.show()
+    }
+
+    private fun handlePackageInstallation(uri: Uri, forceReinstall: Boolean = false, inspection: PackageInstallerManager.ApkInspection? = null) {
         var fileName = "package.apk"
         try {
             contentResolver.query(uri, null, null, null, null)?.use { cursor ->
@@ -144,20 +282,15 @@ class AdbShellActivity : AppCompatActivity() {
                         appendColoredText(result.rawOutput + "\n", Color.LTGRAY)
                     }
                     Toast.makeText(this, "Success: $fileName installed!", Toast.LENGTH_LONG).show()
+                    showPostInstallDialog(result.installedPackage, result.backupPath, fileName)
                 } else {
                     appendColoredText("❌ ${result.message}\n", Color.parseColor("#FF5252"))
                     if (result.rawOutput.isNotBlank()) {
                         appendColoredText(result.rawOutput + "\n", Color.LTGRAY)
                     }
-                    Toast.makeText(this, "Install Failed: ${result.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, "Install Failed: ${result.failureTitle ?: result.message}", Toast.LENGTH_LONG).show()
 
-                    if (result.isSignatureConflict && result.isDowngradeConflict) {
-                        showCombinedConflictDialog(uri, fileName, result.conflictPackage)
-                    } else if (result.isSignatureConflict) {
-                        showSignatureConflictDialog(uri, fileName, result.conflictPackage)
-                    } else if (result.isDowngradeConflict) {
-                        showDowngradeDialog(uri, fileName, result.conflictPackage)
-                    }
+                    showConflictForceDialog(uri, fileName, inspection, result)
                 }
 
                 appendColoredText("root@phonecontrol:~# ", Color.parseColor("#00E676"))
@@ -166,56 +299,160 @@ class AdbShellActivity : AppCompatActivity() {
         }
     }
 
-    private fun showCombinedConflictDialog(uri: Uri, fileName: String, conflictPackage: String?) {
-        val targetApp = conflictPackage ?: "the existing app"
-        AlertDialog.Builder(this)
-            .setTitle("⚠️ Signature & Downgrade Conflict")
-            .setMessage("The package '$fileName' has BOTH a conflicting signature AND is an older version than currently installed '$targetApp'.\n\nTo install this version, the existing app must be completely UNINSTALLED first, which will ERASE its local app data.\n\nDo you want to proceed and clean install?")
-            .setPositiveButton("Proceed & Clean Install") { _, _ ->
-                appendColoredText("\n⚠️ User confirmed force clean reinstall for $targetApp...\n", Color.parseColor("#FFAB00"))
-                handlePackageInstallation(uri, forceReinstall = true)
-            }
-            .setNegativeButton("Cancel") { dialog, _ ->
-                appendColoredText("\n🚫 Installation cancelled by user. Existing app preserved.\n", Color.parseColor("#FF5252"))
-                dialog.dismiss()
-            }
-            .setCancelable(true)
-            .show()
+    private fun showConflictForceDialog(
+        uri: Uri,
+        fileName: String,
+        inspection: PackageInstallerManager.ApkInspection?,
+        result: PackageInstallerManager.InstallResult
+    ) {
+        val dialogView = layoutInflater.inflate(R.layout.layout_dialog_conflict_force, null)
+        val dialog = BottomSheetDialog(this)
+        dialog.setContentView(dialogView)
+
+        val tvHeaderTitle = dialogView.findViewById<TextView>(R.id.tvConflictHeaderTitle)
+        val tvReasonTitle = dialogView.findViewById<TextView>(R.id.tvConflictReasonTitle)
+        val tvReasonExplanation = dialogView.findViewById<TextView>(R.id.tvConflictReasonExplanation)
+        val tvAppInfo = dialogView.findViewById<TextView>(R.id.tvConflictAppInfo)
+        val btnCancel = dialogView.findViewById<Button>(R.id.btnConflictCancel)
+        val btnProceed = dialogView.findViewById<Button>(R.id.btnConflictProceed)
+
+        tvHeaderTitle.text = result.failureTitle ?: "Installation Stoppage Detected"
+        tvReasonTitle.text = result.failureTitle ?: "Conflict Occurred"
+        tvReasonExplanation.text = result.failureExplanation ?: result.message
+
+        if (inspection != null) {
+            val oldVer = inspection.installedVersionName?.let { "v$it (Build ${inspection.installedVersionCode ?: 0})" } ?: "None"
+            val newVer = "v${inspection.incomingVersionName} (Build ${inspection.incomingVersionCode})"
+            tvAppInfo.text = "Installed: $oldVer  ➔  Incoming: $newVer"
+        } else {
+            tvAppInfo.text = "Target: $fileName"
+        }
+
+        btnCancel.setOnClickListener {
+            dialog.dismiss()
+            appendColoredText("\n🚫 Force installation cancelled by user. Existing app preserved.\n", Color.parseColor("#FF5252"))
+        }
+
+        btnProceed.setOnClickListener {
+            dialog.dismiss()
+            appendColoredText("\n⚡ User confirmed safe force installation with auto-backup...\n", Color.parseColor("#FFAB00"))
+            handlePackageInstallation(uri, forceReinstall = true, inspection = inspection)
+        }
+
+        dialog.show()
     }
 
-    private fun showSignatureConflictDialog(uri: Uri, fileName: String, conflictPackage: String?) {
-        val targetApp = conflictPackage ?: "the existing app"
-        AlertDialog.Builder(this)
-            .setTitle("⚠️ Signature Conflict Detected")
-            .setMessage("The package '$fileName' matches installed app '$targetApp', but has a conflicting signature (e.g. Debug vs Release or different signature keys).\n\nTo install this new version, the existing app must be UNINSTALLED first, which will ERASE its local app data.\n\nDo you want to proceed?")
-            .setPositiveButton("Proceed & Reinstall") { _, _ ->
-                appendColoredText("\n⚠️ User confirmed force reinstall for $targetApp...\n", Color.parseColor("#FFAB00"))
-                handlePackageInstallation(uri, forceReinstall = true)
+    private fun showPostInstallDialog(
+        packageName: String?,
+        backupPath: String?,
+        fileName: String
+    ) {
+        val dialogView = layoutInflater.inflate(R.layout.layout_dialog_post_install, null)
+        val dialog = BottomSheetDialog(this)
+        dialog.setContentView(dialogView)
+
+        val ivIcon = dialogView.findViewById<ImageView>(R.id.ivPostIcon)
+        val tvAppName = dialogView.findViewById<TextView>(R.id.tvPostAppName)
+        val tvPkg = dialogView.findViewById<TextView>(R.id.tvPostPkgName)
+        val tvVersion = dialogView.findViewById<TextView>(R.id.tvPostVersion)
+        val layoutBackup = dialogView.findViewById<View>(R.id.layoutPostBackupNotice)
+        val tvBackupNotice = dialogView.findViewById<TextView>(R.id.tvPostBackupNotice)
+        val btnRestore = dialogView.findViewById<Button>(R.id.btnPostRestoreData)
+        val btnOpen = dialogView.findViewById<Button>(R.id.btnPostOpen)
+        val btnFreeze = dialogView.findViewById<Button>(R.id.btnPostFreeze)
+        val btnAppInfo = dialogView.findViewById<Button>(R.id.btnPostAppInfo)
+        val btnDone = dialogView.findViewById<Button>(R.id.btnPostDone)
+
+        val pkg = packageName ?: ""
+        tvPkg.text = if (pkg.isNotBlank()) pkg else fileName
+
+        if (pkg.isNotBlank()) {
+            try {
+                val appInfo = packageManager.getApplicationInfo(pkg, 0)
+                val label = packageManager.getApplicationLabel(appInfo).toString()
+                val icon = packageManager.getApplicationIcon(appInfo)
+                val pkgInfo = packageManager.getPackageInfo(pkg, 0)
+                tvAppName.text = label
+                ivIcon.setImageDrawable(icon)
+                tvVersion.text = "v${pkgInfo.versionName ?: "1.0"}"
+            } catch (e: Exception) {
+                tvAppName.text = fileName.substringBeforeLast(".")
+                tvVersion.text = "Installed"
             }
-            .setNegativeButton("Cancel") { dialog, _ ->
-                appendColoredText("\n🚫 Installation cancelled by user. Existing app data preserved.\n", Color.parseColor("#FF5252"))
-                dialog.dismiss()
+        } else {
+            tvAppName.text = fileName.substringBeforeLast(".")
+            tvVersion.text = "Installed"
+        }
+
+        if (!backupPath.isNullOrBlank()) {
+            layoutBackup.visibility = View.VISIBLE
+            tvBackupNotice.text = "App data was safeguarded to:\n$backupPath\nTap below to restore your accounts, databases, and preferences in 1-click."
+            btnRestore.visibility = View.VISIBLE
+            btnRestore.setOnClickListener {
+                btnRestore.isEnabled = false
+                btnRestore.text = "Restoring data..."
+                Toast.makeText(this, "Restoring data for $pkg...", Toast.LENGTH_SHORT).show()
+                thread {
+                    val restored = PackageInstallerManager.restoreAppData(this, pkg, backupPath)
+                    runOnUiThread {
+                        if (restored) {
+                            Toast.makeText(this, "✅ App data restored successfully!", Toast.LENGTH_LONG).show()
+                            btnRestore.text = "✅ Data Restored"
+                            btnRestore.setBackgroundColor(Color.parseColor("#388E3C"))
+                            layoutBackup.visibility = View.GONE
+                        } else {
+                            Toast.makeText(this, "❌ Data restoration failed", Toast.LENGTH_LONG).show()
+                            btnRestore.isEnabled = true
+                            btnRestore.text = "🔄 Retry Data Restore"
+                        }
+                    }
+                }
             }
-            .setCancelable(true)
-            .show()
+        } else {
+            layoutBackup.visibility = View.GONE
+            btnRestore.visibility = View.GONE
+        }
+
+        btnOpen.setOnClickListener {
+            dialog.dismiss()
+            if (pkg.isNotBlank()) {
+                val launchIntent = packageManager.getLaunchIntentForPackage(pkg)
+                if (launchIntent != null) {
+                    startActivity(launchIntent)
+                } else {
+                    FreezerManager.unfreezeApp(pkg)
+                    Toast.makeText(this, "Launching $pkg...", Toast.LENGTH_SHORT).show()
+                    ShellUtils.runAsRoot("monkey -p $pkg -c android.intent.category.LAUNCHER 1")
+                }
+            }
+        }
+
+        btnFreeze.setOnClickListener {
+            dialog.dismiss()
+            if (pkg.isNotBlank()) {
+                FreezerManager.addAppToFreezer(this, pkg)
+                Toast.makeText(this, "❄️ $pkg added to Freezer and hibernated!", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        btnAppInfo.setOnClickListener {
+            dialog.dismiss()
+            if (pkg.isNotBlank()) {
+                val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.parse("package:$pkg")
+                }
+                startActivity(intent)
+            }
+        }
+
+        btnDone.setOnClickListener {
+            dialog.dismiss()
+        }
+
+        dialog.show()
     }
 
-    private fun showDowngradeDialog(uri: Uri, fileName: String, conflictPackage: String?) {
-        val targetApp = conflictPackage ?: "the existing app"
-        AlertDialog.Builder(this)
-            .setTitle("⚠️ App Downgrade Detected")
-            .setMessage("The package '$fileName' is an OLDER version than what is currently installed on your device ('$targetApp').\n\nAndroid blocks version downgrades without erasing app data. To proceed with this older version, the newer version must be UNINSTALLED first, which will permanently ERASE its local app data and cache.\n\nDo you want to proceed and downgrade?")
-            .setPositiveButton("Proceed & Downgrade") { _, _ ->
-                appendColoredText("\n⚠️ User confirmed downgrade for $targetApp...\n", Color.parseColor("#FFAB00"))
-                handlePackageInstallation(uri, forceReinstall = true)
-            }
-            .setNegativeButton("Cancel") { dialog, _ ->
-                appendColoredText("\n🚫 Downgrade cancelled by user. Newer version preserved.\n", Color.parseColor("#FF5252"))
-                dialog.dismiss()
-            }
-            .setCancelable(true)
-            .show()
-    }
+
 
     private fun setupHackerBar() {
         findViewById<Button>(R.id.btnKeyHistoryUp).setOnClickListener {

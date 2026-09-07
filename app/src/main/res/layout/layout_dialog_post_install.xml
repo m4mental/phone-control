@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="#121214"
+    android:padding="20dp">
+
+    <!-- Success Header -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="#162E20"
+        android:padding="12dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="✅"
+            android:textSize="20sp" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Installation Successful"
+                android:textColor="#00E676"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="App installed cleanly via root session"
+                android:textColor="#A5D6A7"
+                android:textSize="11sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- App Info Card -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginTop="16dp"
+        android:background="#1A1A20"
+        android:padding="14dp">
+
+        <ImageView
+            android:id="@+id/ivPostIcon"
+            android:layout_width="50dp"
+            android:layout_height="50dp"
+            android:src="@mipmap/ic_launcher"
+            android:contentDescription="App Icon" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="14dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tvPostAppName"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Application Name"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvPostPkgName"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="com.example.package"
+                android:textColor="#888888"
+                android:textSize="12sp"
+                android:layout_marginTop="2dp" />
+
+            <TextView
+                android:id="@+id/tvPostVersion"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="v1.0.0"
+                android:textColor="#00E5FF"
+                android:textSize="12sp"
+                android:layout_marginTop="2dp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Auto-Backup Banner (Shown if backup was made during conflict reinstall) -->
+    <LinearLayout
+        android:id="@+id/layoutPostBackupNotice"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:background="#261E05"
+        android:padding="12dp"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🛡️ Data Safeguarded"
+            android:textColor="#FFD54F"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvPostBackupNotice"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:text="App data was backed up prior to reinstallation. You can restore it now."
+            android:textColor="#FFF9C4"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <!-- Quick Actions Section -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="ACTIONS"
+        android:textColor="#666666"
+        android:textSize="11sp"
+        android:textStyle="bold"
+        android:layout_marginTop="16dp"
+        android:layout_marginBottom="8dp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <!-- Launch App -->
+        <Button
+            android:id="@+id/btnPostOpen"
+            android:layout_width="match_parent"
+            android:layout_height="46dp"
+            android:text="🚀 Launch App"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold"
+            android:backgroundTint="#00E676"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Freeze Now -->
+        <Button
+            android:id="@+id/btnPostFreeze"
+            android:layout_width="match_parent"
+            android:layout_height="46dp"
+            android:text="❄️ Add to Freezer &amp; Freeze Now"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#00B0FF"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Restore Previous Data (Visible when backupPath exists) -->
+        <Button
+            android:id="@+id/btnPostRestoreData"
+            android:layout_width="match_parent"
+            android:layout_height="46dp"
+            android:text="🔄 Restore App Data from Backup"
+            android:textColor="#000000"
+            android:textStyle="bold"
+            android:backgroundTint="#FFD600"
+            android:layout_marginBottom="8dp"
+            android:visibility="gone" />
+
+        <!-- App Info -->
+        <Button
+            android:id="@+id/btnPostAppInfo"
+            android:layout_width="match_parent"
+            android:layout_height="46dp"
+            android:text="⚙️ App Info / Settings"
+            android:textColor="#CCCCCC"
+            android:backgroundTint="#24242C"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Done / Dismiss -->
+        <Button
+            android:id="@+id/btnPostDone"
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:text="Done"
+            android:textColor="#888888"
+            android:backgroundTint="#18181E" />
+    </LinearLayout>
+
+</LinearLayout>
