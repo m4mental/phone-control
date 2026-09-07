@@ -69,8 +69,7 @@ class AppFreezerListActivity : AppCompatActivity() {
         pm = packageManager
         findViewById<MaterialToolbar>(R.id.toolbarAppFreezerList).setNavigationOnClickListener { finish() }
 
-        val prefs = getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE)
-        autoFreezeEnabled = prefs.getBoolean("auto_freeze_enabled", false)
+        autoFreezeEnabled = FreezerManager.isAutoFreezeEnabled(this)
 
         rvFrozenAppsList = findViewById(R.id.rvFrozenAppsList)
         rvFrozenAppsList.layoutManager = LinearLayoutManager(this)
@@ -92,6 +91,7 @@ class AppFreezerListActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        autoFreezeEnabled = FreezerManager.isAutoFreezeEnabled(this)
         setupEqualizerGuardUI()
         refreshList()
     }
@@ -649,9 +649,8 @@ class AppFreezerListActivity : AppCompatActivity() {
             switchAuto.isChecked = autoFreezeEnabled
             switchAuto.setOnCheckedChangeListener { _, isChecked ->
                 autoFreezeEnabled = isChecked
-                getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE)
-                    .edit().putBoolean("auto_freeze_enabled", isChecked).apply()
-                Toast.makeText(this@AppFreezerListActivity, if (isChecked) "Auto-Freeze on screen off enabled" else "Auto-Freeze disabled", Toast.LENGTH_SHORT).show()
+                FreezerManager.setAutoFreezeEnabled(this@AppFreezerListActivity, isChecked)
+                Toast.makeText(this@AppFreezerListActivity, if (isChecked) "Auto-Freeze on exit & recents swipe enabled" else "Auto-Freeze disabled", Toast.LENGTH_SHORT).show()
             }
 
             btnFreezeAll.setOnClickListener { freezeAll() }

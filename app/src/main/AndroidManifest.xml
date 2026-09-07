@@ -279,7 +279,7 @@
         </service>
 
         <!-- Standard Freezer Widget (All Frozen Apps) -->
-        <receiver android:name=".FreezerWidgetProvider" android:exported="false">
+        <receiver android:name=".FreezerWidgetProvider" android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="com.example.phonecontrol.ACTION_LAUNCH_APP" />
@@ -292,7 +292,7 @@
             android:exported="false" />
 
         <!-- Special Freezer Widget (Custom Choice Special Freeze Apps Only) -->
-        <receiver android:name=".SpecialFreezerWidgetProvider" android:exported="false">
+        <receiver android:name=".SpecialFreezerWidgetProvider" android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="com.example.phonecontrol.ACTION_LAUNCH_SPECIAL_APP" />

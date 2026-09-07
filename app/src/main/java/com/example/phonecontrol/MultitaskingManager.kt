@@ -72,24 +72,27 @@ object MultitaskingManager {
             .edit().putStringSet("user_whitelist", current).apply()
 
         thread {
-            ShellUtils.runAsRoot("dumpsys deviceidle whitelist -$packageName 2>/dev/null")
-            ShellUtils.runAsRoot("dumpsys deviceidle except-idle-whitelist -$packageName 2>/dev/null")
+            ShellUtils.fastCmd("dumpsys deviceidle whitelist -$packageName 2>/dev/null; dumpsys deviceidle except-idle-whitelist -$packageName 2>/dev/null")
         }
     }
 
     /**
      * Applies full 7-point kernel and system exemption for an app.
+     * Batched via fastBatchCmd to eliminate timeouts and prevent shell locks.
      */
     fun grantFullExemption(packageName: String) {
         thread {
-            ShellUtils.runAsRoot("dumpsys deviceidle whitelist +$packageName 2>/dev/null")
-            ShellUtils.runAsRoot("dumpsys deviceidle except-idle-whitelist +$packageName 2>/dev/null")
-            ShellUtils.runAsRoot("cmd appops set $packageName RUN_IN_BACKGROUND allow 2>/dev/null")
-            ShellUtils.runAsRoot("cmd appops set $packageName RUN_ANY_IN_BACKGROUND allow 2>/dev/null")
-            ShellUtils.runAsRoot("cmd appops set $packageName WAKE_LOCK allow 2>/dev/null")
-            ShellUtils.runAsRoot("cmd appops set $packageName SYSTEM_ALERT_WINDOW allow 2>/dev/null")
-            ShellUtils.runAsRoot("am set-standby-bucket $packageName active 2>/dev/null")
-            ShellUtils.runAsRoot("cmd activity set-inactive $packageName false 2>/dev/null")
+            val batchCommands = listOf(
+                "dumpsys deviceidle whitelist +$packageName 2>/dev/null",
+                "dumpsys deviceidle except-idle-whitelist +$packageName 2>/dev/null",
+                "cmd appops set $packageName RUN_IN_BACKGROUND allow 2>/dev/null",
+                "cmd appops set $packageName RUN_ANY_IN_BACKGROUND allow 2>/dev/null",
+                "cmd appops set $packageName WAKE_LOCK allow 2>/dev/null",
+                "cmd appops set $packageName SYSTEM_ALERT_WINDOW allow 2>/dev/null",
+                "am set-standby-bucket $packageName active 2>/dev/null",
+                "cmd activity set-inactive $packageName false 2>/dev/null"
+            )
+            ShellUtils.fastBatchCmd(batchCommands)
         }
     }
 }

@@ -28,6 +28,7 @@ class BootReceiver : BroadcastReceiver() {
                 // 1. Post-Boot Fast Startup Turbo Boost (90 Seconds / 1.5 Minutes)
                 // Unleash Little (2.0GHz) & Big (2.8GHz) Cores so Android startup tasks, DexOpt, and launcher widgets finish instantly
                 Log.d("BootReceiver", "Post-Boot Turbo Boost active for 90 seconds...")
+                TweakManager.isPostBootTurboActive = true
                 TweakManager.applyGlobalMode("Performance")
                 prefs.edit().putString("active_ai_label", "AI: Post-Boot Turbo").apply()
 
@@ -130,6 +131,7 @@ class BootReceiver : BroadcastReceiver() {
                 try {
                     Thread.sleep(90000)
                     Log.d("BootReceiver", "Post-Boot 90s completed. Transitioning to saved user mode...")
+                    TweakManager.isPostBootTurboActive = false
                     val savedModeKey = prefs.getString("selected_mode", "rbAutomatic") ?: "rbAutomatic"
                     if (savedModeKey == "rbAutomatic") {
                         val intentAi = Intent(context, AutoTweakService::class.java).apply {

@@ -9,16 +9,25 @@ import java.util.zip.ZipInputStream
 
 object PackageInstallerManager {
 
-    data class InstallResult(val success: Boolean, val message: String, val rawOutput: String)
+    data class InstallResult(
+        val success: Boolean,
+        val message: String,
+        val rawOutput: String,
+        val isSignatureConflict: Boolean = false,
+        val isDowngradeConflict: Boolean = false,
+        val conflictPackage: String? = null
+    )
 
     /**
      * Universal Root Force Package & Bundle Installer.
      * Supports: .apk, .apks, .apkm, .xapk, .aab, and split .zip bundles.
+     * When forceReinstall = true, uninstalls conflicting old signature build upon user confirmation.
      */
     fun installPackage(
         context: Context,
         uri: Uri,
         fileName: String,
+        forceReinstall: Boolean = false,
         onProgress: (String) -> Unit
     ): InstallResult {
         val stagingDir = File("/data/local/tmp/pc_install_staging")
@@ -39,11 +48,33 @@ object PackageInstallerManager {
             onProgress("📦 Staging package in root partition...")
             ShellUtils.runAsRoot("cp '${tempInput.absolutePath}' '${stagedInput.absolutePath}' && chmod 777 '${stagedInput.absolutePath}'", 30000)
 
-            // Extract package name for signature conflict auto-recovery
+            // Extract package name and version info for conflict auto-recovery
             val parsedPkgInfo = try {
                 context.packageManager.getPackageArchiveInfo(tempInput.absolutePath, 0)
             } catch (e: Exception) { null }
             val detectedPkg = parsedPkgInfo?.packageName
+
+            val installedPkgInfo = if (!detectedPkg.isNullOrBlank()) {
+                try {
+                    context.packageManager.getPackageInfo(detectedPkg, 0)
+                } catch (e: Exception) { null }
+            } else null
+
+            val isVersionLower = if (parsedPkgInfo != null && installedPkgInfo != null) {
+                val incomingCode = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                    parsedPkgInfo.longVersionCode
+                } else {
+                    @Suppress("DEPRECATION")
+                    parsedPkgInfo.versionCode.toLong()
+                }
+                val currentCode = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                    installedPkgInfo.longVersionCode
+                } else {
+                    @Suppress("DEPRECATION")
+                    installedPkgInfo.versionCode.toLong()
+                }
+                incomingCode < currentCode
+            } else false
 
             tempInput.delete()
 
@@ -53,14 +84,34 @@ object PackageInstallerManager {
                 val cmd = "pm install -r -d --bypass-low-target-sdk-block '${stagedInput.absolutePath}'"
                 var result = ShellUtils.runAsRoot(cmd, 60000)
 
-                // Signature Conflict Auto-Recovery
-                if (result.output.contains("INSTALL_FAILED_UPDATE_INCOMPATIBLE", ignoreCase = true) ||
-                    result.output.contains("INSTALL_FAILED_SHARED_USER_INCOMPATIBLE", ignoreCase = true)) {
-                    if (!detectedPkg.isNullOrBlank()) {
-                        onProgress("⚠️ Signature conflict detected! Auto-uninstalling previous build ($detectedPkg)...")
+                // Signature Conflict or Version Downgrade Check: Avoid silent data loss unless user confirmed forceReinstall
+                val isSigConflict = result.output.contains("INSTALL_FAILED_UPDATE_INCOMPATIBLE", ignoreCase = true) ||
+                    result.output.contains("INSTALL_FAILED_SHARED_USER_INCOMPATIBLE", ignoreCase = true)
+                val isDowngrade = result.output.contains("INSTALL_FAILED_VERSION_DOWNGRADE", ignoreCase = true) || (isSigConflict && isVersionLower)
+
+                if (isSigConflict || isDowngrade) {
+                    val pkgName = detectedPkg ?: "existing package"
+                    if (forceReinstall && !detectedPkg.isNullOrBlank()) {
+                        val reason = if (isSigConflict && isDowngrade) "signature conflict & downgrade" else if (isDowngrade) "downgrade" else "signature conflict"
+                        onProgress("⚠️ Confirmed: Auto-uninstalling previous build ($detectedPkg) for $reason...")
                         ShellUtils.runAsRoot("pm uninstall $detectedPkg", 30000)
-                        onProgress("🔄 Re-installing package with new signature...")
+                        onProgress("🔄 Cleanly re-installing requested package...")
                         result = ShellUtils.runAsRoot(cmd, 60000)
+                    } else {
+                        return InstallResult(
+                            success = false,
+                            message = if (isSigConflict && isDowngrade) {
+                                "Combined Conflict: $pkgName has a different signature AND is an older version than currently installed."
+                            } else if (isDowngrade) {
+                                "Version Downgrade Blocked: $pkgName is newer on your phone. Downgrading requires uninstalling the newer version."
+                            } else {
+                                "Signature Conflict: $pkgName has a different signature. Installing will erase previous app data."
+                            },
+                            rawOutput = result.output,
+                            isSignatureConflict = isSigConflict,
+                            isDowngradeConflict = isDowngrade,
+                            conflictPackage = detectedPkg
+                        )
                     }
                 }
 
@@ -107,18 +158,37 @@ object PackageInstallerManager {
                 val cmd = "pm install -r -d --bypass-low-target-sdk-block '${apkFiles[0]}'"
                 var result = ShellUtils.runAsRoot(cmd, 60000)
 
-                // Signature Conflict Auto-Recovery
-                if (result.output.contains("INSTALL_FAILED_UPDATE_INCOMPATIBLE", ignoreCase = true) ||
-                    result.output.contains("INSTALL_FAILED_SHARED_USER_INCOMPATIBLE", ignoreCase = true)) {
+                // Signature Conflict or Version Downgrade Check: Avoid silent data loss
+                val isSigConflict = result.output.contains("INSTALL_FAILED_UPDATE_INCOMPATIBLE", ignoreCase = true) ||
+                    result.output.contains("INSTALL_FAILED_SHARED_USER_INCOMPATIBLE", ignoreCase = true)
+                val isDowngrade = result.output.contains("INSTALL_FAILED_VERSION_DOWNGRADE", ignoreCase = true) || (isSigConflict && isVersionLower)
+
+                if (isSigConflict || isDowngrade) {
                     val singlePkg = try {
                         context.packageManager.getPackageArchiveInfo(apkFiles[0], 0)?.packageName
-                    } catch (e: Exception) { detectedPkg }
+                    } catch (e: Exception) { detectedPkg } ?: "existing package"
 
-                    if (!singlePkg.isNullOrBlank()) {
-                        onProgress("⚠️ Signature conflict detected! Auto-uninstalling previous build ($singlePkg)...")
+                    if (forceReinstall && singlePkg != "existing package") {
+                        val reason = if (isSigConflict && isDowngrade) "signature conflict & downgrade" else if (isDowngrade) "downgrade" else "signature conflict"
+                        onProgress("⚠️ Confirmed: Auto-uninstalling previous build ($singlePkg) for $reason...")
                         ShellUtils.runAsRoot("pm uninstall $singlePkg", 30000)
-                        onProgress("🔄 Re-installing package with new signature...")
+                        onProgress("🔄 Cleanly re-installing package...")
                         result = ShellUtils.runAsRoot(cmd, 60000)
+                    } else {
+                        return InstallResult(
+                            success = false,
+                            message = if (isSigConflict && isDowngrade) {
+                                "Combined Conflict: $singlePkg has a different signature AND is an older version than currently installed."
+                            } else if (isDowngrade) {
+                                "Version Downgrade Blocked: $singlePkg is newer on your phone. Downgrading requires uninstalling the newer version."
+                            } else {
+                                "Signature Conflict: $singlePkg has a different signature. Installing will erase previous app data."
+                            },
+                            rawOutput = result.output,
+                            isSignatureConflict = isSigConflict,
+                            isDowngradeConflict = isDowngrade,
+                            conflictPackage = if (singlePkg != "existing package") singlePkg else detectedPkg
+                        )
                     }
                 }
 
@@ -159,15 +229,19 @@ object PackageInstallerManager {
             onProgress("✅ Committing split session [$sessionId]...")
             var commitResult = ShellUtils.runAsRoot("pm install-commit $sessionId", 60000)
 
-            // Handle split signature conflict
-            if (commitResult.output.contains("INSTALL_FAILED_UPDATE_INCOMPATIBLE", ignoreCase = true) ||
-                commitResult.output.contains("INSTALL_FAILED_SHARED_USER_INCOMPATIBLE", ignoreCase = true)) {
+            // Handle split signature conflict or version downgrade
+            val isSplitSigConflict = commitResult.output.contains("INSTALL_FAILED_UPDATE_INCOMPATIBLE", ignoreCase = true) ||
+                commitResult.output.contains("INSTALL_FAILED_SHARED_USER_INCOMPATIBLE", ignoreCase = true)
+            val isSplitDowngrade = commitResult.output.contains("INSTALL_FAILED_VERSION_DOWNGRADE", ignoreCase = true) || (isSplitSigConflict && isVersionLower)
+
+            if (isSplitSigConflict || isSplitDowngrade) {
                 val splitPkg = try {
                     context.packageManager.getPackageArchiveInfo(apkFiles[0], 0)?.packageName
                 } catch (e: Exception) { detectedPkg }
 
-                if (!splitPkg.isNullOrBlank()) {
-                    onProgress("⚠️ Signature conflict in bundle! Auto-uninstalling previous ($splitPkg)...")
+                if (forceReinstall && !splitPkg.isNullOrBlank()) {
+                    val reason = if (isSplitSigConflict && isSplitDowngrade) "signature conflict & downgrade" else if (isSplitDowngrade) "downgrade" else "signature conflict"
+                    onProgress("⚠️ Confirmed: Auto-uninstalling previous build ($splitPkg) for $reason...")
                     ShellUtils.runAsRoot("pm uninstall $splitPkg", 30000)
                     onProgress("🔄 Re-creating session for clean installation...")
                     // Re-run session create and write
@@ -182,6 +256,22 @@ object PackageInstallerManager {
                         }
                         commitResult = ShellUtils.runAsRoot("pm install-commit $retrySessionId", 60000)
                     }
+                } else {
+                    val pkgName = splitPkg ?: "existing package"
+                    return InstallResult(
+                        success = false,
+                        message = if (isSplitSigConflict && isSplitDowngrade) {
+                            "Combined Conflict: $pkgName has a different signature AND is an older version than currently installed."
+                        } else if (isSplitDowngrade) {
+                            "Version Downgrade Blocked: $pkgName is newer on your phone. Downgrading requires uninstalling the newer version."
+                        } else {
+                            "Signature Conflict: $pkgName has a different signature. Installing will erase previous app data."
+                        },
+                        rawOutput = commitResult.output,
+                        isSignatureConflict = isSplitSigConflict,
+                        isDowngradeConflict = isSplitDowngrade,
+                        conflictPackage = splitPkg
+                    )
                 }
             }
 
@@ -220,8 +310,10 @@ object PackageInstallerManager {
             output.contains("INSTALL_FAILED_SHARED_USER_INCOMPATIBLE", ignoreCase = true)) {
             return InstallResult(
                 false,
-                "Signature Conflict: A residual version with a conflicting signature was present. Please tap Force Install again to complete fresh installation.",
-                output
+                "Signature Conflict: A residual version with a conflicting signature was present.",
+                output,
+                isSignatureConflict = true,
+                conflictPackage = null
             )
         }
 
@@ -229,7 +321,9 @@ object PackageInstallerManager {
             return InstallResult(
                 false,
                 "Downgrade Blocked: Target version is older than existing installation.",
-                output
+                output,
+                isDowngradeConflict = true,
+                conflictPackage = null
             )
         }
 

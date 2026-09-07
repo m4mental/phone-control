@@ -114,7 +114,7 @@ class AdbShellActivity : AppCompatActivity() {
         ))
     }
 
-    private fun handlePackageInstallation(uri: Uri) {
+    private fun handlePackageInstallation(uri: Uri, forceReinstall: Boolean = false) {
         var fileName = "package.apk"
         try {
             contentResolver.query(uri, null, null, null, null)?.use { cursor ->
@@ -125,11 +125,12 @@ class AdbShellActivity : AppCompatActivity() {
             }
         } catch (e: Exception) {}
 
-        appendColoredText("\n📦 [FORCE PACKAGE INSTALLER] Starting: $fileName\n", Color.parseColor("#00E5FF"))
+        val actionTag = if (forceReinstall) "FORCE RE-INSTALL (CLEAN OVERWRITE)" else "FORCE PACKAGE INSTALLER"
+        appendColoredText("\n📦 [$actionTag] Starting: $fileName\n", Color.parseColor("#00E5FF"))
         Toast.makeText(this, "Installing $fileName...", Toast.LENGTH_SHORT).show()
 
         thread {
-            val result = PackageInstallerManager.installPackage(this, uri, fileName) { progressText ->
+            val result = PackageInstallerManager.installPackage(this, uri, fileName, forceReinstall) { progressText ->
                 runOnUiThread {
                     appendColoredText("➔ $progressText\n", Color.parseColor("#FFD700"))
                     scrollOutput.post { scrollOutput.fullScroll(NestedScrollView.FOCUS_DOWN) }
@@ -149,12 +150,71 @@ class AdbShellActivity : AppCompatActivity() {
                         appendColoredText(result.rawOutput + "\n", Color.LTGRAY)
                     }
                     Toast.makeText(this, "Install Failed: ${result.message}", Toast.LENGTH_LONG).show()
+
+                    if (result.isSignatureConflict && result.isDowngradeConflict) {
+                        showCombinedConflictDialog(uri, fileName, result.conflictPackage)
+                    } else if (result.isSignatureConflict) {
+                        showSignatureConflictDialog(uri, fileName, result.conflictPackage)
+                    } else if (result.isDowngradeConflict) {
+                        showDowngradeDialog(uri, fileName, result.conflictPackage)
+                    }
                 }
 
                 appendColoredText("root@phonecontrol:~# ", Color.parseColor("#00E676"))
                 scrollOutput.post { scrollOutput.fullScroll(NestedScrollView.FOCUS_DOWN) }
             }
         }
+    }
+
+    private fun showCombinedConflictDialog(uri: Uri, fileName: String, conflictPackage: String?) {
+        val targetApp = conflictPackage ?: "the existing app"
+        AlertDialog.Builder(this)
+            .setTitle("⚠️ Signature & Downgrade Conflict")
+            .setMessage("The package '$fileName' has BOTH a conflicting signature AND is an older version than currently installed '$targetApp'.\n\nTo install this version, the existing app must be completely UNINSTALLED first, which will ERASE its local app data.\n\nDo you want to proceed and clean install?")
+            .setPositiveButton("Proceed & Clean Install") { _, _ ->
+                appendColoredText("\n⚠️ User confirmed force clean reinstall for $targetApp...\n", Color.parseColor("#FFAB00"))
+                handlePackageInstallation(uri, forceReinstall = true)
+            }
+            .setNegativeButton("Cancel") { dialog, _ ->
+                appendColoredText("\n🚫 Installation cancelled by user. Existing app preserved.\n", Color.parseColor("#FF5252"))
+                dialog.dismiss()
+            }
+            .setCancelable(true)
+            .show()
+    }
+
+    private fun showSignatureConflictDialog(uri: Uri, fileName: String, conflictPackage: String?) {
+        val targetApp = conflictPackage ?: "the existing app"
+        AlertDialog.Builder(this)
+            .setTitle("⚠️ Signature Conflict Detected")
+            .setMessage("The package '$fileName' matches installed app '$targetApp', but has a conflicting signature (e.g. Debug vs Release or different signature keys).\n\nTo install this new version, the existing app must be UNINSTALLED first, which will ERASE its local app data.\n\nDo you want to proceed?")
+            .setPositiveButton("Proceed & Reinstall") { _, _ ->
+                appendColoredText("\n⚠️ User confirmed force reinstall for $targetApp...\n", Color.parseColor("#FFAB00"))
+                handlePackageInstallation(uri, forceReinstall = true)
+            }
+            .setNegativeButton("Cancel") { dialog, _ ->
+                appendColoredText("\n🚫 Installation cancelled by user. Existing app data preserved.\n", Color.parseColor("#FF5252"))
+                dialog.dismiss()
+            }
+            .setCancelable(true)
+            .show()
+    }
+
+    private fun showDowngradeDialog(uri: Uri, fileName: String, conflictPackage: String?) {
+        val targetApp = conflictPackage ?: "the existing app"
+        AlertDialog.Builder(this)
+            .setTitle("⚠️ App Downgrade Detected")
+            .setMessage("The package '$fileName' is an OLDER version than what is currently installed on your device ('$targetApp').\n\nAndroid blocks version downgrades without erasing app data. To proceed with this older version, the newer version must be UNINSTALLED first, which will permanently ERASE its local app data and cache.\n\nDo you want to proceed and downgrade?")
+            .setPositiveButton("Proceed & Downgrade") { _, _ ->
+                appendColoredText("\n⚠️ User confirmed downgrade for $targetApp...\n", Color.parseColor("#FFAB00"))
+                handlePackageInstallation(uri, forceReinstall = true)
+            }
+            .setNegativeButton("Cancel") { dialog, _ ->
+                appendColoredText("\n🚫 Downgrade cancelled by user. Newer version preserved.\n", Color.parseColor("#FF5252"))
+                dialog.dismiss()
+            }
+            .setCancelable(true)
+            .show()
     }
 
     private fun setupHackerBar() {

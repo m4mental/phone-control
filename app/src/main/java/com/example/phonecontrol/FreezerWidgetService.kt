@@ -59,6 +59,7 @@ class FreezerRemoteViewsFactory(private val context: Context) : RemoteViewsServi
             val fillInIntent = Intent().apply {
                 putExtra(FreezerWidgetProvider.EXTRA_PACKAGE_NAME, pkg)
             }
+            views.setOnClickFillInIntent(R.id.widget_item_root, fillInIntent)
             views.setOnClickFillInIntent(R.id.widget_app_icon, fillInIntent)
             views.setOnClickFillInIntent(R.id.widget_app_name, fillInIntent)
             

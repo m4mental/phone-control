@@ -7,6 +7,7 @@ import android.util.Log
 object TweakManager {
 
     @Volatile var currentMode: String = "Balance"
+    @Volatile var isPostBootTurboActive: Boolean = false
 
     /**
      * Centralized function to apply all tweaks for a given mode.

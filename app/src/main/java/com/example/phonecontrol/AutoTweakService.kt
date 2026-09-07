@@ -306,10 +306,18 @@ class AutoTweakService : Service() {
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(Intent.ACTION_SCREEN_OFF)
         }
-        registerReceiver(screenReceiver, screenFilter)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(screenReceiver, screenFilter, RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(screenReceiver, screenFilter)
+        }
 
         val battFilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
-        registerReceiver(batteryThermalReceiver, battFilter)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(batteryThermalReceiver, battFilter, RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(batteryThermalReceiver, battFilter)
+        }
         
         val networkRequest = NetworkRequest.Builder()
             .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
@@ -463,6 +471,11 @@ class AutoTweakService : Service() {
                 reevaluatePerAppHierarchy(lastForegroundApp)
             }
             triggerFreezerDispatch(lastForegroundApp)
+
+            // Post-settlement check: Recents swipe animation takes 300-500ms in Nothing OS / Android
+            equalizerFreezeHandler?.postDelayed({
+                triggerFreezerDispatch(lastForegroundApp)
+            }, 600)
             return START_STICKY
         }
 
@@ -568,20 +581,19 @@ class AutoTweakService : Service() {
         // 2. BACKGROUND FREEZER DISPATCH:
         triggerFreezerDispatch(newPkg)
 
-        // 3. Fallback verification for Recents swipe: When returning to launcher/home, re-check recents after 1.2s
+        // 3. Fallback verification for Recents swipe: When returning to launcher/home, re-check recents after 800ms
         if (newPkg.contains("launcher", ignoreCase = true)) {
             equalizerFreezeHandler?.postDelayed({
                 tweakExecutor.execute {
                     reevaluatePerAppHierarchy(newPkg)
                 }
                 triggerFreezerDispatch(newPkg)
-            }, 1200)
+            }, 800)
         }
     }
 
     private fun triggerFreezerDispatch(currentForeground: String) {
-        val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
-        if (!prefs.getBoolean("freezer_enabled", false)) return
+        if (!FreezerManager.isAutoFreezeEnabled(this)) return
 
         freezerExecutor.execute {
             // 1. Register foreground app if it's a real user application (grants 0ms immunity + unfreezes)
@@ -599,7 +611,7 @@ class AutoTweakService : Service() {
                 FreezerManager.activeSessionApps.add(p)
             }
 
-            // 3. Ultra-fast targeted freeze ONLY on apps swiped away / dismissed from Recents (~20ms)
+            // 3. Ultra-fast targeted freeze on apps swiped away / dismissed from Recents (~20ms)
             FreezerManager.processRecentsDismissal(this@AutoTweakService, recentPkgs, currentForeground)
 
             SpecialFreezerWidgetProvider.updateAllWidgets(this@AutoTweakService)
@@ -614,6 +626,10 @@ class AutoTweakService : Service() {
      */
     private fun reevaluatePerAppHierarchy(foregroundPkg: String) {
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+        if (TweakManager.isPostBootTurboActive) {
+            // Strictly protect Post-Boot Fast Startup Turbo Boost for its full 90 seconds
+            return
+        }
         val manualStage = prefs.getInt("manual_stage_override", 0)
         if (manualStage != 0 || TweakManager.manualStageOverride != 0) {
             // Strictly protect user's manual stage override (do not switch frequencies on app transition)
@@ -796,6 +812,10 @@ class AutoTweakService : Service() {
 
     private fun applyAiTweak(load: Int, focus: String) {
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+        if (TweakManager.isPostBootTurboActive) {
+            // Strictly protect Post-Boot Fast Startup Turbo Boost for its full 90 seconds
+            return
+        }
         val manualStage = prefs.getInt("manual_stage_override", 0)
         if (manualStage != 0) {
             // Respect Test Lab Manual Stage Override 100% (Do not overwrite user test locks)
@@ -953,8 +973,7 @@ class AutoTweakService : Service() {
         }
 
         // 8. Auto Hibernation on Screen OFF (Targeted Media Guard)
-        val freezerPrefs = getSharedPreferences("freezer_prefs", MODE_PRIVATE)
-        if (freezerPrefs.getBoolean("auto_freeze_enabled", false)) {
+        if (FreezerManager.isAutoFreezeEnabled(this@AutoTweakService)) {
             val frozenApps = FreezerManager.getFrozenApps(this@AutoTweakService) + FreezerManager.getSpecialFreezeApps(this@AutoTweakService)
             val activeAudioApps = FreezerManager.getActivePlayingAudioPackages(this@AutoTweakService)
 
