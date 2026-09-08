@@ -525,4 +525,83 @@ object PowerampPresetManager {
         array.put(pObj)
         return array.toString(2)
     }
+
+    enum class AudioOutputType {
+        SPEAKER,
+        BLUETOOTH,
+        WIRED
+    }
+
+    private const val KEY_AUTO_PREAMP_ENABLED = "auto_preamp_enabled"
+    private const val KEY_PER_DEVICE_ROUTING_ENABLED = "per_device_routing_enabled"
+    private const val KEY_PROFILE_SPEAKER_PRESET = "profile_speaker_preset"
+    private const val KEY_PROFILE_BLUETOOTH_PRESET = "profile_bluetooth_preset"
+    private const val KEY_PROFILE_WIRED_PRESET = "profile_wired_preset"
+
+    private const val KEY_NIGHT_MODE_ENABLED = "night_mode_enabled"
+    private const val KEY_NIGHT_MODE_PROFILE = "night_mode_profile"
+    private const val KEY_DIALOGUE_BOOST_LEVEL = "dialogue_boost_level"
+
+    fun isAutoPreampEnabled(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_AUTO_PREAMP_ENABLED, true)
+    }
+
+    fun setAutoPreampEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_AUTO_PREAMP_ENABLED, enabled).apply()
+    }
+
+    fun isPerDeviceRoutingEnabled(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_PER_DEVICE_ROUTING_ENABLED, true)
+    }
+
+    fun setPerDeviceRoutingEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_PER_DEVICE_ROUTING_ENABLED, enabled).apply()
+    }
+
+    fun getDevicePresetName(context: Context, type: AudioOutputType): String {
+        val defaultPreset = when (type) {
+            AudioOutputType.SPEAKER -> "Speaker Clarity Guard"
+            AudioOutputType.BLUETOOTH -> "Nothing Ear (2) - Harman Target"
+            AudioOutputType.WIRED -> "Audiophile Harman Target"
+        }
+        val key = when (type) {
+            AudioOutputType.SPEAKER -> KEY_PROFILE_SPEAKER_PRESET
+            AudioOutputType.BLUETOOTH -> KEY_PROFILE_BLUETOOTH_PRESET
+            AudioOutputType.WIRED -> KEY_PROFILE_WIRED_PRESET
+        }
+        return getPrefs(context).getString(key, defaultPreset) ?: defaultPreset
+    }
+
+    fun setDevicePresetName(context: Context, type: AudioOutputType, presetName: String) {
+        val key = when (type) {
+            AudioOutputType.SPEAKER -> KEY_PROFILE_SPEAKER_PRESET
+            AudioOutputType.BLUETOOTH -> KEY_PROFILE_BLUETOOTH_PRESET
+            AudioOutputType.WIRED -> KEY_PROFILE_WIRED_PRESET
+        }
+        getPrefs(context).edit().putString(key, presetName).apply()
+    }
+
+    fun isNightModeEnabled(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_NIGHT_MODE_ENABLED, false)
+    }
+
+    fun setNightModeEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_NIGHT_MODE_ENABLED, enabled).apply()
+    }
+
+    fun getNightModeProfile(context: Context): Int {
+        return getPrefs(context).getInt(KEY_NIGHT_MODE_PROFILE, 1) // 1: Cinema Balanced
+    }
+
+    fun setNightModeProfile(context: Context, profile: Int) {
+        getPrefs(context).edit().putInt(KEY_NIGHT_MODE_PROFILE, profile).apply()
+    }
+
+    fun getDialogueBoostLevel(context: Context): Float {
+        return getPrefs(context).getFloat(KEY_DIALOGUE_BOOST_LEVEL, 4.0f) // default +4.0 dB
+    }
+
+    fun setDialogueBoostLevel(context: Context, levelDb: Float) {
+        getPrefs(context).edit().putFloat(KEY_DIALOGUE_BOOST_LEVEL, levelDb).apply()
+    }
 }

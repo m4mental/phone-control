@@ -353,6 +353,53 @@
             </intent-filter>
         </service>
 
+        <!-- Studio Equalizer QS Tile (1-Tap Master Toggle & Subtitle Profile Badge) -->
+        <service
+            android:name=".StudioEqualizerTileService"
+            android:exported="true"
+            android:label="Studio EQ"
+            android:icon="@drawable/ic_qs_equalizer"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <!-- Studio Movie & Night Mode QS Tile (1-Tap Dynamics MBC On/Off) -->
+        <service
+            android:name=".StudioNightModeTileService"
+            android:exported="true"
+            android:label="Night Mode"
+            android:icon="@drawable/ic_qs_night_mode"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <!-- Studio Equalizer Preset Switcher QS Tile (1-Tap Preset Step/Cycle) -->
+        <service
+            android:name=".StudioPresetTileService"
+            android:exported="true"
+            android:label="EQ Preset"
+            android:icon="@drawable/ic_qs_preset"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <!-- Quick Settings Tile Preference Handler for Long-Press (Preset Picker & Night Mode Dialog) -->
+        <activity
+            android:name=".StudioPresetPickerActivity"
+            android:exported="true"
+            android:theme="@style/Theme.PhoneControl.Transparent">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
         <!-- Standard Freezer Widget (All Frozen Apps) -->
         <receiver android:name=".FreezerWidgetProvider" android:exported="true">
             <intent-filter>

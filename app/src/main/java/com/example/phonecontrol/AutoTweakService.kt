@@ -127,34 +127,12 @@ class AutoTweakService : Service() {
         override fun onReceive(context: Context, intent: Intent) {
             val action = intent.action ?: return
             tweakExecutor.execute {
-                if (!PowerampPresetManager.isSmartOutputSwitchEnabled(context)) return@execute
-                if (action == Intent.ACTION_HEADSET_PLUG) {
-                    val state = intent.getIntExtra("state", -1)
-                    if (state == 1) {
-                        Log.d("AutoTweak", "🎧 Headset Plugged -> Auto-applying Headphone Preset")
-                        val hpPresetName = PowerampPresetManager.getSavedHeadphonePreset(context)
-                        val preset = PowerampPresetManager.getPresetByName(context, hpPresetName)
-                        if (preset != null) StudioDspManager.applyPreset(context, preset)
-                    } else if (state == 0) {
-                        Log.d("AutoTweak", "🔊 Headset Unplugged -> Auto-applying Speaker Preset")
-                        val spkPresetName = PowerampPresetManager.getSavedSpeakerPreset(context)
-                        val preset = PowerampPresetManager.getPresetByName(context, spkPresetName)
-                        if (preset != null) StudioDspManager.applyPreset(context, preset)
-                    }
-                } else if (action == android.bluetooth.BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED) {
-                    val state = intent.getIntExtra(android.bluetooth.BluetoothProfile.EXTRA_STATE, -1)
-                    if (state == android.bluetooth.BluetoothProfile.STATE_CONNECTED) {
-                        Log.d("AutoTweak", "🎧 Bluetooth Audio Connected -> Auto-applying Headphone Preset")
-                        val hpPresetName = PowerampPresetManager.getSavedHeadphonePreset(context)
-                        val preset = PowerampPresetManager.getPresetByName(context, hpPresetName)
-                        if (preset != null) StudioDspManager.applyPreset(context, preset)
-                    } else if (state == android.bluetooth.BluetoothProfile.STATE_DISCONNECTED) {
-                        Log.d("AutoTweak", "🔊 Bluetooth Audio Disconnected -> Auto-applying Speaker Preset")
-                        val spkPresetName = PowerampPresetManager.getSavedSpeakerPreset(context)
-                        val preset = PowerampPresetManager.getPresetByName(context, spkPresetName)
-                        if (preset != null) StudioDspManager.applyPreset(context, preset)
-                    }
-                }
+                if (!PowerampPresetManager.isPerDeviceRoutingEnabled(context) && !PowerampPresetManager.isSmartOutputSwitchEnabled(context)) return@execute
+                // Allow audio routing to settle before polling active output
+                try { Thread.sleep(150) } catch (e: Exception) {}
+                val outputType = StudioDspManager.getCurrentAudioOutputType(context)
+                Log.d("AutoTweak", "Audio route event: $action -> Detected output: $outputType")
+                StudioDspManager.notifyAudioDeviceChanged(context, outputType)
             }
         }
     }
@@ -378,10 +356,12 @@ class AutoTweakService : Service() {
             }
 
 
-            // Smart Output Auto-Switch Receiver (Headphones vs Speaker)
+            // Smart Output Auto-Switch Receiver (Headphones vs Speaker vs Bluetooth)
             val audioRouteFilter = IntentFilter().apply {
                 addAction(Intent.ACTION_HEADSET_PLUG)
                 addAction(android.bluetooth.BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED)
+                addAction(android.bluetooth.BluetoothDevice.ACTION_ACL_CONNECTED)
+                addAction(android.bluetooth.BluetoothDevice.ACTION_ACL_DISCONNECTED)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 registerReceiver(audioRouteReceiver, audioRouteFilter, RECEIVER_NOT_EXPORTED)

@@ -1,6 +1,8 @@
 package com.example.phonecontrol
 
 import android.content.Context
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.media.audiofx.BassBoost
 import android.media.audiofx.DynamicsProcessing
 import android.media.audiofx.Equalizer
@@ -21,6 +23,7 @@ object StudioDspManager {
 
     private const val TAG = "StudioDspManager"
     private const val GLOBAL_AUDIO_SESSION = 0
+    private var appContext: Context? = null
 
     // Global session effects (AudioSession 0)
     private var dynamicsProcessing: DynamicsProcessing? = null
@@ -117,14 +120,15 @@ object StudioDspManager {
                     DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
                     channelCount,
                     true, preEqBands,
-                    false, 0,
+                    true, 3, // Multi-band compressor 3 bands
                     true, postEqBands,
                     true
                 )
 
                 dynamicsProcessing = DynamicsProcessing(100, GLOBAL_AUDIO_SESSION, builder.build())
                 applyAntiClippingLimiter(dynamicsProcessing)
-                Log.d(TAG, "DynamicsProcessing Audio Engine created on Session $GLOBAL_AUDIO_SESSION (Priority 100, Anti-Clipping Active)")
+                dynamicsProcessing?.let { applyMbcToEngine(it, context) }
+                Log.d(TAG, "DynamicsProcessing Audio Engine created on Session $GLOBAL_AUDIO_SESSION (Priority 100, Anti-Clipping & MBC Active)")
                 return
             } catch (e: Exception) {
                 Log.w(TAG, "DynamicsProcessing not available on global session, falling back to Equalizer: ${e.message}")
@@ -160,7 +164,7 @@ object StudioDspManager {
                         DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
                         2,
                         true, 2,
-                        false, 0,
+                        true, 3, // Multi-band compressor 3 bands
                         true, 10,
                         true
                     )
@@ -168,6 +172,7 @@ object StudioDspManager {
                         enabled = isCurrentlyEnabled
                     }
                     applyAntiClippingLimiter(dp)
+                    applyMbcToEngine(dp, context)
                     sessionDynamicsMap[sessionId] = dp
                 } catch (e: Exception) {
                     Log.w(TAG, "Could not attach DynamicsProcessing to session $sessionId: ${e.message}")
@@ -258,6 +263,7 @@ object StudioDspManager {
     }
 
     fun setMasterEnabled(context: Context, enabled: Boolean) {
+        appContext = context.applicationContext
         isCurrentlyEnabled = enabled
         isAsleep = false
         PowerampPresetManager.setMasterEnabled(context, enabled)
@@ -276,6 +282,11 @@ object StudioDspManager {
             sessionVirtualizerMap.values.forEach { try { it.enabled = enabled && (PowerampPresetManager.isSurroundEnabled(context) || PowerampPresetManager.isCrossfeedEnabled(context)) } catch (e: Exception) {} }
             sessionReverbMap.values.forEach { try { it.enabled = enabled && PowerampPresetManager.isReverbEnabled(context) } catch (e: Exception) {} }
 
+            updateMbc(context)
+            StudioEqualizerTileService.updateTileState(context)
+            StudioPresetTileService.updateTileState(context)
+            StudioNightModeTileService.updateTileState(context)
+
             Log.d(TAG, "Studio DSP Master set to: $enabled (Active Sessions: ${sessionDynamicsMap.size + 1})")
         } catch (e: Exception) {
             Log.e(TAG, "Error toggling master DSP state: ${e.message}")
@@ -283,13 +294,14 @@ object StudioDspManager {
     }
 
     fun applyPreset(context: Context, preset: EqualizerPreset) {
+        appContext = context.applicationContext
         PowerampPresetManager.setActivePresetName(context, preset.name)
         PowerampPresetManager.setActivePreamp(context, preset.preamp)
 
         currentBasePreamp = preset.preamp
 
-        // 1. Apply Preamp Gain with Channel Balance
-        updateInputGains()
+        // 1. Apply Preamp Gain with Auto Safe-Preamp Headroom calculation
+        updateInputGains(context)
 
         // 2. Apply Shelf and Peaking Bands
         val shelfBands = preset.bands.filter { it.type == 0 || it.type == 1 }
@@ -306,6 +318,10 @@ object StudioDspManager {
         sessionEqualizerMap.values.forEach { eq ->
             applyEqBandsToEngine(eq, peakingBands)
         }
+
+        updateMbc(context)
+        StudioEqualizerTileService.updateTileState(context)
+        StudioPresetTileService.updateTileState(context)
     }
 
     private fun applyDpBandsToEngine(dp: DynamicsProcessing, shelfBands: List<EqualizerBand>, peakingBands: List<EqualizerBand>) {
@@ -397,24 +413,256 @@ object StudioDspManager {
         }
     }
 
-    private fun updateInputGains() {
+    fun getEffectivePreamp(context: Context? = appContext): Float {
+        val ctx = context ?: return currentBasePreamp
+        if (!PowerampPresetManager.isAutoPreampEnabled(ctx)) {
+            return currentBasePreamp
+        }
+        val activePreset = PowerampPresetManager.getPresetByName(ctx, PowerampPresetManager.getActivePresetName(ctx))
+        val maxBandGain = activePreset?.bands?.maxOfOrNull { it.gain }?.coerceAtLeast(0.0f) ?: 0.0f
+        val clarityBoost = if (activePreset?.clarityEnabled == true) (activePreset.clarityLevel / 1000.0f * 6.0f) else 0.0f
+        val totalMax = Math.max(maxBandGain, clarityBoost)
+        return if (totalMax > 0.0f) {
+            currentBasePreamp - totalMax
+        } else {
+            currentBasePreamp
+        }
+    }
+
+    fun updateInputGains(context: Context? = appContext) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val gain = getEffectivePreamp(context)
             try {
-                dynamicsProcessing?.setInputGainAllChannelsTo(currentBasePreamp)
+                dynamicsProcessing?.setInputGainAllChannelsTo(gain)
                 sessionDynamicsMap.values.forEach { dp ->
                     try {
-                        dp.setInputGainAllChannelsTo(currentBasePreamp)
+                        dp.setInputGainAllChannelsTo(gain)
                     } catch (e: Exception) {}
                 }
+                Log.d(TAG, "Input Gain updated: base=$currentBasePreamp, effective=$gain dB")
             } catch (e: Exception) {
                 Log.e(TAG, "Error setting input gains: ${e.message}")
             }
         }
     }
 
-    fun setPreampGain(gainDb: Float) {
+    fun setPreampGain(gainDb: Float, context: Context? = null) {
         currentBasePreamp = gainDb
-        updateInputGains()
+        val ctx = context ?: appContext
+        if (ctx != null) {
+            PowerampPresetManager.setActivePreamp(ctx, gainDb)
+        }
+        updateInputGains(ctx)
+    }
+
+    fun setAutoPreampEnabled(context: Context, enabled: Boolean) {
+        PowerampPresetManager.setAutoPreampEnabled(context, enabled)
+        updateInputGains(context)
+    }
+
+    // --- Multi-Band Compressor (Movie & Night Mode / Dialogue Booster) ---
+    fun applyMbcToEngine(dp: DynamicsProcessing, context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            try {
+                val isNightMode = PowerampPresetManager.isNightModeEnabled(context)
+                val profile = PowerampPresetManager.getNightModeProfile(context)
+                val dialogueBoost = PowerampPresetManager.getDialogueBoostLevel(context)
+                val mbcInUse = isCurrentlyEnabled && isNightMode
+
+                val mbc = DynamicsProcessing.Mbc(true, mbcInUse, 3)
+
+                when (profile) {
+                    2 -> {
+                        // Night Mode Max (Heavy dynamic compression, squashes explosions)
+                        mbc.getBand(0).apply {
+                            isEnabled = true
+                            cutoffFrequency = 300.0f
+                            attackTime = 2.0f
+                            releaseTime = 120.0f
+                            ratio = 6.0f
+                            threshold = -20.0f
+                            kneeWidth = 6.0f
+                            noiseGateThreshold = -60.0f
+                            expanderRatio = 1.0f
+                            preGain = 0.0f
+                            postGain = -2.0f
+                        }
+                        mbc.getBand(1).apply {
+                            isEnabled = true
+                            cutoffFrequency = 4000.0f
+                            attackTime = 5.0f
+                            releaseTime = 80.0f
+                            ratio = 2.5f
+                            threshold = -28.0f
+                            kneeWidth = 8.0f
+                            noiseGateThreshold = -60.0f
+                            expanderRatio = 1.0f
+                            preGain = 0.0f
+                            postGain = dialogueBoost + 2.0f
+                        }
+                        mbc.getBand(2).apply {
+                            isEnabled = true
+                            cutoffFrequency = 20000.0f
+                            attackTime = 3.0f
+                            releaseTime = 100.0f
+                            ratio = 3.5f
+                            threshold = -15.0f
+                            kneeWidth = 6.0f
+                            noiseGateThreshold = -60.0f
+                            expanderRatio = 1.0f
+                            preGain = 0.0f
+                            postGain = 0.0f
+                        }
+                    }
+                    3 -> {
+                        // Speech / Podcast Focus
+                        mbc.getBand(0).apply {
+                            isEnabled = true
+                            cutoffFrequency = 300.0f
+                            attackTime = 5.0f
+                            releaseTime = 100.0f
+                            ratio = 4.0f
+                            threshold = -16.0f
+                            kneeWidth = 6.0f
+                            noiseGateThreshold = -50.0f
+                            expanderRatio = 1.2f
+                            preGain = 0.0f
+                            postGain = -4.0f
+                        }
+                        mbc.getBand(1).apply {
+                            isEnabled = true
+                            cutoffFrequency = 4000.0f
+                            attackTime = 4.0f
+                            releaseTime = 60.0f
+                            ratio = 2.0f
+                            threshold = -26.0f
+                            kneeWidth = 6.0f
+                            noiseGateThreshold = -60.0f
+                            expanderRatio = 1.0f
+                            preGain = 0.0f
+                            postGain = dialogueBoost + 4.0f
+                        }
+                        mbc.getBand(2).apply {
+                            isEnabled = true
+                            cutoffFrequency = 20000.0f
+                            attackTime = 5.0f
+                            releaseTime = 100.0f
+                            ratio = 2.5f
+                            threshold = -18.0f
+                            kneeWidth = 6.0f
+                            noiseGateThreshold = -60.0f
+                            expanderRatio = 1.0f
+                            preGain = 0.0f
+                            postGain = 1.0f
+                        }
+                    }
+                    else -> {
+                        // Profile 1: Cinema Balanced (Default)
+                        mbc.getBand(0).apply {
+                            isEnabled = true
+                            cutoffFrequency = 300.0f
+                            attackTime = 3.0f
+                            releaseTime = 90.0f
+                            ratio = 3.5f
+                            threshold = -15.0f
+                            kneeWidth = 6.0f
+                            noiseGateThreshold = -60.0f
+                            expanderRatio = 1.0f
+                            preGain = 0.0f
+                            postGain = 0.0f
+                        }
+                        mbc.getBand(1).apply {
+                            isEnabled = true
+                            cutoffFrequency = 3500.0f
+                            attackTime = 4.0f
+                            releaseTime = 70.0f
+                            ratio = 2.2f
+                            threshold = -24.0f
+                            kneeWidth = 6.0f
+                            noiseGateThreshold = -60.0f
+                            expanderRatio = 1.0f
+                            preGain = 0.0f
+                            postGain = dialogueBoost
+                        }
+                        mbc.getBand(2).apply {
+                            isEnabled = true
+                            cutoffFrequency = 20000.0f
+                            attackTime = 3.0f
+                            releaseTime = 80.0f
+                            ratio = 2.8f
+                            threshold = -12.0f
+                            kneeWidth = 6.0f
+                            noiseGateThreshold = -60.0f
+                            expanderRatio = 1.0f
+                            preGain = 0.0f
+                            postGain = 0.0f
+                        }
+                    }
+                }
+
+                dp.setMbcAllChannelsTo(mbc)
+                Log.d(TAG, "Multi-Band Compressor updated: inUse=$mbcInUse, profile=$profile, dialogueBoost=+$dialogueBoost dB")
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to apply MBC: ${e.message}")
+            }
+        }
+    }
+
+    fun updateMbc(context: Context? = null) {
+        val ctx = context ?: appContext ?: return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            dynamicsProcessing?.let { applyMbcToEngine(it, ctx) }
+            sessionDynamicsMap.values.forEach { dp ->
+                applyMbcToEngine(dp, ctx)
+            }
+        }
+    }
+
+    fun setNightMode(context: Context, enabled: Boolean, profile: Int = 1, dialogueBoostDb: Float = 4.0f) {
+        PowerampPresetManager.setNightModeEnabled(context, enabled)
+        PowerampPresetManager.setNightModeProfile(context, profile)
+        PowerampPresetManager.setDialogueBoostLevel(context, dialogueBoostDb)
+        updateMbc(context)
+        StudioNightModeTileService.updateTileState(context)
+    }
+
+    // --- Audio Output Device Routing ---
+    fun getCurrentAudioOutputType(context: Context): PowerampPresetManager.AudioOutputType {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            ?: return PowerampPresetManager.AudioOutputType.SPEAKER
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+            var hasBt = false
+            var hasWired = false
+            for (d in devices) {
+                when (d.type) {
+                    AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+                    AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                    AudioDeviceInfo.TYPE_BLE_HEADSET,
+                    AudioDeviceInfo.TYPE_BLE_SPEAKER -> hasBt = true
+                    AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                    AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                    AudioDeviceInfo.TYPE_USB_DEVICE,
+                    AudioDeviceInfo.TYPE_USB_HEADSET -> hasWired = true
+                }
+            }
+            if (hasBt) return PowerampPresetManager.AudioOutputType.BLUETOOTH
+            if (hasWired) return PowerampPresetManager.AudioOutputType.WIRED
+        }
+        return PowerampPresetManager.AudioOutputType.SPEAKER
+    }
+
+    fun notifyAudioDeviceChanged(context: Context, outputType: PowerampPresetManager.AudioOutputType) {
+        if (!PowerampPresetManager.isPerDeviceRoutingEnabled(context)) return
+        val presetName = PowerampPresetManager.getDevicePresetName(context, outputType)
+        val currentActive = PowerampPresetManager.getActivePresetName(context)
+        if (currentActive != presetName) {
+            val preset = PowerampPresetManager.getPresetByName(context, presetName)
+            if (preset != null) {
+                Log.d(TAG, "🎧 Audio routing changed to $outputType -> Auto-applying profile: ${preset.name}")
+                applyPreset(context, preset)
+            }
+        }
     }
 
     fun setBassBoost(context: Context, strength: Int) {

@@ -81,6 +81,26 @@ class StudioEqualizerActivity : AppCompatActivity() {
     private lateinit var tvChannelBalance: TextView
     private lateinit var switchSmartOutput: MaterialSwitch
 
+    // Auto-Preamp Views
+    private lateinit var switchAutoPreamp: MaterialSwitch
+    private lateinit var tvAutoPreampSubtitle: TextView
+
+    // Per-Device Output Routing Views
+    private lateinit var tvActiveOutputDevice: TextView
+    private lateinit var tvSpeakerProfilePreset: TextView
+    private lateinit var btnSetSpeakerProfile: View
+    private lateinit var tvBluetoothProfilePreset: TextView
+    private lateinit var btnSetBluetoothProfile: View
+    private lateinit var tvWiredProfilePreset: TextView
+    private lateinit var btnSetWiredProfile: View
+
+    // Movie & Night Mode Views
+    private lateinit var switchNightMode: MaterialSwitch
+    private lateinit var layoutNightModeControls: View
+    private lateinit var toggleGroupNightMode: com.google.android.material.button.MaterialButtonToggleGroup
+    private lateinit var seekDialogueBoost: SeekBar
+    private lateinit var tvDialogueBoostValue: TextView
+
     private var currentPreset: EqualizerPreset? = null
 
     private val pickJsonFileLauncher = registerForActivityResult(
@@ -231,7 +251,47 @@ class StudioEqualizerActivity : AppCompatActivity() {
         seekChannelBalance.progress = balance + 100
         updateBalanceText(balance)
 
-        switchSmartOutput.isChecked = PowerampPresetManager.isSmartOutputSwitchEnabled(this)
+        val smartRoutingOn = PowerampPresetManager.isPerDeviceRoutingEnabled(this)
+        switchSmartOutput.isChecked = smartRoutingOn
+
+        // Auto-Preamp Views
+        switchAutoPreamp = findViewById(R.id.switchAutoPreamp)
+        tvAutoPreampSubtitle = findViewById(R.id.tvAutoPreampSubtitle)
+        switchAutoPreamp.isChecked = PowerampPresetManager.isAutoPreampEnabled(this)
+        updateAutoPreampSubtitle()
+
+        // Per-Device Output Routing Views
+        tvActiveOutputDevice = findViewById(R.id.tvActiveOutputDevice)
+        tvSpeakerProfilePreset = findViewById(R.id.tvSpeakerProfilePreset)
+        btnSetSpeakerProfile = findViewById(R.id.btnSetSpeakerProfile)
+        tvBluetoothProfilePreset = findViewById(R.id.tvBluetoothProfilePreset)
+        btnSetBluetoothProfile = findViewById(R.id.btnSetBluetoothProfile)
+        tvWiredProfilePreset = findViewById(R.id.tvWiredProfilePreset)
+        btnSetWiredProfile = findViewById(R.id.btnSetWiredProfile)
+        refreshDeviceRoutingUi()
+
+        // Movie & Night Mode Views
+        switchNightMode = findViewById(R.id.switchNightMode)
+        layoutNightModeControls = findViewById(R.id.layoutNightModeControls)
+        toggleGroupNightMode = findViewById(R.id.toggleGroupNightMode)
+        seekDialogueBoost = findViewById(R.id.seekDialogueBoost)
+        tvDialogueBoostValue = findViewById(R.id.tvDialogueBoostValue)
+
+        val nightOn = PowerampPresetManager.isNightModeEnabled(this)
+        switchNightMode.isChecked = nightOn
+        layoutNightModeControls.alpha = if (nightOn) 1.0f else 0.4f
+
+        val nightProfile = PowerampPresetManager.getNightModeProfile(this)
+        when (nightProfile) {
+            1 -> toggleGroupNightMode.check(R.id.btnProfileCinema)
+            2 -> toggleGroupNightMode.check(R.id.btnProfileNightMax)
+            3 -> toggleGroupNightMode.check(R.id.btnProfileSpeech)
+            else -> toggleGroupNightMode.check(R.id.btnProfileCinema)
+        }
+
+        val dialogueLvl = PowerampPresetManager.getDialogueBoostLevel(this)
+        seekDialogueBoost.progress = (dialogueLvl * 10).toInt().coerceIn(0, 80)
+        tvDialogueBoostValue.text = String.format(Locale.US, "%+.1f dB", dialogueLvl)
     }
 
     private fun updateBalanceText(balance: Int) {
@@ -482,11 +542,77 @@ class StudioEqualizerActivity : AppCompatActivity() {
             override fun onStopTrackingTouch(sb: SeekBar?) {}
         })
 
-        // --- Smart Output Switch ---
+        // --- Auto-Preamp Headroom Balancer ---
+        switchAutoPreamp.setOnCheckedChangeListener { _, isChecked ->
+            StudioDspManager.setAutoPreampEnabled(this, isChecked)
+            updateAutoPreampSubtitle()
+            val msg = if (isChecked) "Auto-Preamp Guard: Active (Anti-Clipping)" else "Auto-Preamp: Disabled (Manual Mode)"
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+        }
+
+        // --- Per-Device Output Routing ---
         switchSmartOutput.setOnCheckedChangeListener { _, isChecked ->
             PowerampPresetManager.setSmartOutputSwitchEnabled(this, isChecked)
-            Toast.makeText(this, if (isChecked) "Auto-preset switching active 🎧/🔊" else "Auto-preset switching disabled", Toast.LENGTH_SHORT).show()
+            PowerampPresetManager.setPerDeviceRoutingEnabled(this, isChecked)
+            if (isChecked) {
+                val currentType = StudioDspManager.getCurrentAudioOutputType(this)
+                val assignedName = PowerampPresetManager.getDevicePresetName(this, currentType)
+                val preset = PowerampPresetManager.getPresetByName(this, assignedName)
+                if (preset != null) {
+                    applySelectedPreset(preset)
+                    rebuildPresetChips(preset.name)
+                }
+            }
+            Toast.makeText(this, if (isChecked) "Device Output Profiles: Active" else "Device Profiles: Disabled", Toast.LENGTH_SHORT).show()
         }
+
+        btnSetSpeakerProfile.setOnClickListener {
+            showSelectDevicePresetDialog(PowerampPresetManager.AudioOutputType.SPEAKER)
+        }
+        btnSetBluetoothProfile.setOnClickListener {
+            showSelectDevicePresetDialog(PowerampPresetManager.AudioOutputType.BLUETOOTH)
+        }
+        btnSetWiredProfile.setOnClickListener {
+            showSelectDevicePresetDialog(PowerampPresetManager.AudioOutputType.WIRED)
+        }
+
+        // --- Movie & Night Mode ---
+        switchNightMode.setOnCheckedChangeListener { _, isChecked ->
+            val profile = getSelectedNightModeProfile()
+            val boost = seekDialogueBoost.progress / 10.0f
+            StudioDspManager.setNightMode(this, isChecked, profile, boost)
+            layoutNightModeControls.alpha = if (isChecked) 1.0f else 0.4f
+            val msg = if (isChecked) "Movie & Night Mode: Enabled 🎬" else "Movie Mode: Disabled"
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+        }
+
+        toggleGroupNightMode.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (isChecked) {
+                val profile = when (checkedId) {
+                    R.id.btnProfileCinema -> 1
+                    R.id.btnProfileNightMax -> 2
+                    R.id.btnProfileSpeech -> 3
+                    else -> 1
+                }
+                val boost = seekDialogueBoost.progress / 10.0f
+                val enabled = switchNightMode.isChecked
+                StudioDspManager.setNightMode(this, enabled, profile, boost)
+            }
+        }
+
+        seekDialogueBoost.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
+                val boost = progress / 10.0f
+                tvDialogueBoostValue.text = String.format(Locale.US, "%+.1f dB", boost)
+                if (fromUser) {
+                    val profile = getSelectedNightModeProfile()
+                    val enabled = switchNightMode.isChecked
+                    StudioDspManager.setNightMode(this@StudioEqualizerActivity, enabled, profile, boost)
+                }
+            }
+            override fun onStartTrackingTouch(sb: SeekBar?) {}
+            override fun onStopTrackingTouch(sb: SeekBar?) {}
+        })
     }
 
     private fun showAutoEqSearchDialog() {
@@ -677,6 +803,7 @@ class StudioEqualizerActivity : AppCompatActivity() {
 
         // Build Multi-Band Vertical Sliders
         buildBandSliders(workingPreset)
+        updateAutoPreampSubtitle()
     }
 
     private fun buildBandSliders(preset: EqualizerPreset) {
@@ -711,6 +838,7 @@ class StudioEqualizerActivity : AppCompatActivity() {
                         // Update visualizer curve & audio DSP
                         curveView.setBands(preset.bands)
                         StudioDspManager.applyPreset(this@StudioEqualizerActivity, preset)
+                        updateAutoPreampSubtitle()
                     }
                 }
                 override fun onStartTrackingTouch(sb: SeekBar?) {}
@@ -849,4 +977,77 @@ class StudioEqualizerActivity : AppCompatActivity() {
             .setNegativeButton("Cancel", null)
             .show()
     }
+
+    override fun onResume() {
+        super.onResume()
+        val isEnabled = PowerampPresetManager.isMasterEnabled(this)
+        switchMasterDsp.isChecked = isEnabled
+        updateMasterStatusText(isEnabled)
+        refreshDeviceRoutingUi()
+        updateAutoPreampSubtitle()
+    }
+
+    private fun getSelectedNightModeProfile(): Int {
+        return when (toggleGroupNightMode.checkedButtonId) {
+            R.id.btnProfileCinema -> 1
+            R.id.btnProfileNightMax -> 2
+            R.id.btnProfileSpeech -> 3
+            else -> 1
+        }
+    }
+
+    private fun updateAutoPreampSubtitle() {
+        val enabled = PowerampPresetManager.isAutoPreampEnabled(this)
+        if (enabled) {
+            val maxBoost = currentPreset?.bands?.maxOfOrNull { it.gain } ?: 0f
+            val margin = if (maxBoost > 0f) maxBoost else 0f
+            tvAutoPreampSubtitle.text = String.format(Locale.US, "Auto safe margin: -%.1f dB headroom", margin)
+        } else {
+            tvAutoPreampSubtitle.text = "Manual preamp (Risk of clipping at 100% volume)"
+        }
+    }
+
+    private fun refreshDeviceRoutingUi() {
+        val currentType = StudioDspManager.getCurrentAudioOutputType(this)
+        tvActiveOutputDevice.text = when (currentType) {
+            PowerampPresetManager.AudioOutputType.SPEAKER -> "Phone Speaker (Active)"
+            PowerampPresetManager.AudioOutputType.BLUETOOTH -> "Bluetooth Wireless (Active)"
+            PowerampPresetManager.AudioOutputType.WIRED -> "Wired / USB-C DAC (Active)"
+        }
+        tvSpeakerProfilePreset.text = PowerampPresetManager.getDevicePresetName(this, PowerampPresetManager.AudioOutputType.SPEAKER)
+        tvBluetoothProfilePreset.text = PowerampPresetManager.getDevicePresetName(this, PowerampPresetManager.AudioOutputType.BLUETOOTH)
+        tvWiredProfilePreset.text = PowerampPresetManager.getDevicePresetName(this, PowerampPresetManager.AudioOutputType.WIRED)
+    }
+
+    private fun showSelectDevicePresetDialog(type: PowerampPresetManager.AudioOutputType) {
+        val allPresets = PowerampPresetManager.getAllPresets(this)
+        val names = allPresets.map { it.name }.toTypedArray()
+        val currentAssigned = PowerampPresetManager.getDevicePresetName(this, type)
+        val selectedIndex = names.indexOf(currentAssigned).coerceAtLeast(0)
+
+        val deviceName = when (type) {
+            PowerampPresetManager.AudioOutputType.SPEAKER -> "Phone Speaker"
+            PowerampPresetManager.AudioOutputType.BLUETOOTH -> "Bluetooth Earphones"
+            PowerampPresetManager.AudioOutputType.WIRED -> "Wired / USB-C DAC"
+        }
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Assign Profile for $deviceName")
+            .setSingleChoiceItems(names, selectedIndex) { dialog, which ->
+                val chosenName = names[which]
+                PowerampPresetManager.setDevicePresetName(this, type, chosenName)
+                refreshDeviceRoutingUi()
+                if (PowerampPresetManager.isPerDeviceRoutingEnabled(this) && StudioDspManager.getCurrentAudioOutputType(this) == type) {
+                    val preset = PowerampPresetManager.getPresetByName(this, chosenName)
+                    if (preset != null) {
+                        applySelectedPreset(preset)
+                        rebuildPresetChips(preset.name)
+                    }
+                }
+                dialog.dismiss()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
 }
+
