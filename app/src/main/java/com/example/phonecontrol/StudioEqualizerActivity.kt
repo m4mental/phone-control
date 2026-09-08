@@ -2,7 +2,6 @@ package com.example.phonecontrol
 
 import android.content.Context
 import android.media.audiofx.PresetReverb
-import android.media.audiofx.Visualizer
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -83,7 +82,6 @@ class StudioEqualizerActivity : AppCompatActivity() {
     private lateinit var switchSmartOutput: MaterialSwitch
 
     private var currentPreset: EqualizerPreset? = null
-    private var visualizer: Visualizer? = null
 
     private val pickJsonFileLauncher = registerForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
@@ -112,48 +110,7 @@ class StudioEqualizerActivity : AppCompatActivity() {
         loadActivePreset()
     }
 
-    override fun onResume() {
-        super.onResume()
-        startVisualizer()
-    }
 
-    override fun onPause() {
-        super.onPause()
-        stopVisualizer()
-    }
-
-    override fun onDestroy() {
-        stopVisualizer()
-        super.onDestroy()
-    }
-
-    private fun startVisualizer() {
-        try {
-            if (visualizer == null) {
-                visualizer = Visualizer(0).apply {
-                    captureSize = Visualizer.getCaptureSizeRange()[1].coerceAtMost(512)
-                    setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
-                        override fun onWaveFormDataCapture(v: Visualizer?, waveform: ByteArray?, samplingRate: Int) {}
-                        override fun onFftDataCapture(v: Visualizer?, fft: ByteArray?, samplingRate: Int) {
-                            curveView.updateFft(fft)
-                        }
-                    }, Visualizer.getMaxCaptureRate() / 2, false, true)
-                    enabled = true
-                }
-                Log.d("StudioEQ", "Visualizer attached for live FFT spectrum")
-            }
-        } catch (e: Exception) {
-            Log.w("StudioEQ", "Visualizer init fallback: ${e.message}")
-        }
-    }
-
-    private fun stopVisualizer() {
-        try {
-            visualizer?.enabled = false
-            visualizer?.release()
-            visualizer = null
-        } catch (e: Exception) {}
-    }
 
     private fun initViews() {
         findViewById<ImageView>(R.id.btnBack).setOnClickListener { finish() }

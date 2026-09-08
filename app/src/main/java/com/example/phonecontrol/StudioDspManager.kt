@@ -38,6 +38,7 @@ object StudioDspManager {
 
     @Volatile private var isInitialized = false
     @Volatile private var isCurrentlyEnabled = false
+    @Volatile private var isAsleep = false
 
     private var currentClarityGain = 0.0f
     private var currentChannelBalance = 0.0f
@@ -62,7 +63,7 @@ object StudioDspManager {
 
             // 1. Initialize BassBoost, Virtualizer & PresetReverb on Global Session
             try {
-                bassBoost = BassBoost(0, GLOBAL_AUDIO_SESSION).apply {
+                bassBoost = BassBoost(100, GLOBAL_AUDIO_SESSION).apply {
                     val strength = PowerampPresetManager.getDynamicSystemIntensity(context)
                     setStrength(strength.toShort())
                 }
@@ -71,7 +72,7 @@ object StudioDspManager {
             }
 
             try {
-                virtualizer = Virtualizer(0, GLOBAL_AUDIO_SESSION).apply {
+                virtualizer = Virtualizer(100, GLOBAL_AUDIO_SESSION).apply {
                     val strength = PowerampPresetManager.getSurroundStrength(context)
                     setStrength(strength.toShort())
                 }
@@ -80,17 +81,18 @@ object StudioDspManager {
             }
 
             try {
-                presetReverb = PresetReverb(0, GLOBAL_AUDIO_SESSION).apply {
+                presetReverb = PresetReverb(100, GLOBAL_AUDIO_SESSION).apply {
                     preset = PowerampPresetManager.getReverbPreset(context)
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "PresetReverb init fallback: ${e.message}")
             }
 
-            // 2. Initialize DynamicsProcessing or Standard Equalizer on Session 0
+            // 2. Initialize DynamicsProcessing or Standard Equalizer on Session 0 with high priority (100)
             initDynamicsProcessingEngine(context)
 
             isInitialized = true
+            isAsleep = false
             val masterOn = PowerampPresetManager.isMasterEnabled(context)
             setMasterEnabled(context, masterOn)
 
@@ -120,8 +122,9 @@ object StudioDspManager {
                     true
                 )
 
-                dynamicsProcessing = DynamicsProcessing(0, GLOBAL_AUDIO_SESSION, builder.build())
-                Log.d(TAG, "DynamicsProcessing Audio Engine created on Session $GLOBAL_AUDIO_SESSION")
+                dynamicsProcessing = DynamicsProcessing(100, GLOBAL_AUDIO_SESSION, builder.build())
+                applyAntiClippingLimiter(dynamicsProcessing)
+                Log.d(TAG, "DynamicsProcessing Audio Engine created on Session $GLOBAL_AUDIO_SESSION (Priority 100, Anti-Clipping Active)")
                 return
             } catch (e: Exception) {
                 Log.w(TAG, "DynamicsProcessing not available on global session, falling back to Equalizer: ${e.message}")
@@ -129,10 +132,10 @@ object StudioDspManager {
         }
 
         try {
-            standardEqualizer = Equalizer(0, GLOBAL_AUDIO_SESSION).apply {
+            standardEqualizer = Equalizer(100, GLOBAL_AUDIO_SESSION).apply {
                 enabled = isCurrentlyEnabled
             }
-            Log.d(TAG, "Standard Equalizer fallback created on Session $GLOBAL_AUDIO_SESSION")
+            Log.d(TAG, "Standard Equalizer fallback created on Session $GLOBAL_AUDIO_SESSION (Priority 100)")
         } catch (e: Exception) {
             Log.e(TAG, "Standard Equalizer fallback failed: ${e.message}")
         }
@@ -161,9 +164,10 @@ object StudioDspManager {
                         true, 10,
                         true
                     )
-                    val dp = DynamicsProcessing(0, sessionId, builder.build()).apply {
+                    val dp = DynamicsProcessing(100, sessionId, builder.build()).apply {
                         enabled = isCurrentlyEnabled
                     }
+                    applyAntiClippingLimiter(dp)
                     sessionDynamicsMap[sessionId] = dp
                 } catch (e: Exception) {
                     Log.w(TAG, "Could not attach DynamicsProcessing to session $sessionId: ${e.message}")
@@ -173,17 +177,17 @@ object StudioDspManager {
             // 2. Attach Equalizer fallback
             if (!sessionDynamicsMap.containsKey(sessionId)) {
                 try {
-                    val eq = Equalizer(0, sessionId).apply {
+                    val eq = Equalizer(100, sessionId).apply {
                         enabled = isCurrentlyEnabled
                     }
                     sessionEqualizerMap[sessionId] = eq
                 } catch (e: Exception) {}
             }
 
-            // 3. Attach BassBoost, Virtualizer, Reverb
+            // 3. Attach BassBoost, Virtualizer, Reverb (Priority 100)
             if (PowerampPresetManager.isDynamicSystemEnabled(context)) {
                 try {
-                    val bb = BassBoost(0, sessionId).apply {
+                    val bb = BassBoost(100, sessionId).apply {
                         val strength = PowerampPresetManager.getDynamicSystemIntensity(context)
                         setStrength(strength.toShort())
                         enabled = isCurrentlyEnabled
@@ -194,7 +198,7 @@ object StudioDspManager {
 
             if (PowerampPresetManager.isSurroundEnabled(context)) {
                 try {
-                    val virt = Virtualizer(0, sessionId).apply {
+                    val virt = Virtualizer(100, sessionId).apply {
                         val strength = PowerampPresetManager.getSurroundStrength(context)
                         setStrength(strength.toShort())
                         enabled = isCurrentlyEnabled
@@ -205,7 +209,7 @@ object StudioDspManager {
 
             if (PowerampPresetManager.isReverbEnabled(context)) {
                 try {
-                    val rev = PresetReverb(0, sessionId).apply {
+                    val rev = PresetReverb(100, sessionId).apply {
                         preset = PowerampPresetManager.getReverbPreset(context)
                         enabled = isCurrentlyEnabled
                     }
@@ -255,6 +259,7 @@ object StudioDspManager {
 
     fun setMasterEnabled(context: Context, enabled: Boolean) {
         isCurrentlyEnabled = enabled
+        isAsleep = false
         PowerampPresetManager.setMasterEnabled(context, enabled)
 
         try {
@@ -367,6 +372,28 @@ object StudioDspManager {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error applying Standard Equalizer bands: ${e.message}")
+        }
+    }
+
+    private fun applyAntiClippingLimiter(dp: DynamicsProcessing?) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && dp != null) {
+            try {
+                // Pro-grade Anti-Clipping Limiter: -0.2 dBFS ceiling, fast 1ms attack, smooth 80ms release, 10:1 ratio
+                val limiter = DynamicsProcessing.Limiter(
+                    true,  // inUse
+                    true,  // enabled
+                    0,     // linkGroup
+                    1.0f,  // attackTime (ms)
+                    80.0f, // releaseTime (ms)
+                    10.0f, // ratio
+                    -0.2f, // threshold (dBFS)
+                    0.0f   // postGain (dB)
+                )
+                dp.setLimiterAllChannelsTo(limiter)
+                Log.d(TAG, "Anti-Clipping Hardware Limiter configured successfully (-0.2 dBFS)")
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not configure limiter: ${e.message}")
+            }
         }
     }
 
@@ -507,6 +534,7 @@ object StudioDspManager {
 
     /**
      * Smart Sleep Guard: Suspends DSP processing to 0% CPU when audio is paused.
+     * Prevents any idle battery drain when no audio is playing.
      */
     fun pauseDsp() {
         if (!isCurrentlyEnabled) return
@@ -523,37 +551,66 @@ object StudioDspManager {
             sessionVirtualizerMap.values.forEach { try { it.enabled = false } catch (e: Exception) {} }
             sessionReverbMap.values.forEach { try { it.enabled = false } catch (e: Exception) {} }
 
-            Log.d(TAG, "Studio DSP put to SLEEP (0% CPU)")
+            isAsleep = true
+            Log.d(TAG, "Studio DSP put to SLEEP (0% CPU, 0 battery drain)")
         } catch (e: Exception) {}
     }
 
     /**
-     * Smart Sleep Guard: Resumes DSP processing in 0ms when audio starts playing.
-     * Guarantees that DSP is fully initialized and operational even if UI was never opened!
+     * Smart Sleep Guard: Resumes DSP processing atomically when audio playback begins.
+     * Checks hasControl() to handle AudioFlinger session reclaims, and performs a 
+     * clean atomic re-handshake to guarantee instant hook without requiring app toggling.
      */
     fun resumeDsp(context: Context) {
         val masterOn = PowerampPresetManager.isMasterEnabled(context)
         if (!masterOn) return
 
-        ensureInitialized(context)
+        // Validate if existing effects still retain control from AudioFlinger
+        val hasControl = try {
+            (dynamicsProcessing != null && dynamicsProcessing?.hasControl() == true) ||
+            (standardEqualizer != null && standardEqualizer?.hasControl() == true)
+        } catch (e: Exception) { false }
+
+        // If not initialized, lost control, or null, execute fresh atomic re-initialization
+        if (!isInitialized || !hasControl || (dynamicsProcessing == null && standardEqualizer == null)) {
+            Log.d(TAG, "Studio DSP re-initializing on active playback (hasControl: $hasControl, isInit: $isInitialized)")
+            release()
+            init(context)
+            isAsleep = false
+            return
+        }
 
         try {
-            dynamicsProcessing?.enabled = true
-            standardEqualizer?.enabled = true
-            bassBoost?.enabled = PowerampPresetManager.isDynamicSystemEnabled(context)
-            virtualizer?.enabled = PowerampPresetManager.isSurroundEnabled(context) || PowerampPresetManager.isCrossfeedEnabled(context)
-            presetReverb?.enabled = PowerampPresetManager.isReverbEnabled(context)
+            if (isAsleep) {
+                dynamicsProcessing?.enabled = true
+                standardEqualizer?.enabled = true
+                bassBoost?.enabled = PowerampPresetManager.isDynamicSystemEnabled(context)
+                virtualizer?.enabled = PowerampPresetManager.isSurroundEnabled(context) || PowerampPresetManager.isCrossfeedEnabled(context)
+                presetReverb?.enabled = PowerampPresetManager.isReverbEnabled(context)
 
-            sessionDynamicsMap.values.forEach { try { it.enabled = true } catch (e: Exception) {} }
-            sessionEqualizerMap.values.forEach { try { it.enabled = true } catch (e: Exception) {} }
-            sessionBassBoostMap.values.forEach { try { it.enabled = PowerampPresetManager.isDynamicSystemEnabled(context) } catch (e: Exception) {} }
-            sessionVirtualizerMap.values.forEach { try { it.enabled = PowerampPresetManager.isSurroundEnabled(context) || PowerampPresetManager.isCrossfeedEnabled(context) } catch (e: Exception) {} }
-            sessionReverbMap.values.forEach { try { it.enabled = PowerampPresetManager.isReverbEnabled(context) } catch (e: Exception) {} }
+                sessionDynamicsMap.values.forEach { try { it.enabled = true } catch (e: Exception) {} }
+                sessionEqualizerMap.values.forEach { try { it.enabled = true } catch (e: Exception) {} }
+                sessionBassBoostMap.values.forEach { try { it.enabled = PowerampPresetManager.isDynamicSystemEnabled(context) } catch (e: Exception) {} }
+                sessionVirtualizerMap.values.forEach { try { it.enabled = PowerampPresetManager.isSurroundEnabled(context) || PowerampPresetManager.isCrossfeedEnabled(context) } catch (e: Exception) {} }
+                sessionReverbMap.values.forEach { try { it.enabled = PowerampPresetManager.isReverbEnabled(context) } catch (e: Exception) {} }
 
-            Log.d(TAG, "Studio DSP WOKE UP in 0ms (Active Sessions: ${sessionDynamicsMap.size + 1})")
+                // Sync current active preset curves to ensure fresh parameters applied on wake
+                val activePreset = PowerampPresetManager.getPresetByName(context, PowerampPresetManager.getActivePresetName(context))
+                if (activePreset != null) {
+                    applyPreset(context, activePreset)
+                }
+
+                isAsleep = false
+                Log.d(TAG, "Studio DSP WOKE UP in 0ms with fresh handshake (Active Sessions: ${sessionDynamicsMap.size + 1})")
+            } else {
+                dynamicsProcessing?.enabled = true
+                standardEqualizer?.enabled = true
+            }
         } catch (e: Exception) {
-            // Re-init if system audio server crashed or restarted
+            Log.w(TAG, "Error in resumeDsp, recovering with fresh init: ${e.message}")
+            release()
             init(context)
+            isAsleep = false
         }
     }
 

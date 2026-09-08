@@ -8,6 +8,7 @@ import android.provider.OpenableColumns
 import android.provider.Settings
 import android.view.View
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
@@ -254,11 +255,15 @@ class PackageInstallActivity : AppCompatActivity() {
             }
 
             runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                // Clear dismiss listener first so programmatic dismiss does NOT finish the activity
+                installSheetDialog?.setOnDismissListener(null)
+                installSheetDialog?.dismiss()
+                installSheetDialog = null
+
                 if (result.success) {
-                    installSheetDialog?.dismiss()
                     showPostInstallDialog(result.installedPackage ?: inspection.packageName, result.backupPath, fileName)
                 } else {
-                    installSheetDialog?.dismiss()
                     showConflictForceDialog(uri, fileName, inspection, result)
                 }
             }
@@ -271,6 +276,8 @@ class PackageInstallActivity : AppCompatActivity() {
         inspection: PackageInstallerManager.ApkInspection,
         result: PackageInstallerManager.InstallResult
     ) {
+        if (isFinishing || isDestroyed) return
+
         val dialogView = layoutInflater.inflate(R.layout.layout_dialog_conflict_force, null)
         val dialog = BottomSheetDialog(this)
         dialog.setContentView(dialogView)
@@ -286,6 +293,41 @@ class PackageInstallActivity : AppCompatActivity() {
         val btnCancel = dialogView.findViewById<Button>(R.id.btnConflictCancel)
         val btnProceed = dialogView.findViewById<Button>(R.id.btnConflictProceed)
 
+        val layoutBackupToggle = dialogView.findViewById<View>(R.id.layoutConflictBackupToggle)
+        val cbAutoBackup = dialogView.findViewById<CheckBox>(R.id.cbConflictAutoBackup)
+        val tvBackupTitle = dialogView.findViewById<TextView>(R.id.tvConflictBackupTitle)
+        val tvBackupDesc = dialogView.findViewById<TextView>(R.id.tvConflictBackupDesc)
+
+        fun updateBackupUi(checked: Boolean) {
+            cbAutoBackup?.isChecked = checked
+            if (checked) {
+                layoutBackupToggle?.setBackgroundColor(Color.parseColor("#162E20"))
+                tvBackupTitle?.text = "🛡️ Auto-backup app data before overwrite"
+                tvBackupTitle?.setTextColor(Color.parseColor("#00E676"))
+                tvBackupDesc?.text = "Archives accounts, databases & settings to restore in 1-click. Uncheck for a fresh clean install."
+                tvBackupDesc?.setTextColor(Color.parseColor("#C8E6C9"))
+                btnProceed.text = "⚡ Force Install (Safe)"
+            } else {
+                layoutBackupToggle?.setBackgroundColor(Color.parseColor("#1E1E24"))
+                tvBackupTitle?.text = "⚠️ No Backup (Fresh Clean Install)"
+                tvBackupTitle?.setTextColor(Color.parseColor("#FF9800"))
+                tvBackupDesc?.text = "Previous app data will be deleted. The new build will start in completely fresh default state."
+                tvBackupDesc?.setTextColor(Color.parseColor("#FFE0B2"))
+                btnProceed.text = "⚡ Force Install (Clean)"
+            }
+        }
+
+        updateBackupUi(true)
+
+        layoutBackupToggle?.setOnClickListener {
+            val newChecked = !(cbAutoBackup?.isChecked ?: true)
+            updateBackupUi(newChecked)
+        }
+
+        cbAutoBackup?.setOnCheckedChangeListener { _, isChecked ->
+            updateBackupUi(isChecked)
+        }
+
         tvHeaderTitle.text = result.failureTitle ?: "Installation Stoppage Detected"
         tvReasonTitle.text = result.failureTitle ?: "Conflict Occurred"
         tvReasonExplanation.text = result.failureExplanation ?: result.message
@@ -300,12 +342,35 @@ class PackageInstallActivity : AppCompatActivity() {
         }
 
         btnProceed.setOnClickListener {
-            dialog.dismiss()
-            showInitialInspectionSheet(uri, fileName)
-            // Immediately execute with forceReinstall
-            installSheetDialog?.let { currentDialog ->
-                val currentView = currentDialog.findViewById<View>(android.R.id.content) ?: dialogView
-                executeInstallation(currentView, uri, fileName, inspection, forceReinstall = true)
+            val shouldBackup = cbAutoBackup?.isChecked ?: true
+            btnCancel.isEnabled = false
+            btnProceed.isEnabled = false
+            btnProceed.text = if (shouldBackup) "⚡ Backing up & Force Installing..." else "⚡ Clean Force Installing..."
+
+            thread {
+                val forceResult = PackageInstallerManager.installPackage(
+                    this,
+                    uri,
+                    fileName,
+                    forceReinstall = true,
+                    autoBackup = shouldBackup
+                ) { progressText ->
+                    runOnUiThread {
+                        btnProceed.text = progressText
+                    }
+                }
+
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    dialog.setOnDismissListener(null)
+                    dialog.dismiss()
+
+                    if (forceResult.success) {
+                        showPostInstallDialog(forceResult.installedPackage ?: inspection.packageName, forceResult.backupPath, fileName)
+                    } else {
+                        showConflictForceDialog(uri, fileName, inspection, forceResult)
+                    }
+                }
             }
         }
 

@@ -65,5 +65,73 @@ class StorageActivity : AppCompatActivity() {
                 }
             }
         }
+
+        val btnCleanOrphaned = findViewById<Button>(R.id.btnCleanOrphanedResidue)
+        btnCleanOrphaned.setOnClickListener {
+            tvLog.text = "🔍 Scanning for uninstalled app residue in /sdcard/Android/obb and /sdcard/Android/data..."
+            btnCleanOrphaned.isEnabled = false
+            thread {
+                val scanResult = StorageManager.scanOrphanedResidue(this) { progress ->
+                    runOnUiThread { tvLog.append("\n$progress") }
+                }
+
+                if (scanResult.items.isEmpty()) {
+                    runOnUiThread {
+                        btnCleanOrphaned.isEnabled = true
+                        tvLog.append("\n\n✅ Storage Clean! No ghost residue from uninstalled apps found.")
+                        Toast.makeText(this, "No ghost residue found!", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    runOnUiThread {
+                        tvLog.append("\n\n⚠️ Found ${scanResult.items.size} ghost folder(s) taking ${scanResult.totalReadable}!")
+                        tvLog.append("\n🧹 Starting deep cleanup...")
+                    }
+
+                    val freed = StorageManager.cleanOrphanedResidue(scanResult.items) { progress ->
+                        runOnUiThread { tvLog.append("\n$progress") }
+                    }
+
+                    runOnUiThread {
+                        btnCleanOrphaned.isEnabled = true
+                        tvLog.append("\n\n🎉 Successfully deleted ${scanResult.items.size} ghost folders! Recovered ${StorageManager.formatSize(freed)} of storage.")
+                        Toast.makeText(this, "Cleaned ${StorageManager.formatSize(freed)} of ghost data!", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+
+        val btnCleanChatJunk = findViewById<Button>(R.id.btnCleanChatJunk)
+        btnCleanChatJunk.setOnClickListener {
+            tvLog.text = "🔍 Scanning WhatsApp & Telegram for duplicate 'Sent' files & cache..."
+            btnCleanChatJunk.isEnabled = false
+            thread {
+                val scanResult = StorageManager.scanChatJunk { progress ->
+                    runOnUiThread { tvLog.append("\n$progress") }
+                }
+
+                if (scanResult.items.isEmpty()) {
+                    runOnUiThread {
+                        btnCleanChatJunk.isEnabled = true
+                        tvLog.append("\n\n✅ Clean! No duplicate sent media or chat cache found.")
+                        Toast.makeText(this, "Chat media is already clean!", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    runOnUiThread {
+                        tvLog.append("\n\n⚠️ Found ${scanResult.totalFiles} redundant files taking ${scanResult.totalSizeReadable} across ${scanResult.items.size} categories!")
+                        tvLog.append("\n🧹 Starting safe cleanup (received personal media is safe)...")
+                    }
+
+                    val freed = StorageManager.cleanChatJunk(scanResult.items) { progress ->
+                        runOnUiThread { tvLog.append("\n$progress") }
+                    }
+
+                    runOnUiThread {
+                        btnCleanChatJunk.isEnabled = true
+                        tvLog.append("\n\n🎉 Cleanup Complete! Safely recovered ${StorageManager.formatSize(freed)} of storage.")
+                        Toast.makeText(this, "Cleaned ${StorageManager.formatSize(freed)} of chat junk!", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
     }
 }

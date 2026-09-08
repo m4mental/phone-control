@@ -22,6 +22,24 @@
 
 ---
 
+## ✨ What's New & Recent Fixes
+* **🛡️ System-wide Private DNS Switcher & Ad-Blocker + Quick Settings Tile:**
+  * 1-Tap switching between `Off (ISP)`, `AdGuard DNS` (system-wide ad & tracker blocking without VPN battery drain), `Cloudflare 1.1.1.1`, and `Google DNS`.
+  * Added dedicated Quick Settings (QS) Tile (`PrivateDnsTileService`) in the notification shade with live dynamic state badges.
+* **📦 Installed App Extractor & Backup (.apk / .apks Bundles):**
+  * Extract any installed user or system application directly to `/sdcard/PHONE_CONTROL/extracted_apks/`.
+  * Automatically bundles modern multi-split Google Play apps into standard `.apks` archives via high-performance Java `ZipOutputStream`.
+  * Real-time search filter, system app toggle, and 1-tap FileProvider sharing to WhatsApp/Telegram/Drive.
+* **💬 WhatsApp & Telegram Duplicate Media & Junk Cleaner:**
+  * Smart storage scanner in Storage Boost targeting redundant `/Sent/` media (videos, photos, audio, documents, GIFs), sticker caches, and temporary voice notes across WhatsApp and Telegram variants.
+  * Safely recovers hundreds of MBs of storage while strictly preserving personal received media.
+* **⚡ Storage Boost `fstrim` Engine Fix for Android 14 / Nothing OS:**
+  * Re-engineered `runFsTrim()` to prioritize Android framework's native `sm fstrim` with multi-layer fallback chains (`vdc cryptfs fstrim`, `toybox fstrim -v`), resolving command-not-found errors on Nothing OS and Android 14.
+* **📥 Universal Package Installer Downgrade & Conflict Safeguards:**
+  * Added intelligent downgrade detection (`-d -r` flags) and conflict handling dialogs for seamless side-loading.
+
+---
+
 ## 📑 Table of Contents
 - [Architecture Overview](#-architecture-overview)
 - [Core Functional Modules](#-core-functional-modules)
@@ -161,6 +179,14 @@ Provides granular control over network modems and system telemetry:
   * **1-Tap Unhide & Full System Restore:** Unified restore command (`pm default-state --user 0`, `pm unhide`, `pm enable`, `pm unsuspend`) that restores launcher icons and restores the "Open" button in Google Play Store.
 * 🛡️ **Per-App Network Firewall:**
   * Individual per-app internet blocking (Wi-Fi and Cellular) via `iptables` packet filtering.
+* 🌐 **Private DNS Switcher & Ad-Blocker + Quick Settings Tile:**
+  * **Zero VPN Overhead:** Manipulates Android's global secure DNS framework (`settings put global private_dns_mode` & `private_dns_specifier`) with 0% battery impact or throughput slowdowns.
+  * **Built-in DNS Providers:**
+    * 🛡️ **AdGuard DNS (`dns.adguard-dns.com`):** System-wide ad-blocking and anti-tracking across all apps, browsers, and mobile games.
+    * ⚡ **Cloudflare 1.1.1.1 (`one.one.one.one`):** Ultra-fast, privacy-preserving DNS resolution.
+    * 🔍 **Google DNS (`dns.google`):** High-reliability global recursive DNS.
+    * 🌐 **Off / Automatic:** Restores standard ISP DNS configuration.
+  * **Quick Settings (QS) Tile Integration:** Includes a custom `PrivateDnsTileService` allowing users to cycle through DNS profiles directly from the Android notification shade with real-time status badges.
 
 ---
 
@@ -219,6 +245,20 @@ Maintains clean, uncluttered application lifecycles:
     * **Zero Data Loss Guarantee:** Archives `/data/data/<pkg>` with `tar -czf` before force reinstallation, providing a 1-click **Restore Data** button upon completion.
 * 🗑️ **Root Bloatware Debloater:**
   * Safely disables or uninstalls carrier bloatware and unnecessary pre-installed OEM system packages.
+* 📦 **Installed App Extractor & Backup (.apk / .apks Split Bundle):**
+  * **Intelligent Package Extraction:** Lists all user and system applications with real-time package size, version code, and split count.
+  * **Split Bundle Packaging (`.apks`):** Compresses modern multi-split Google Play apps (base APK + architecture libraries + language configs) into standard `.apks` zip archives using high-throughput Java `ZipOutputStream`.
+  * **Standalone APK Exporter:** Exports non-split apps directly as single `.apk` files.
+  * **1-Tap Sharing & Direct Access:** Integrates Android `FileProvider` for instant sharing via WhatsApp, Telegram, or Drive, plus 1-tap directory browsing (`/sdcard/PHONE_CONTROL/extracted_apks/`).
+* 💬 **WhatsApp & Telegram Duplicate Media & Junk Cleaner:**
+  * **Safe Storage Recovery:** Scans and eliminates hidden redundant `/Sent/` folders (videos, photos, audio, documents, GIFs), voice note caches, and sticker caches across WhatsApp, WhatsApp Business, Telegram, Telegram Plus, and Telegram X.
+  * **Strict Data Safety:** Completely isolates personal received photos and videos; only deletes redundant sent copies that were already uploaded or delivered.
+  * **High-Efficiency Cleanup:** Tested to recover hundreds of megabytes of flash storage in seconds with live terminal log output.
+* ⚡ **Storage Boost & Android 14 `fstrim` Engine:**
+  * **Multi-Layer fstrim Execution:** Uses Android framework's native `sm fstrim` with fallback to `vdc cryptfs fstrim` and direct partition trimming (`toybox fstrim -v /data`), eliminating missing binary errors on Nothing OS and Android 14.
+  * **Permanent Storage I/O Tuning:** Increases storage read-ahead cache and configures the low-latency `mq-deadline` scheduler.
+  * **SQLite Database Vacuum:** Compacts and optimizes app databases (`VACUUM` & `REINDEX`) to reduce app launch lag.
+  * **Ghost / Orphaned App Residue Cleaner:** Detects and cleans leftover folders in `/sdcard/Android/obb/` and `/sdcard/Android/data/` for uninstalled packages.
 * 🔐 **App & Data Backup Vault:**
   * Backup and restore application APKs and internal private data (`/data/data/`) locally.
 * 🤖 **Smart Per-App Profile Automation (Auto Rules Engine):**

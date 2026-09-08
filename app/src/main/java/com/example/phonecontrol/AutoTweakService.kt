@@ -406,7 +406,29 @@ class AutoTweakService : Service() {
     }
 
     private fun handleAudioPlaybackStateChanged(configs: List<AudioPlaybackConfiguration>?) {
-        val hasActiveAudio = audioManager?.isMusicActive == true || (!configs.isNullOrEmpty())
+        val isMusicActive = audioManager?.isMusicActive == true
+        var isAnyConfigActive = false
+        if (configs != null) {
+            for (config in configs) {
+                try {
+                    val method = config.javaClass.getMethod("isActive")
+                    if (method.invoke(config) as? Boolean == true) {
+                        isAnyConfigActive = true
+                        break
+                    }
+                } catch (e: Exception) {
+                    try {
+                        val stateMethod = config.javaClass.getMethod("getPlayerState")
+                        val state = stateMethod.invoke(config) as? Int
+                        if (state == 2) { // AudioPlaybackConfiguration.PLAYER_STATE_STARTED
+                            isAnyConfigActive = true
+                            break
+                        }
+                    } catch (e2: Exception) {}
+                }
+            }
+        }
+        val hasActiveAudio = isMusicActive || isAnyConfigActive
         if (hasActiveAudio) {
             isAudioCurrentlyActive = true
             equalizerFreezeRunnable?.let { equalizerFreezeHandler?.removeCallbacks(it) }

@@ -109,12 +109,36 @@
                 android:layout_width="match_parent"
                 android:layout_height="60dp"
                 android:text="OPTIMIZE APP DATABASES"
-                android:layout_marginBottom="24dp"
+                android:layout_marginBottom="12dp"
                 app:cornerRadius="12dp"
                 android:backgroundTint="#1A1A1A"
                 android:textColor="#FFAB40"
                 app:strokeWidth="1dp"
                 app:strokeColor="#FFAB40" />
+
+            <Button
+                android:id="@+id/btnCleanOrphanedResidue"
+                android:layout_width="match_parent"
+                android:layout_height="60dp"
+                android:text="🧹 SCAN &amp; CLEAN GHOST APP RESIDUE"
+                android:layout_marginBottom="12dp"
+                app:cornerRadius="12dp"
+                android:backgroundTint="#162E20"
+                android:textColor="#00E676"
+                app:strokeWidth="1dp"
+                app:strokeColor="#00E676" />
+
+            <Button
+                android:id="@+id/btnCleanChatJunk"
+                android:layout_width="match_parent"
+                android:layout_height="60dp"
+                android:text="💬 CLEAN WHATSAPP &amp; TELEGRAM JUNK"
+                android:layout_marginBottom="24dp"
+                app:cornerRadius="12dp"
+                android:backgroundTint="#00242B"
+                android:textColor="#00E5FF"
+                app:strokeWidth="1dp"
+                app:strokeColor="#00E5FF" />
 
             <!-- Log Output -->
             <com.google.android.material.card.MaterialCardView

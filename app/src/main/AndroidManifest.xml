@@ -265,6 +265,21 @@
             android:exported="false"
             android:theme="@style/Theme.PhoneControl" />
 
+        <activity
+            android:name=".AppExtractorActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PhoneControl" />
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
 
 
         <service
@@ -320,6 +335,18 @@
             android:exported="true"
             android:label="Operating Mode"
             android:icon="@drawable/ic_qs_mode_control"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <!-- Private DNS / Ad-Blocker QS Tile (1-Tap Cycle: AdGuard -> Cloudflare -> Google -> Off) -->
+        <service
+            android:name=".PrivateDnsTileService"
+            android:exported="true"
+            android:label="Private DNS"
+            android:icon="@drawable/ic_qs_private_dns"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />

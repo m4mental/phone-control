@@ -90,6 +90,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.cardPerApp).setOnClickListener { startActivity(Intent(this, PerAppActivity::class.java)) }
         findViewById<View>(R.id.cardFreezer).setOnClickListener { startActivity(Intent(this, FreezerActivity::class.java)) }
         findViewById<View>(R.id.cardStudioEqualizer).setOnClickListener { startActivity(Intent(this, StudioEqualizerActivity::class.java)) }
+        findViewById<View>(R.id.cardAppExtractor).setOnClickListener { startActivity(Intent(this, AppExtractorActivity::class.java)) }
         findViewById<View>(R.id.cardBattery).setOnClickListener { startActivity(Intent(this, BatteryActivity::class.java)) }
         findViewById<View>(R.id.cardVault).setOnClickListener { startActivity(Intent(this, VaultActivity::class.java)) }
         findViewById<View>(R.id.cardTowerLock).setOnClickListener { startActivity(Intent(this, HomeTowerLockActivity::class.java)) }

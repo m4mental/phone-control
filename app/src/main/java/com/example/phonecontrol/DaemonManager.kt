@@ -83,7 +83,7 @@ object DaemonManager {
             LAST=${'$'}(cat "${'$'}TRIM_FILE" 2>/dev/null || echo 0)
             if [ ${'$'}((NOW - LAST)) -gt 604800 ]; then
                 echo "Running weekly FSTRIM..." >> "${'$'}LOG"
-                fstrim -v /data >> "${'$'}LOG" 2>&1
+                (sm fstrim || fstrim -v /data) >> "${'$'}LOG" 2>&1
                 echo "${'$'}NOW" > "${'$'}TRIM_FILE"
             fi
 
@@ -115,7 +115,7 @@ object DaemonManager {
                     if [ "${'$'}TODAY" != "${'$'}LAST_OPT" ]; then
                         echo "${'$'}TODAY" > "${'$'}NIGHT_FILE"
                         echo "Running daily 03:00 AM Night Maintenance..." >> "${'$'}LOG"
-                        fstrim -v /data >> "${'$'}LOG" 2>&1
+                        (sm fstrim || fstrim -v /data) >> "${'$'}LOG" 2>&1
                         sync
                         echo 3 > /proc/sys/vm/drop_caches 2>/dev/null
                     fi

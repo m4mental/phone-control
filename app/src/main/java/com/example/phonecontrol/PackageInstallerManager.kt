@@ -578,6 +578,7 @@ object PackageInstallerManager {
         uri: Uri,
         fileName: String,
         forceReinstall: Boolean = false,
+        autoBackup: Boolean = true,
         onProgress: (String) -> Unit
     ): InstallResult {
         val stagingDir = File("/data/local/tmp/pc_install_staging")
@@ -647,12 +648,16 @@ object PackageInstallerManager {
                     if (forceReinstall && !detectedPkg.isNullOrBlank()) {
                         val reason = if (isSigConflict && isDowngrade) "signature conflict & downgrade" else if (isDowngrade) "downgrade" else "signature conflict"
                         
-                        onProgress("🛡️ Auto-backing up app data before clean reinstall...")
-                        autoBackupPath = backupAppData(detectedPkg)
-                        if (autoBackupPath != null) {
-                            onProgress("✅ App data safely backed up: $autoBackupPath")
+                        if (autoBackup) {
+                            onProgress("🛡️ Auto-backing up app data before clean reinstall...")
+                            autoBackupPath = backupAppData(detectedPkg)
+                            if (autoBackupPath != null) {
+                                onProgress("✅ App data safely backed up: $autoBackupPath")
+                            } else {
+                                onProgress("ℹ️ No previous app data folder found to back up.")
+                            }
                         } else {
-                            onProgress("ℹ️ No previous app data folder found to back up.")
+                            onProgress("⚡ Skipping backup (Clean install requested)...")
                         }
 
                         onProgress("⚠️ Auto-uninstalling previous build ($detectedPkg) for $reason...")
@@ -727,10 +732,14 @@ object PackageInstallerManager {
                     if (forceReinstall && singlePkg != "existing package") {
                         val reason = if (isSigConflict && isDowngrade) "signature conflict & downgrade" else if (isDowngrade) "downgrade" else "signature conflict"
                         
-                        onProgress("🛡️ Auto-backing up app data before clean reinstall...")
-                        autoBackupPath = backupAppData(singlePkg)
-                        if (autoBackupPath != null) {
-                            onProgress("✅ App data safely backed up: $autoBackupPath")
+                        if (autoBackup) {
+                            onProgress("🛡️ Auto-backing up app data before clean reinstall...")
+                            autoBackupPath = backupAppData(singlePkg)
+                            if (autoBackupPath != null) {
+                                onProgress("✅ App data safely backed up: $autoBackupPath")
+                            }
+                        } else {
+                            onProgress("⚡ Skipping backup (Clean install requested)...")
                         }
 
                         onProgress("⚠️ Auto-uninstalling previous build ($singlePkg) for $reason...")
@@ -753,7 +762,11 @@ object PackageInstallerManager {
                     }
                 }
 
-                return handleInstallOutput(result, apkFiles[0], isSplit = false, installedPackage = if (singlePkg != "existing package") singlePkg else detectedPkg, backupPath = autoBackupPath, incomingCode = incomingCode, installedCode = currentCode)
+                val finalSinglePkg = if (singlePkg != "existing package") singlePkg else detectedPkg
+                if (result.output.contains("Success", ignoreCase = true)) {
+                    setupObbFiles(extractDir, finalSinglePkg, onProgress)
+                }
+                return handleInstallOutput(result, apkFiles[0], isSplit = false, installedPackage = finalSinglePkg, backupPath = autoBackupPath, incomingCode = incomingCode, installedCode = currentCode)
             }
 
             // Multiple Split APKs -> Use pm install-create session API
@@ -801,10 +814,14 @@ object PackageInstallerManager {
                 if (forceReinstall && !splitPkg.isNullOrBlank()) {
                     val reason = if (isSplitSigConflict && isSplitDowngrade) "signature conflict & downgrade" else if (isSplitDowngrade) "downgrade" else "signature conflict"
                     
-                    onProgress("🛡️ Auto-backing up app data before clean reinstall...")
-                    autoBackupPath = backupAppData(splitPkg)
-                    if (autoBackupPath != null) {
-                        onProgress("✅ App data safely backed up: $autoBackupPath")
+                    if (autoBackup) {
+                        onProgress("🛡️ Auto-backing up app data before clean reinstall...")
+                        autoBackupPath = backupAppData(splitPkg)
+                        if (autoBackupPath != null) {
+                            onProgress("✅ App data safely backed up: $autoBackupPath")
+                        }
+                    } else {
+                        onProgress("⚡ Skipping backup (Clean install requested)...")
                     }
 
                     onProgress("⚠️ Auto-uninstalling previous build ($splitPkg) for $reason...")
@@ -837,25 +854,51 @@ object PackageInstallerManager {
                 }
             }
 
-            // Check for OBB files to move if present
-            val obbFilesOutput = ShellUtils.runAsRoot("find '${extractDir.absolutePath}' -type f -name '*.obb'", 15000).output
-            val obbFiles = obbFilesOutput.split("\n").map { it.trim() }.filter { it.isNotBlank() }
-            if (obbFiles.isNotEmpty()) {
-                onProgress("🎮 Copying ${obbFiles.size} OBB game files...")
-                for (obb in obbFiles) {
-                    val obbName = File(obb).name
-                    val pkgFromObb = obbName.substringAfter("main.").substringAfter("patch.").substringBefore(".obb").substringAfter(".")
-                    val targetObbDir = "/sdcard/Android/obb/$pkgFromObb"
-                    ShellUtils.runAsRoot("mkdir -p '$targetObbDir' && cp '$obb' '$targetObbDir/' && chmod 777 '$targetObbDir/$obbName'", 30000)
-                }
+            val finalSplitPkg = splitPkg ?: detectedPkg
+            if (commitResult.output.contains("Success", ignoreCase = true)) {
+                setupObbFiles(extractDir, finalSplitPkg, onProgress)
             }
 
-            return handleInstallOutput(commitResult, "", isSplit = true, installedPackage = splitPkg, backupPath = autoBackupPath, incomingCode = incomingCode, installedCode = currentCode)
+            return handleInstallOutput(commitResult, "", isSplit = true, installedPackage = finalSplitPkg, backupPath = autoBackupPath, incomingCode = incomingCode, installedCode = currentCode)
         } catch (e: Exception) {
             Log.e("PackageInstaller", "Install failed", e)
             return InstallResult(false, "Installation exception: ${e.message}", e.stackTraceToString())
         } finally {
             ShellUtils.runAsRoot("rm -rf ${stagingDir.absolutePath}", 10000)
+        }
+    }
+
+    /**
+     * Automatically deploys extracted game OBB data files to /sdcard/Android/obb/<pkg>/ with proper permissions.
+     */
+    private fun setupObbFiles(extractDir: File, targetPkg: String?, onProgress: (String) -> Unit) {
+        try {
+            val obbFilesOutput = ShellUtils.runAsRoot("find '${extractDir.absolutePath}' -type f -name '*.obb'", 15000).output
+            val obbFiles = obbFilesOutput.split("\n").map { it.trim() }.filter { it.isNotBlank() }
+            if (obbFiles.isEmpty()) return
+
+            val pkg = if (!targetPkg.isNullOrBlank() && targetPkg != "existing package") {
+                targetPkg
+            } else {
+                val firstName = File(obbFiles[0]).name
+                val regex = Regex("(?:main|patch)\\.[0-9]+\\.([a-zA-Z0-9_.]+)\\.obb")
+                regex.find(firstName)?.groupValues?.get(1) ?: ""
+            }
+
+            if (pkg.isNotBlank()) {
+                onProgress("🎮 Setting up ${obbFiles.size} game OBB file(s) for $pkg...")
+                val targetObbDir = "/sdcard/Android/obb/$pkg"
+                ShellUtils.runAsRoot("mkdir -p '$targetObbDir'", 10000)
+                for (obb in obbFiles) {
+                    val obbName = File(obb).name
+                    onProgress("📦 Copying $obbName to /sdcard/Android/obb/$pkg/...")
+                    ShellUtils.runAsRoot("cp '$obb' '$targetObbDir/' && chmod 666 '$targetObbDir/$obbName'", 60000)
+                }
+                ShellUtils.runAsRoot("chown -R media_rw:media_rw '$targetObbDir' 2>/dev/null; chmod 775 '$targetObbDir'", 15000)
+                onProgress("✅ Game OBB setup complete!")
+            }
+        } catch (e: Exception) {
+            Log.w("PackageInstaller", "Error in setupObbFiles: ${e.message}")
         }
     }
 

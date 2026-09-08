@@ -45,12 +45,16 @@ object DeepOptManager {
 
         // 4. File System Trim (UFS/EMMC Refresh)
         onProgress("Refreshing Storage (FSTRIM)...")
-        ShellUtils.runAsRoot("fstrim -v /data")
+        ShellUtils.runAsRoot("sm fstrim")
 
-        // 5. Aggressive ART Cache Compilation
-        val mode = if (java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) == 3) "everything" else "speed-profile"
-        onProgress("Optimizing App Execution ($mode)...")
-        ShellUtils.runAsRoot("cmd package compile -m $mode -a")
+        // 5. Smart ART Cache Compilation (Focused on User Apps & bg-dexopt to prevent overheating)
+        onProgress("Optimizing User Apps & ART Execution (speed-profile)...")
+        ShellUtils.runAsRoot("cmd package compile -m speed-profile -r bg-dexopt", 30000)
+        val userPkgs = ShellUtils.runAsRoot("pm list packages -3 2>/dev/null | cut -d: -f2", 10000).output
+            .split("\n").map { it.trim() }.filter { it.isNotBlank() }
+        for (pkg in userPkgs.take(20)) {
+            ShellUtils.fastCmd("cmd package compile -m speed-profile $pkg 2>/dev/null")
+        }
 
         // 6. Final Sync
         onProgress("Finalizing Maintenance...")

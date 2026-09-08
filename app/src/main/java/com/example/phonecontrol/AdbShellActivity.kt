@@ -252,7 +252,7 @@ class AdbShellActivity : AppCompatActivity() {
         dialog.show()
     }
 
-    private fun handlePackageInstallation(uri: Uri, forceReinstall: Boolean = false, inspection: PackageInstallerManager.ApkInspection? = null) {
+    private fun handlePackageInstallation(uri: Uri, forceReinstall: Boolean = false, autoBackup: Boolean = true, inspection: PackageInstallerManager.ApkInspection? = null) {
         var fileName = "package.apk"
         try {
             contentResolver.query(uri, null, null, null, null)?.use { cursor ->
@@ -268,7 +268,7 @@ class AdbShellActivity : AppCompatActivity() {
         Toast.makeText(this, "Installing $fileName...", Toast.LENGTH_SHORT).show()
 
         thread {
-            val result = PackageInstallerManager.installPackage(this, uri, fileName, forceReinstall) { progressText ->
+            val result = PackageInstallerManager.installPackage(this, uri, fileName, forceReinstall, autoBackup) { progressText ->
                 runOnUiThread {
                     appendColoredText("➔ $progressText\n", Color.parseColor("#FFD700"))
                     scrollOutput.post { scrollOutput.fullScroll(NestedScrollView.FOCUS_DOWN) }
@@ -328,15 +328,52 @@ class AdbShellActivity : AppCompatActivity() {
             tvAppInfo.text = "Target: $fileName"
         }
 
+        val layoutBackupToggle = dialogView.findViewById<View>(R.id.layoutConflictBackupToggle)
+        val cbAutoBackup = dialogView.findViewById<CheckBox>(R.id.cbConflictAutoBackup)
+        val tvBackupTitle = dialogView.findViewById<TextView>(R.id.tvConflictBackupTitle)
+        val tvBackupDesc = dialogView.findViewById<TextView>(R.id.tvConflictBackupDesc)
+
+        fun updateBackupUi(checked: Boolean) {
+            cbAutoBackup?.isChecked = checked
+            if (checked) {
+                layoutBackupToggle?.setBackgroundColor(Color.parseColor("#162E20"))
+                tvBackupTitle?.text = "🛡️ Auto-backup app data before overwrite"
+                tvBackupTitle?.setTextColor(Color.parseColor("#00E676"))
+                tvBackupDesc?.text = "Archives accounts, databases & settings to restore in 1-click. Uncheck for a fresh clean install."
+                tvBackupDesc?.setTextColor(Color.parseColor("#C8E6C9"))
+                btnProceed.text = "⚡ Force Install (Safe)"
+            } else {
+                layoutBackupToggle?.setBackgroundColor(Color.parseColor("#1E1E24"))
+                tvBackupTitle?.text = "⚠️ No Backup (Fresh Clean Install)"
+                tvBackupTitle?.setTextColor(Color.parseColor("#FF9800"))
+                tvBackupDesc?.text = "Previous app data will be deleted. The new build will start in completely fresh default state."
+                tvBackupDesc?.setTextColor(Color.parseColor("#FFE0B2"))
+                btnProceed.text = "⚡ Force Install (Clean)"
+            }
+        }
+
+        updateBackupUi(true)
+
+        layoutBackupToggle?.setOnClickListener {
+            val newChecked = !(cbAutoBackup?.isChecked ?: true)
+            updateBackupUi(newChecked)
+        }
+
+        cbAutoBackup?.setOnCheckedChangeListener { _, isChecked ->
+            updateBackupUi(isChecked)
+        }
+
         btnCancel.setOnClickListener {
             dialog.dismiss()
             appendColoredText("\n🚫 Force installation cancelled by user. Existing app preserved.\n", Color.parseColor("#FF5252"))
         }
 
         btnProceed.setOnClickListener {
+            val shouldBackup = cbAutoBackup?.isChecked ?: true
             dialog.dismiss()
-            appendColoredText("\n⚡ User confirmed safe force installation with auto-backup...\n", Color.parseColor("#FFAB00"))
-            handlePackageInstallation(uri, forceReinstall = true, inspection = inspection)
+            val msg = if (shouldBackup) "safe force installation with auto-backup" else "clean force installation without backup"
+            appendColoredText("\n⚡ User confirmed $msg...\n", Color.parseColor("#FFAB00"))
+            handlePackageInstallation(uri, forceReinstall = true, autoBackup = shouldBackup, inspection = inspection)
         }
 
         dialog.show()
