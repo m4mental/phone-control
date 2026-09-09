@@ -49,6 +49,34 @@ object PackageInstallerManager {
         val isSameVersion: Boolean
     )
 
+    fun createFallbackInspection(fileName: String): ApkInspection {
+        val cleanName = fileName.substringBeforeLast(".")
+        return ApkInspection(
+            appName = cleanName,
+            packageName = cleanName,
+            sharedUserId = null,
+            splitNames = emptyList(),
+            incomingVersionName = "1.0",
+            incomingVersionCode = 1L,
+            installedVersionName = null,
+            installedVersionCode = null,
+            minSdk = 21,
+            minSdkLabel = "API 21+",
+            targetSdk = 34,
+            targetSdkLabel = "API 34",
+            maxSdk = null,
+            maxSdkLabel = "No Limit",
+            packageTypeLabel = "Direct Package",
+            fileSizeFormatted = "--",
+            icon = null,
+            sensitivePermissions = emptyList(),
+            trackers = emptyList(),
+            isInstalled = false,
+            isDowngrade = false,
+            isSameVersion = false
+        )
+    }
+
     fun getAndroidCodename(sdk: Int): String {
         return when (sdk) {
             36 -> "Android 16"

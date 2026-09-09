@@ -140,7 +140,7 @@
             android:exported="true"
             android:theme="@style/Theme.PhoneControl.Transparent"
             android:excludeFromRecents="true"
-            android:noHistory="true">
+            android:launchMode="singleTop">
 
             <intent-filter tools:ignore="AppLinkUrlError">
                 <action android:name="android.intent.action.VIEW" />

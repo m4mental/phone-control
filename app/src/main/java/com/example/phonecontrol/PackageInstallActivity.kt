@@ -115,14 +115,21 @@ class PackageInstallActivity : AppCompatActivity() {
         thread {
             val inspection = PackageInstallerManager.inspectApk(this, uri, fileName)
             runOnUiThread {
-                if (!isFinishing && dialog.isShowing) {
+                if (!isFinishing && !isDestroyed && dialog.isShowing) {
                     if (inspection != null) {
                         bindInspectionData(dialogView, inspection, uri, fileName)
                     } else {
-                        tvInstallType.text = "❌ Failed to parse APK file. The package may be corrupted or encrypted."
-                        tvInstallType.setTextColor(Color.parseColor("#FF5252"))
-                        btnInstall.visibility = View.GONE
-                        btnCancel.text = "Close"
+                        tvInstallType.text = "⚡ Package detected (Direct Root Install ready)"
+                        tvInstallType.setTextColor(Color.parseColor("#00E5FF"))
+                        btnInstall.visibility = View.VISIBLE
+                        btnInstall.isEnabled = true
+                        btnInstall.text = "⚡ Direct Root Install"
+                        btnInstall.setOnClickListener {
+                            btnInstall.isEnabled = false
+                            btnInstall.text = "⚡ Installing with Root..."
+                            val fallback = PackageInstallerManager.createFallbackInspection(fileName)
+                            executeInstallation(dialogView, uri, fileName, fallback, forceReinstall = false)
+                        }
                     }
                 }
             }
@@ -453,21 +460,35 @@ class PackageInstallActivity : AppCompatActivity() {
         }
 
         btnOpen.setOnClickListener {
+            dialog.setOnDismissListener(null)
             dialog.dismiss()
             if (pkg.isNotBlank()) {
-                val launchIntent = packageManager.getLaunchIntentForPackage(pkg)
+                FreezerManager.unfreezeApp(pkg)
+                val launchIntent = packageManager.getLaunchIntentForPackage(pkg)?.apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+                }
                 if (launchIntent != null) {
-                    startActivity(launchIntent)
+                    try {
+                        startActivity(launchIntent)
+                    } catch (e: Exception) {
+                        ShellUtils.runAsRoot("monkey -p $pkg -c android.intent.category.LAUNCHER 1")
+                    }
                 } else {
-                    FreezerManager.unfreezeApp(pkg)
                     Toast.makeText(this, "Launching $pkg...", Toast.LENGTH_SHORT).show()
-                    ShellUtils.runAsRoot("monkey -p $pkg -c android.intent.category.LAUNCHER 1")
+                    val amResult = ShellUtils.runAsRoot("cmd package resolve-activity --brief $pkg", 5000)
+                    val activityLine = amResult.output.lines().find { it.contains("/") && !it.contains("priority=") }?.trim()
+                    if (!activityLine.isNullOrBlank()) {
+                        ShellUtils.runAsRoot("am start --user 0 -n $activityLine")
+                    } else {
+                        ShellUtils.runAsRoot("monkey -p $pkg -c android.intent.category.LAUNCHER 1")
+                    }
                 }
             }
             finish()
         }
 
         btnFreeze.setOnClickListener {
+            dialog.setOnDismissListener(null)
             dialog.dismiss()
             if (pkg.isNotBlank()) {
                 FreezerManager.addAppToFreezer(this, pkg)
@@ -477,10 +498,12 @@ class PackageInstallActivity : AppCompatActivity() {
         }
 
         btnAppInfo.setOnClickListener {
+            dialog.setOnDismissListener(null)
             dialog.dismiss()
             if (pkg.isNotBlank()) {
                 val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                     data = Uri.parse("package:$pkg")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 startActivity(intent)
             }
@@ -488,6 +511,7 @@ class PackageInstallActivity : AppCompatActivity() {
         }
 
         btnDone.setOnClickListener {
+            dialog.setOnDismissListener(null)
             dialog.dismiss()
             finish()
         }
