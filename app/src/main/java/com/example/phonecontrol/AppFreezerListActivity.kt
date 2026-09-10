@@ -73,7 +73,8 @@ class AppFreezerListActivity : AppCompatActivity() {
 
         rvFrozenAppsList = findViewById(R.id.rvFrozenAppsList)
         rvFrozenAppsList.layoutManager = LinearLayoutManager(this)
-        rvFrozenAppsList.setHasFixedSize(false)
+        rvFrozenAppsList.setHasFixedSize(true)
+        rvFrozenAppsList.setItemViewCacheSize(25)
 
         adapter = FrozenAppsAdapter()
         rvFrozenAppsList.adapter = adapter

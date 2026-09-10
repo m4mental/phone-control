@@ -58,6 +58,12 @@ class AppExtractorActivity : AppCompatActivity() {
             handleBackOrFinish()
         }
 
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                handleBackOrFinish()
+            }
+        })
+
         rvApps = findViewById(R.id.rvApps)
         progressBar = findViewById(R.id.progressBarLoading)
         etSearch = findViewById(R.id.etSearchApp)
@@ -73,6 +79,8 @@ class AppExtractorActivity : AppCompatActivity() {
         btnBatchExtract = findViewById(R.id.btnBatchExtract)
 
         rvApps.layoutManager = LinearLayoutManager(this)
+        rvApps.setHasFixedSize(true)
+        rvApps.setItemViewCacheSize(25)
         adapter = AppExtractorAdapter(
             apps = emptyList(),
             onExtractClicked = { app -> promptExtractApp(app) },
@@ -127,7 +135,7 @@ class AppExtractorActivity : AppCompatActivity() {
             if (selectedApps.isNotEmpty()) {
                 promptBatchExtract(selectedApps)
             } else {
-                Toast.makeText(this, "No apps selected", Toast.LENGTH_SHORT).show()
+                AppToast.show(this, "No apps selected")
             }
         }
 
@@ -143,15 +151,7 @@ class AppExtractorActivity : AppCompatActivity() {
         }
     }
 
-    @Deprecated("Deprecated in Java")
-    override fun onBackPressed() {
-        if (adapter.isMultiSelectMode) {
-            adapter.setMultiSelectMode(false)
-            updateMultiSelectUi(false)
-        } else {
-            super.onBackPressed()
-        }
-    }
+
 
     private fun updateMultiSelectUi(isMultiSelect: Boolean) {
         layoutBatchBar.visibility = if (isMultiSelect) View.VISIBLE else View.GONE
@@ -170,12 +170,25 @@ class AppExtractorActivity : AppCompatActivity() {
     }
 
     private fun loadApps(includeSystem: Boolean) {
-        progressBar.visibility = View.VISIBLE
-        tvCount.text = "Scanning packages..."
+        val cached = if (includeSystem) AppCacheManager.cachedAllApps else AppCacheManager.cachedUserApps
+        if (cached != null) {
+            allApps = cached
+            if (includeSystem) hasLoadedSystemApps = true
+            progressBar.visibility = View.GONE
+            filterList()
+        } else {
+            progressBar.visibility = View.VISIBLE
+            tvCount.text = "Scanning packages..."
+        }
 
         thread {
-            val apps = AppExtractorManager.getInstalledApps(this, includeSystem)
+            val apps = if (includeSystem) {
+                AppCacheManager.getOrLoadAllApps(this, forceRefresh = (cached == null))
+            } else {
+                AppCacheManager.getOrLoadUserApps(this, forceRefresh = (cached == null))
+            }
             runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
                 allApps = apps
                 if (includeSystem) hasLoadedSystemApps = true
                 progressBar.visibility = View.GONE
@@ -378,7 +391,7 @@ class AppExtractorActivity : AppCompatActivity() {
             }
             startActivity(Intent.createChooser(intent, "Share ${file.name}"))
         } catch (e: Exception) {
-            Toast.makeText(this, "Sharing error: ${e.message}", Toast.LENGTH_LONG).show()
+            AppToast.show(this, "Sharing error: ${e.message}")
         }
     }
 
@@ -390,7 +403,7 @@ class AppExtractorActivity : AppCompatActivity() {
             }
             startActivity(intent)
         } catch (e: Exception) {
-            Toast.makeText(this, "Folder: ${folder.absolutePath}", Toast.LENGTH_LONG).show()
+            AppToast.show(this, "Folder: ${folder.absolutePath}")
         }
     }
 }

@@ -42,44 +42,44 @@ class SensorFirewallActivity : AppCompatActivity() {
         swNfc.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean("block_nfc", isChecked).apply()
             thread { SensorManager.applySensorShield(this) }
-            Toast.makeText(this, if (isChecked) "NFC Radio Chip Blocked" else "NFC Radio Enabled", Toast.LENGTH_SHORT).show()
+            AppToast.show(this, if (isChecked) "NFC Radio Chip Blocked" else "NFC Radio Enabled")
         }
 
         swGyro.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean("block_gyro", isChecked).apply()
             thread { SensorManager.applySensorShield(this) }
-            Toast.makeText(this, if (isChecked) "Gyroscope Blocked (OFF)" else "Gyroscope Enabled", Toast.LENGTH_SHORT).show()
+            AppToast.show(this, if (isChecked) "Gyroscope Blocked (OFF)" else "Gyroscope Enabled")
         }
 
         swMag.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean("block_mag", isChecked).apply()
             thread { SensorManager.applySensorShield(this) }
-            Toast.makeText(this, if (isChecked) "Compass/Magnetometer Blocked (OFF)" else "Compass Enabled", Toast.LENGTH_SHORT).show()
+            AppToast.show(this, if (isChecked) "Compass/Magnetometer Blocked (OFF)" else "Compass Enabled")
         }
 
         swMotion.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean("block_motion", isChecked).apply()
             thread { SensorManager.applySensorShield(this) }
-            Toast.makeText(this, if (isChecked) "Motion/Accelerometer Blocked (OFF)" else "Motion Sensor Enabled", Toast.LENGTH_SHORT).show()
+            AppToast.show(this, if (isChecked) "Motion/Accelerometer Blocked (OFF)" else "Motion Sensor Enabled")
         }
 
         swLight.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean("block_light", isChecked).apply()
             thread { SensorManager.applySensorShield(this) }
-            Toast.makeText(this, if (isChecked) "Light/Proximity Blocked (OFF)" else "Light Sensor Enabled", Toast.LENGTH_SHORT).show()
+            AppToast.show(this, if (isChecked) "Light/Proximity Blocked (OFF)" else "Light Sensor Enabled")
         }
 
         // Listeners for Smart Triggers
         swKillSensors.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean("battery_kill_sensors", isChecked).apply()
             thread { BatteryManager.setKillSensorsScreenOff(this, isChecked) }
-            Toast.makeText(this, if (isChecked) "Motion Sensors Kill on Screen Off Enabled" else "Motion Sensors Restored", Toast.LENGTH_SHORT).show()
+            AppToast.show(this, if (isChecked) "Motion Sensors Kill on Screen Off Enabled" else "Motion Sensors Restored")
         }
 
         swPrivacy.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean("battery_privacy_sensors", isChecked).apply()
             thread { BatteryManager.setPrivacySensorsShield(this, isChecked) }
-            Toast.makeText(this, if (isChecked) "Sensor Privacy Shield Active" else "Sensor Privacy Shield Disabled", Toast.LENGTH_SHORT).show()
+            AppToast.show(this, if (isChecked) "Sensor Privacy Shield Active" else "Sensor Privacy Shield Disabled")
         }
     }
 }

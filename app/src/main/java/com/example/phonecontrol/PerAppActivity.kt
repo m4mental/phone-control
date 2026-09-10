@@ -37,12 +37,19 @@ class PerAppActivity : AppCompatActivity() {
         refreshList()
     }
 
+    companion object {
+        private var cachedApps: List<ApplicationInfo>? = null
+    }
+
     private fun getInstalledAppsList(): List<ApplicationInfo> {
+        cachedApps?.let { return it }
         return try {
             val all = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-            all.filter {
+            val filtered = all.filter {
                 (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 || pm.getLaunchIntentForPackage(it.packageName) != null
             }.sortedBy { pm.getApplicationLabel(it).toString().lowercase() }
+            cachedApps = filtered
+            filtered
         } catch (e: Exception) {
             emptyList()
         }
@@ -295,7 +302,7 @@ class PerAppActivity : AppCompatActivity() {
                 }
                 PerAppManager.saveConfig(this, packageName, config)
                 refreshList()
-                Toast.makeText(this, "Smart Rule saved for $appName", Toast.LENGTH_SHORT).show()
+                AppToast.show(this, "Smart Rule saved for $appName")
             }
             .setNegativeButton("Cancel", null)
             .show()

@@ -74,10 +74,15 @@ object ShellUtils {
      * Prevents pipe buffer deadlock, ANRs, and OutOfMemoryError.
      */
     fun runAsRoot(command: String, timeoutMs: Long = 4000): ShellResult {
-        if (isBusy && android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+        val isMainThread = (android.os.Looper.myLooper() == android.os.Looper.getMainLooper())
+        if (isBusy && isMainThread) {
             return ShellResult(-1, "Shell Busy")
         }
+
+        // Strict fail-safe: Never block UI thread for more than 2000ms to prevent Android ANR
+        val effectiveTimeout = if (isMainThread) minOf(timeoutMs, 2000L) else timeoutMs
         
+        var submittedFuture: java.util.concurrent.Future<ShellResult>? = null
         return try {
             val future = shellExecutor.submit<ShellResult> {
                 synchronized(this@ShellUtils) {
@@ -115,15 +120,18 @@ object ShellUtils {
                     }
                 }
             }
-            future.get(timeoutMs, TimeUnit.MILLISECONDS)
+            submittedFuture = future
+            future.get(effectiveTimeout, TimeUnit.MILLISECONDS)
         } catch (e: TimeoutException) {
-            Log.e("ShellUtils", "runAsRoot timed out on command: $command")
-            closePersistentShell()
+            Log.e("ShellUtils", "runAsRoot timed out (${effectiveTimeout}ms) on command: $command")
+            submittedFuture?.cancel(true)
+            kotlin.concurrent.thread { closePersistentShell() }
             isBusy = false
             ShellResult(-1, "Command Timed Out")
         } catch (e: Exception) {
             Log.e("ShellUtils", "Error running command: $command", e)
-            closePersistentShell()
+            submittedFuture?.cancel(true)
+            kotlin.concurrent.thread { closePersistentShell() }
             isBusy = false
             ShellResult(-1, e.message ?: "Error")
         }
@@ -183,7 +191,13 @@ object ShellUtils {
         
         try { os?.close() } catch (e: Exception) {}
         try { reader?.close() } catch (e: Exception) {}
-        try { persistentProcess?.destroy() } catch (e: Exception) {}
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                persistentProcess?.destroyForcibly()
+            } else {
+                persistentProcess?.destroy()
+            }
+        } catch (e: Exception) {}
         
         os = null
         reader = null

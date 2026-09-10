@@ -37,7 +37,7 @@ class StorageActivity : AppCompatActivity() {
             thread {
                 StorageManager.applyStorageBoost(isChecked)
                 runOnUiThread {
-                    Toast.makeText(this, if (isChecked) "Storage Boost Enabled" else "Storage Boost Disabled", Toast.LENGTH_SHORT).show()
+                    AppToast.show(this, if (isChecked) "Storage Boost Enabled" else "Storage Boost Disabled")
                 }
             }
         }
@@ -48,7 +48,7 @@ class StorageActivity : AppCompatActivity() {
                 val output = StorageManager.runFsTrim()
                 runOnUiThread {
                     tvLog.text = "FSTRIM Output:\n$output"
-                    Toast.makeText(this, "FSTRIM Completed", Toast.LENGTH_SHORT).show()
+                    AppToast.show(this, "FSTRIM Completed")
                 }
             }
         }
@@ -61,7 +61,7 @@ class StorageActivity : AppCompatActivity() {
                 }
                 runOnUiThread {
                     tvLog.append("\n\nDone! Optimized $count databases.")
-                    Toast.makeText(this, "Database Optimization Completed", Toast.LENGTH_SHORT).show()
+                    AppToast.show(this, "Database Optimization Completed")
                 }
             }
         }
@@ -79,7 +79,7 @@ class StorageActivity : AppCompatActivity() {
                     runOnUiThread {
                         btnCleanOrphaned.isEnabled = true
                         tvLog.append("\n\n✅ Storage Clean! No ghost residue from uninstalled apps found.")
-                        Toast.makeText(this, "No ghost residue found!", Toast.LENGTH_SHORT).show()
+                        AppToast.show(this, "No ghost residue found!")
                     }
                 } else {
                     runOnUiThread {
@@ -94,7 +94,7 @@ class StorageActivity : AppCompatActivity() {
                     runOnUiThread {
                         btnCleanOrphaned.isEnabled = true
                         tvLog.append("\n\n🎉 Successfully deleted ${scanResult.items.size} ghost folders! Recovered ${StorageManager.formatSize(freed)} of storage.")
-                        Toast.makeText(this, "Cleaned ${StorageManager.formatSize(freed)} of ghost data!", Toast.LENGTH_LONG).show()
+                        AppToast.show(this, "Cleaned ${StorageManager.formatSize(freed)} of ghost data!")
                     }
                 }
             }
@@ -113,7 +113,7 @@ class StorageActivity : AppCompatActivity() {
                     runOnUiThread {
                         btnCleanChatJunk.isEnabled = true
                         tvLog.append("\n\n✅ Clean! No duplicate sent media or chat cache found.")
-                        Toast.makeText(this, "Chat media is already clean!", Toast.LENGTH_SHORT).show()
+                        AppToast.show(this, "Chat media is already clean!")
                     }
                 } else {
                     runOnUiThread {
@@ -128,7 +128,7 @@ class StorageActivity : AppCompatActivity() {
                     runOnUiThread {
                         btnCleanChatJunk.isEnabled = true
                         tvLog.append("\n\n🎉 Cleanup Complete! Safely recovered ${StorageManager.formatSize(freed)} of storage.")
-                        Toast.makeText(this, "Cleaned ${StorageManager.formatSize(freed)} of chat junk!", Toast.LENGTH_LONG).show()
+                        AppToast.show(this, "Cleaned ${StorageManager.formatSize(freed)} of chat junk!")
                     }
                 }
             }

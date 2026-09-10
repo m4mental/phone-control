@@ -104,11 +104,17 @@ class AutoTweakService : Service() {
             isVideoCallActive = true
             Log.d("AutoTweak", "📹 Video Call / Camera ACTIVE -> Locking Little Cores to 950MHz!")
             TweakManager.applyVideoCallEcoLock()
-            sendBroadcast(Intent("com.example.phonecontrol.UPDATE_UI").setPackage(packageName))
+            sendSafeUiUpdate()
         } else if (!isVideoCallNow && (isVideoCallActive || TweakManager.isVideoCallBoostActive)) {
             isVideoCallActive = false
             Log.d("AutoTweak", "📹 Video Call / Camera ENDED -> Restoring previous state!")
             TweakManager.restorePreVideoCallState(this)
+            sendSafeUiUpdate()
+        }
+    }
+
+    private fun sendSafeUiUpdate() {
+        if (isScreenOn) {
             sendBroadcast(Intent("com.example.phonecontrol.UPDATE_UI").setPackage(packageName))
         }
     }
@@ -263,7 +269,7 @@ class AutoTweakService : Service() {
                                 Log.d("AutoTweak", "Low Battery Trigger ($battPct% <= $triggerValue%) -> Auto Switching to Power Saver")
                                 prefs.edit().putString("selected_mode", "rbPowerSaver").apply()
                                 TweakManager.applyGlobalMode("Power Saver")
-                                sendBroadcast(Intent("com.example.phonecontrol.UPDATE_UI").setPackage(packageName))
+                                sendSafeUiUpdate()
                                 ModeControlTileService.updateTile(this@AutoTweakService)
                             }
                         }
@@ -887,7 +893,7 @@ class AutoTweakService : Service() {
                 else -> "AI: Active"
             }
             getSharedPreferences("prefs", MODE_PRIVATE).edit().putString("active_ai_label", displayLabel).apply()
-            sendBroadcast(Intent("com.example.phonecontrol.UPDATE_UI").setPackage(packageName))
+            sendSafeUiUpdate()
             ModeControlTileService.updateTile(this)
         }
     }
@@ -1100,6 +1106,7 @@ class AutoTweakService : Service() {
         }
 
         TweakManager.applyWakelockBlocker(false)
+        sendSafeUiUpdate()
     }
 
     override fun onDestroy() {
