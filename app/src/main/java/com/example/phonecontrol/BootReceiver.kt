@@ -148,6 +148,8 @@ class BootReceiver : BroadcastReceiver() {
                         TweakManager.applyGlobalMode(activeMode)
                     }
                     ModeControlTileService.updateTile(context)
+                    QuickFreezeTileService.updateTile(context)
+                    BackupManager.checkAndRunScheduledAutoBackup(context)
                     context.sendBroadcast(Intent("com.example.phonecontrol.UPDATE_UI").setPackage(context.packageName))
                 } catch (e: Exception) {
                     Log.e("BootReceiver", "Error settling down after boot: ${e.message}")

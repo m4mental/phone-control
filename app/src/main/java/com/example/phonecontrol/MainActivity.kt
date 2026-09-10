@@ -202,6 +202,9 @@ class MainActivity : AppCompatActivity() {
         
         // Root check on background thread with safety
         checkRootAsync()
+
+        // Periodic 7-Day Auto-Backup Check
+        BackupManager.checkAndRunScheduledAutoBackup(this)
     }
 
     override fun onDestroy() {

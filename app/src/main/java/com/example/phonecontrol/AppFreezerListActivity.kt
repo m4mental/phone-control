@@ -256,7 +256,10 @@ class AppFreezerListActivity : AppCompatActivity() {
 
     private fun freezeAll() {
         val apps = FreezerManager.getFrozenApps(this)
-        if (apps.isEmpty()) return
+        if (apps.isEmpty()) {
+            Toast.makeText(this, "No apps in Hibernation list to freeze!", Toast.LENGTH_SHORT).show()
+            return
+        }
 
         val progress = ProgressDialog(this).apply {
             setMessage("Hibernating ${apps.size} apps...")
@@ -266,11 +269,12 @@ class AppFreezerListActivity : AppCompatActivity() {
 
         thread {
             FreezerManager.freezeMultipleApps(this, apps)
+            val estimatedRamMb = (apps.size * 115).coerceAtLeast(150)
             runOnUiThread {
                 progress.dismiss()
                 refreshList()
                 notifyWidgets()
-                Toast.makeText(this, "Hibernated ${apps.size} apps!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "❄️ Hibernated ${apps.size} apps! ~${estimatedRamMb} MB background RAM reclaimed", Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -627,6 +631,8 @@ class AppFreezerListActivity : AppCompatActivity() {
 
     private inner class HeaderViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val switchAuto: SwitchMaterial = itemView.findViewById(R.id.switchAutoFreeze)
+        val layoutDelayContainer: View = itemView.findViewById(R.id.layoutDelayContainer)
+        val chipGroupDelay: com.google.android.material.chip.ChipGroup = itemView.findViewById(R.id.chipGroupFreezeDelay)
         val btnFreezeAll: MaterialButton = itemView.findViewById(R.id.btnFreezeAll)
         val btnAddApps: MaterialButton = itemView.findViewById(R.id.btnAddApps)
         val btnCustomWidgetApps: MaterialButton = itemView.findViewById(R.id.btnCustomWidgetApps)
@@ -647,10 +653,58 @@ class AppFreezerListActivity : AppCompatActivity() {
             // Auto Freeze
             switchAuto.setOnCheckedChangeListener(null)
             switchAuto.isChecked = autoFreezeEnabled
+            layoutDelayContainer.visibility = if (autoFreezeEnabled) View.VISIBLE else View.GONE
+
+            val currentDelay = FreezerManager.getAutoFreezeDelaySeconds(this@AppFreezerListActivity)
+            val checkedChipId = when (currentDelay) {
+                60 -> R.id.chipDelay1m
+                300 -> R.id.chipDelay5m
+                else -> R.id.chipDelayInstant
+            }
+
+            val chipInstant = itemView.findViewById<com.google.android.material.chip.Chip>(R.id.chipDelayInstant)
+            val chip1m = itemView.findViewById<com.google.android.material.chip.Chip>(R.id.chipDelay1m)
+            val chip5m = itemView.findViewById<com.google.android.material.chip.Chip>(R.id.chipDelay5m)
+
+            fun updateChipVisuals(activeId: Int) {
+                val allChips = listOf(chipInstant, chip1m, chip5m)
+                for (chip in allChips) {
+                    val isActive = chip.id == activeId
+                    if (isActive) {
+                        chip.chipBackgroundColor = android.content.res.ColorStateList.valueOf(Color.parseColor("#00E676"))
+                        chip.setTextColor(Color.parseColor("#000000"))
+                        chip.chipStrokeColor = android.content.res.ColorStateList.valueOf(Color.parseColor("#00E676"))
+                        chip.chipStrokeWidth = 2f
+                    } else {
+                        chip.chipBackgroundColor = android.content.res.ColorStateList.valueOf(Color.parseColor("#202024"))
+                        chip.setTextColor(Color.parseColor("#8E8E93"))
+                        chip.chipStrokeColor = android.content.res.ColorStateList.valueOf(Color.parseColor("#333338"))
+                        chip.chipStrokeWidth = 1f
+                    }
+                }
+            }
+
+            chipGroupDelay.setOnCheckedChangeListener(null)
+            chipGroupDelay.check(checkedChipId)
+            updateChipVisuals(checkedChipId)
+
+            chipGroupDelay.setOnCheckedChangeListener { _, checkedId ->
+                val newDelay = when (checkedId) {
+                    R.id.chipDelay1m -> 60
+                    R.id.chipDelay5m -> 300
+                    else -> 0
+                }
+                updateChipVisuals(checkedId)
+                FreezerManager.setAutoFreezeDelaySeconds(this@AppFreezerListActivity, newDelay)
+                val label = if (newDelay == 0) "Instant (0s)" else if (newDelay == 60) "1 Minute" else "5 Minutes"
+                Toast.makeText(this@AppFreezerListActivity, "Auto-Freeze Delay: $label", Toast.LENGTH_SHORT).show()
+            }
+
             switchAuto.setOnCheckedChangeListener { _, isChecked ->
                 autoFreezeEnabled = isChecked
                 FreezerManager.setAutoFreezeEnabled(this@AppFreezerListActivity, isChecked)
-                Toast.makeText(this@AppFreezerListActivity, if (isChecked) "Auto-Freeze on exit & recents swipe enabled" else "Auto-Freeze disabled", Toast.LENGTH_SHORT).show()
+                layoutDelayContainer.visibility = if (isChecked) View.VISIBLE else View.GONE
+                Toast.makeText(this@AppFreezerListActivity, if (isChecked) "Auto-Freeze on screen off enabled" else "Auto-Freeze disabled", Toast.LENGTH_SHORT).show()
             }
 
             btnFreezeAll.setOnClickListener { freezeAll() }

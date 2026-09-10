@@ -156,6 +156,8 @@ object MasterManager {
         editor.putBoolean("master_tools_hub_enabled", false)
 
         // Sub-Feature Switches (ALL OFF)
+        editor.putBoolean("force_doze_enabled", false)
+        editor.putBoolean("standby_guard_enabled", false)
         editor.putBoolean("battery_lab_enabled", false)
         editor.putBoolean("super_doze_enabled", false)
         editor.putBoolean("smart_switch_enabled", false)
@@ -176,6 +178,7 @@ object MasterManager {
 
         editor.putBoolean("freezer_enabled", false)
         editor.putBoolean("bloatware_enabled", false)
+        editor.putBoolean("app_extractor_enabled", false)
         editor.putBoolean("vault_enabled", false)
         editor.putBoolean("adb_enabled", false)
 

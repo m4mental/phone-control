@@ -134,4 +134,31 @@ object BackupManager {
             false
         }
     }
+
+    /**
+     * Checks if the latest backup in Config_Backups is older than 7 days (or none exists).
+     * If so, automatically generates a new timestamped backup asynchronously without blocking.
+     */
+    fun checkAndRunScheduledAutoBackup(context: Context) {
+        kotlin.concurrent.thread {
+            try {
+                ensureStorageStructure()
+                val dir = File(CONFIG_DIR)
+                val backupFiles = dir.listFiles { file -> file.name.startsWith("Config_Backup_") && file.name.endsWith(".json") }
+                val sevenDaysMs = 7 * 24 * 60 * 60 * 1000L
+                val now = System.currentTimeMillis()
+
+                val shouldBackup = if (backupFiles.isNullOrEmpty()) {
+                    true
+                } else {
+                    val latestTime = backupFiles.maxOfOrNull { it.lastModified() } ?: 0L
+                    (now - latestTime) > sevenDaysMs
+                }
+
+                if (shouldBackup) {
+                    saveBackupAuto(context)
+                }
+            } catch (ignored: Exception) {}
+        }
+    }
 }

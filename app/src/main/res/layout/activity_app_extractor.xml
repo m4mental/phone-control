@@ -16,50 +16,136 @@
         app:navigationIcon="@android:drawable/ic_menu_revert"
         app:navigationIconTint="#00FF66" />
 
-    <!-- Top control bar: Search + System switch -->
+    <!-- Top control bar: Search + Actions -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:paddingHorizontal="12dp"
-        android:paddingBottom="8dp">
-
-        <EditText
-            android:id="@+id/etSearchApp"
-            android:layout_width="match_parent"
-            android:layout_height="44dp"
-            android:background="#16161A"
-            android:hint="🔍 Search installed apps..."
-            android:textColorHint="#666677"
-            android:textColor="@android:color/white"
-            android:paddingHorizontal="14dp"
-            android:textSize="13sp"
-            android:singleLine="true"
-            android:layout_marginBottom="6dp" />
+        android:paddingBottom="4dp">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:gravity="center_vertical">
+            android:gravity="center_vertical"
+            android:layout_marginBottom="6dp">
 
-            <TextView
-                android:id="@+id/tvAppCount"
+            <EditText
+                android:id="@+id/etSearchApp"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="44dp"
                 android:layout_weight="1"
-                android:text="Loading apps..."
-                android:textColor="#888899"
-                android:textSize="12sp" />
+                android:background="#16161A"
+                android:hint="🔍 Search installed apps..."
+                android:textColorHint="#666677"
+                android:textColor="@android:color/white"
+                android:paddingHorizontal="14dp"
+                android:textSize="13sp"
+                android:singleLine="true" />
 
-            <com.google.android.material.switchmaterial.SwitchMaterial
-                android:id="@+id/switchSystemApps"
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnInstallApk"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="44dp"
+                android:layout_marginStart="8dp"
+                android:text="📥 INSTALL"
+                android:textColor="#00E5FF"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                app:strokeColor="#00E5FF"
+                app:strokeWidth="1dp"
+                app:cornerRadius="10dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnToggleMultiSelect"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="44dp"
+                android:layout_marginStart="6dp"
+                android:text="SELECT"
+                android:textColor="#00FF66"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                app:strokeColor="#00FF66"
+                app:strokeWidth="1dp"
+                app:cornerRadius="10dp" />
+        </LinearLayout>
+
+        <!-- Filter Chips Row -->
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none"
+            android:layout_marginBottom="6dp">
+
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/chipGroupFilter"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="System Apps"
-                android:textColor="#AAAAAA"
-                android:textSize="12sp" />
-        </LinearLayout>
+                app:singleSelection="true"
+                app:selectionRequired="true">
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipFilterUser"
+                    style="@style/Widget.MaterialComponents.Chip.Choice"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="User Apps"
+                    android:checked="true"
+                    android:textStyle="bold"
+                    android:textColor="@color/chip_extractor_filter_text"
+                    app:chipBackgroundColor="@color/chip_extractor_filter_bg"
+                    app:chipStrokeColor="@color/chip_extractor_filter_stroke"
+                    app:chipStrokeWidth="1.5dp" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipFilterAll"
+                    style="@style/Widget.MaterialComponents.Chip.Choice"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="All Apps"
+                    android:textStyle="bold"
+                    android:textColor="@color/chip_extractor_filter_text"
+                    app:chipBackgroundColor="@color/chip_extractor_filter_bg"
+                    app:chipStrokeColor="@color/chip_extractor_filter_stroke"
+                    app:chipStrokeWidth="1.5dp" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipFilterSystem"
+                    style="@style/Widget.MaterialComponents.Chip.Choice"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="System Apps"
+                    android:textStyle="bold"
+                    android:textColor="@color/chip_extractor_filter_text"
+                    app:chipBackgroundColor="@color/chip_extractor_filter_bg"
+                    app:chipStrokeColor="@color/chip_extractor_filter_stroke"
+                    app:chipStrokeWidth="1.5dp" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipFilterSplit"
+                    style="@style/Widget.MaterialComponents.Chip.Choice"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Split Bundles (.apks)"
+                    android:textStyle="bold"
+                    android:textColor="@color/chip_extractor_filter_text"
+                    app:chipBackgroundColor="@color/chip_extractor_filter_bg"
+                    app:chipStrokeColor="@color/chip_extractor_filter_stroke"
+                    app:chipStrokeWidth="1.5dp" />
+            </com.google.android.material.chip.ChipGroup>
+        </HorizontalScrollView>
+
+        <TextView
+            android:id="@+id/tvAppCount"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Loading apps..."
+            android:textColor="#888899"
+            android:textSize="12sp"
+            android:layout_marginBottom="4dp" />
     </LinearLayout>
 
     <ProgressBar
@@ -78,5 +164,58 @@
         android:layout_weight="1"
         android:clipToPadding="false"
         android:paddingBottom="16dp" />
+
+    <!-- Bottom Batch Action Bar -->
+    <LinearLayout
+        android:id="@+id/layoutBatchBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:background="#18181D"
+        android:paddingHorizontal="14dp"
+        android:paddingVertical="10dp"
+        android:gravity="center_vertical"
+        android:visibility="gone">
+
+        <ImageButton
+            android:id="@+id/btnBatchClose"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_menu_close_clear_cancel"
+            app:tint="#AAAAAA" />
+
+        <TextView
+            android:id="@+id/tvBatchSelectedCount"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:text="0 selected"
+            android:textColor="@android:color/white"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnBatchSelectAll"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Select All"
+            android:textColor="#00E5FF"
+            android:textSize="12sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnBatchExtract"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:layout_marginStart="6dp"
+            android:text="Extract (0)"
+            android:textColor="@android:color/black"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            app:backgroundTint="#00E676"
+            app:cornerRadius="10dp" />
+    </LinearLayout>
 
 </LinearLayout>

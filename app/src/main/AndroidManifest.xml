@@ -329,6 +329,18 @@
             </intent-filter>
         </service>
 
+        <!-- Quick Freeze QS Tile (1-Tap Hibernate All Configured Apps) -->
+        <service
+            android:name=".QuickFreezeTileService"
+            android:exported="true"
+            android:label="Freeze Apps"
+            android:icon="@drawable/ic_qs_freeze"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <!-- Mode Control QS Tile (1-Tap Cycle: AI Auto -> Balanced -> Power Saver -> Performance) -->
         <service
             android:name=".ModeControlTileService"

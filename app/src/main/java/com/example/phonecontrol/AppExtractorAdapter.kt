@@ -3,6 +3,7 @@ package com.example.phonecontrol
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.CheckBox
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
@@ -10,10 +11,18 @@ import com.google.android.material.button.MaterialButton
 
 class AppExtractorAdapter(
     private var apps: List<AppExtractorManager.AppItem>,
-    private val onExtractClicked: (AppExtractorManager.AppItem) -> Unit
+    private val onExtractClicked: (AppExtractorManager.AppItem) -> Unit,
+    private val onSelectionChanged: (Int) -> Unit,
+    private val onMultiSelectModeChanged: ((Boolean) -> Unit)? = null
 ) : RecyclerView.Adapter<AppExtractorAdapter.ViewHolder>() {
 
+    var isMultiSelectMode: Boolean = false
+        private set
+
+    val selectedPackages = mutableSetOf<String>()
+
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+        val cbSelect: CheckBox = view.findViewById(R.id.cbSelect)
         val ivIcon: ImageView = view.findViewById(R.id.ivAppIcon)
         val tvName: TextView = view.findViewById(R.id.tvAppName)
         val tvPackage: TextView = view.findViewById(R.id.tvAppPackage)
@@ -48,18 +57,80 @@ class AppExtractorAdapter(
             holder.badgeSplit.visibility = View.GONE
         }
 
-        holder.btnExtract.setOnClickListener {
-            onExtractClicked(item)
-        }
-        holder.itemView.setOnClickListener {
-            onExtractClicked(item)
+        if (isMultiSelectMode) {
+            holder.cbSelect.visibility = View.VISIBLE
+            holder.cbSelect.isChecked = selectedPackages.contains(item.packageName)
+            holder.btnExtract.visibility = View.GONE
+
+            val toggleAction = {
+                if (selectedPackages.contains(item.packageName)) {
+                    selectedPackages.remove(item.packageName)
+                } else {
+                    selectedPackages.add(item.packageName)
+                }
+                notifyItemChanged(position)
+                onSelectionChanged(selectedPackages.size)
+            }
+
+            holder.itemView.setOnClickListener { toggleAction() }
+            holder.cbSelect.setOnClickListener { toggleAction() }
+            holder.itemView.setOnLongClickListener(null)
+        } else {
+            holder.cbSelect.visibility = View.GONE
+            holder.btnExtract.visibility = View.VISIBLE
+
+            holder.btnExtract.setOnClickListener {
+                onExtractClicked(item)
+            }
+            holder.itemView.setOnClickListener {
+                onExtractClicked(item)
+            }
+            holder.itemView.setOnLongClickListener {
+                setMultiSelectMode(true)
+                selectedPackages.add(item.packageName)
+                notifyDataSetChanged()
+                onSelectionChanged(selectedPackages.size)
+                true
+            }
         }
     }
 
     override fun getItemCount(): Int = apps.size
 
+    fun setMultiSelectMode(enabled: Boolean) {
+        if (isMultiSelectMode != enabled) {
+            isMultiSelectMode = enabled
+            if (!enabled) {
+                selectedPackages.clear()
+                onSelectionChanged(0)
+            }
+            notifyDataSetChanged()
+            onMultiSelectModeChanged?.invoke(enabled)
+        }
+    }
+
+    fun selectAll() {
+        selectedPackages.clear()
+        for (app in apps) {
+            selectedPackages.add(app.packageName)
+        }
+        notifyDataSetChanged()
+        onSelectionChanged(selectedPackages.size)
+    }
+
+    fun deselectAll() {
+        selectedPackages.clear()
+        notifyDataSetChanged()
+        onSelectionChanged(0)
+    }
+
+    fun getSelectedApps(): List<AppExtractorManager.AppItem> {
+        return apps.filter { selectedPackages.contains(it.packageName) }
+    }
+
     fun updateList(newList: List<AppExtractorManager.AppItem>) {
         apps = newList
         notifyDataSetChanged()
+        onSelectionChanged(selectedPackages.size)
     }
 }

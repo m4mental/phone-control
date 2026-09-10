@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginBottom="16dp"
+    android:layout_marginBottom="14dp"
     app:cardCornerRadius="16dp"
     app:cardBackgroundColor="#121212"
     app:strokeWidth="1dp"
@@ -13,9 +13,10 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
+        android:animateLayoutChanges="true"
         android:padding="12dp">
 
-        <!-- Master Category Header Row -->
+        <!-- Master Category Header Row (Tap anywhere to Expand/Collapse) -->
         <LinearLayout
             android:id="@+id/layoutCategoryHeader"
             android:layout_width="match_parent"
@@ -23,8 +24,28 @@
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:paddingHorizontal="6dp"
-            android:paddingVertical="6dp">
+            android:paddingVertical="8dp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
 
+            <!-- Category Icon Badge -->
+            <FrameLayout
+                android:id="@+id/frameCategoryIcon"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginEnd="12dp"
+                android:background="@drawable/bg_category_icon_frame">
+
+                <ImageView
+                    android:id="@+id/ivCategoryIcon"
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:layout_gravity="center"
+                    app:tint="#00E676" />
+            </FrameLayout>
+
+            <!-- Title & Subtitle -->
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
@@ -40,34 +61,75 @@
                     android:textSize="15sp"
                     android:textStyle="bold" />
 
-                <TextView
-                    android:id="@+id/tvCategorySubtitle"
-                    android:layout_width="wrap_content"
+                <!-- Subtitle Row with Active Badge Pill & Feature Notes -->
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:text="Master Switch: Controls the entire hub and all its sub-features."
-                    android:textColor="#888888"
-                    android:textSize="11sp" />
+                    android:layout_marginTop="4dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:id="@+id/tvCategoryBadge"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="8dp"
+                        android:background="@drawable/bg_badge_pill"
+                        android:paddingHorizontal="6dp"
+                        android:paddingVertical="1.5dp"
+                        android:singleLine="true"
+                        android:maxLines="1"
+                        android:text="0/0"
+                        android:textColor="#00E676"
+                        android:textSize="9.5sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvCategorySubtitle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Feature notes"
+                        android:textColor="#888888"
+                        android:textSize="11sp"
+                        android:maxLines="2"
+                        android:ellipsize="end" />
+                </LinearLayout>
             </LinearLayout>
 
+            <!-- Master Switch -->
             <com.google.android.material.switchmaterial.SwitchMaterial
                 android:id="@+id/switchCategoryMaster"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content" />
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp" />
+
+            <!-- Dropdown Expand/Collapse Chevron -->
+            <ImageView
+                android:id="@+id/ivCategoryChevron"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_marginStart="6dp"
+                android:src="@drawable/ic_chevron_down"
+                app:tint="#888888" />
         </LinearLayout>
 
+        <!-- Category Divider -->
         <View
+            android:id="@+id/categoryDivider"
             android:layout_width="match_parent"
             android:layout_height="1dp"
             android:background="#222222"
-            android:layout_marginVertical="6dp" />
+            android:layout_marginTop="6dp"
+            android:layout_marginBottom="4dp" />
 
         <!-- Sub-features Container -->
         <LinearLayout
             android:id="@+id/layoutSubFeaturesContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical" />
+            android:orientation="vertical"
+            android:animateLayoutChanges="true" />
 
     </LinearLayout>
 </com.google.android.material.card.MaterialCardView>

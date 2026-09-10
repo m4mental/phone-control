@@ -173,31 +173,78 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Feature Toggles -->
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Feature Toggles"
-                android:textColor="@android:color/white"
-                android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
-                android:layout_marginBottom="8dp" />
-
-            <com.google.android.material.card.MaterialCardView
+            <!-- Feature Toggles Header with Expand/Collapse All and Search Bar -->
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="20dp"
-                app:cardCornerRadius="16dp"
-                app:cardBackgroundColor="#121212"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="8dp">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Feature Toggles"
+                    android:textColor="@android:color/white"
+                    android:textAppearance="@style/TextAppearance.Material3.TitleMedium" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnToggleExpandAll"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Expand All"
+                    android:textColor="#00E676"
+                    android:textSize="12sp"
+                    android:paddingHorizontal="8dp" />
+            </LinearLayout>
+
+            <!-- Search / Filter Bar -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginBottom="12dp"
+                app:cardCornerRadius="12dp"
+                app:cardBackgroundColor="#1A1A1A"
                 app:strokeWidth="1dp"
                 app:strokeColor="#333333">
 
                 <LinearLayout
-                    android:id="@+id/layoutToggleContainer"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="8dp" />
+                    android:layout_height="match_parent"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingHorizontal="12dp">
+
+                    <ImageView
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:src="@android:drawable/ic_menu_search"
+                        app:tint="#888888" />
+
+                    <EditText
+                        android:id="@+id/etSearchFeatures"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:layout_marginStart="8dp"
+                        android:background="@null"
+                        android:hint="Search 20+ features (e.g. ram, extractor)..."
+                        android:textColor="@android:color/white"
+                        android:textColorHint="#666666"
+                        android:textSize="13sp"
+                        android:inputType="textFilter"
+                        android:imeOptions="actionDone"
+                        android:singleLine="true" />
+                </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
+
+            <LinearLayout
+                android:id="@+id/layoutToggleContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginBottom="20dp" />
 
             <!-- Maintenance, Backup & Share -->
             <TextView

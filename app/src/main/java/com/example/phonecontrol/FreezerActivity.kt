@@ -24,7 +24,12 @@ class FreezerActivity : AppCompatActivity() {
             startActivity(Intent(this, BloatwareActivity::class.java))
         }
 
-        // Card 3: App & Data Vault [BETA]
+        // Card 3: Installed App Extractor & Backup
+        findViewById<View>(R.id.cardAppExtractor).setOnClickListener {
+            startActivity(Intent(this, AppExtractorActivity::class.java))
+        }
+
+        // Card 4: App & Data Vault [BETA]
         findViewById<View>(R.id.cardVault).setOnClickListener {
             startActivity(Intent(this, VaultActivity::class.java))
         }
@@ -44,13 +49,16 @@ class FreezerActivity : AppCompatActivity() {
 
     private fun updateVisibility() {
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+        val masterToolsEnabled = prefs.getBoolean("master_tools_hub_enabled", true)
         findViewById<View>(R.id.cardAppFreezer).visibility =
-            if (prefs.getBoolean("freezer_enabled", true)) View.VISIBLE else View.GONE
+            if (masterToolsEnabled && prefs.getBoolean("freezer_enabled", true)) View.VISIBLE else View.GONE
         findViewById<View>(R.id.cardBloatware).visibility =
-            if (prefs.getBoolean("bloatware_enabled", true)) View.VISIBLE else View.GONE
+            if (masterToolsEnabled && prefs.getBoolean("bloatware_enabled", true)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.cardAppExtractor).visibility =
+            if (masterToolsEnabled && prefs.getBoolean("app_extractor_enabled", true)) View.VISIBLE else View.GONE
         findViewById<View>(R.id.cardVault).visibility =
-            if (prefs.getBoolean("vault_enabled", false)) View.VISIBLE else View.GONE
+            if (masterToolsEnabled && prefs.getBoolean("vault_enabled", false)) View.VISIBLE else View.GONE
         findViewById<View>(R.id.cardTerminal).visibility =
-            if (prefs.getBoolean("adb_enabled", true)) View.VISIBLE else View.GONE
+            if (masterToolsEnabled && prefs.getBoolean("adb_enabled", true)) View.VISIBLE else View.GONE
     }
 }

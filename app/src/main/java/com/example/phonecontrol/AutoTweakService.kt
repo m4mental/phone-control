@@ -66,6 +66,8 @@ class AutoTweakService : Service() {
     private var audioManager: AudioManager? = null
     private var equalizerFreezeHandler: Handler? = null
     private var equalizerFreezeRunnable: Runnable? = null
+    private var screenOffFreezeJob: Runnable? = null
+    private val screenOffHandler = Handler(Looper.getMainLooper())
 
     private val cameraAvailabilityCallback = object : CameraManager.AvailabilityCallback() {
         override fun onCameraUnavailable(cameraId: String) {
@@ -974,8 +976,46 @@ class AutoTweakService : Service() {
             }
         }
 
-        // 8. Auto Hibernation on Screen OFF (Targeted Media Guard)
+        // 8. Auto Hibernation on Screen OFF (Targeted Media Guard & Smart Delay)
         if (FreezerManager.isAutoFreezeEnabled(this@AutoTweakService)) {
+            val delaySeconds = FreezerManager.getAutoFreezeDelaySeconds(this@AutoTweakService)
+            if (delaySeconds > 0) {
+                scheduleScreenOffFreeze(delaySeconds, allSafeApps)
+            } else {
+                executeScreenOffFreeze(allSafeApps)
+            }
+        }
+
+        // 9. Zero-Drain Deep Sleep Profile (480MHz Hardware Minimum Floor)
+        val manualStage = prefs.getInt("manual_stage_override", 0)
+        if (manualStage == 0) {
+            TweakManager.applyScreenOffSleep()
+        }
+    }
+
+    private fun scheduleScreenOffFreeze(delaySeconds: Int, allSafeApps: Set<String>) {
+        cancelScreenOffFreeze()
+        val runnable = Runnable {
+            if (!isScreenOn) {
+                Log.d("AutoTweak", "⏳ Freeze Delay (${delaySeconds}s) Expired -> Executing Screen-Off Freeze")
+                executeScreenOffFreeze(allSafeApps)
+            }
+        }
+        screenOffFreezeJob = runnable
+        screenOffHandler.postDelayed(runnable, delaySeconds * 1000L)
+        Log.d("AutoTweak", "⏳ Scheduled Screen-Off Freeze in $delaySeconds seconds")
+    }
+
+    private fun cancelScreenOffFreeze() {
+        screenOffFreezeJob?.let {
+            screenOffHandler.removeCallbacks(it)
+            screenOffFreezeJob = null
+            Log.d("AutoTweak", "🛑 Cancelled Screen-Off Freeze (Screen Active)")
+        }
+    }
+
+    private fun executeScreenOffFreeze(allSafeApps: Set<String>) {
+        freezerExecutor.execute {
             val frozenApps = FreezerManager.getFrozenApps(this@AutoTweakService) + FreezerManager.getSpecialFreezeApps(this@AutoTweakService)
             val activeAudioApps = FreezerManager.getActivePlayingAudioPackages(this@AutoTweakService)
 
@@ -988,16 +1028,11 @@ class AutoTweakService : Service() {
                 }
             }
         }
-
-        // 9. Zero-Drain Deep Sleep Profile (480MHz Hardware Minimum Floor)
-        val manualStage = prefs.getInt("manual_stage_override", 0)
-        if (manualStage == 0) {
-            TweakManager.applyScreenOffSleep()
-        }
     }
 
     private fun onScreenOn(prefs: android.content.SharedPreferences) {
         isScreenOn = true
+        cancelScreenOffFreeze()
         
         Log.d("AutoTweak", "Screen ON Event - Instant 0ms Async Wakeup")
         ShellUtils.fastCmd("echo 'on' > /data/local/tmp/pc_screen")

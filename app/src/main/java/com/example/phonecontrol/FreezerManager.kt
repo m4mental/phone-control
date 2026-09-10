@@ -134,6 +134,16 @@ object FreezerManager {
         mainPrefs.edit().putBoolean("freezer_enabled", enabled).apply()
     }
 
+    fun getAutoFreezeDelaySeconds(context: Context): Int {
+        val prefs = context.getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE)
+        return prefs.getInt("auto_freeze_delay_seconds", 0)
+    }
+
+    fun setAutoFreezeDelaySeconds(context: Context, seconds: Int) {
+        val prefs = context.getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putInt("auto_freeze_delay_seconds", seconds).apply()
+    }
+
     /**
      * Targeted Recents Dismissal & Idle Background Freeze:
      * Freezes apps that were swiped away from Recents, or configured apps running in background
