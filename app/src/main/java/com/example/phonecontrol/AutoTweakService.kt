@@ -39,11 +39,12 @@ class AutoTweakService : Service() {
         const val ACTION_FOREGROUND_APP_CHANGED = "com.example.phonecontrol.ACTION_FOREGROUND_APP_CHANGED"
         const val ACTION_RECENTS_CHANGED = "com.example.phonecontrol.ACTION_RECENTS_CHANGED"
         const val EXTRA_PACKAGE_NAME = "extra_package_name"
+
+        @Volatile var isPerAppActive = false
     }
 
     @Volatile private var lastForegroundApp = ""
     @Volatile private var isGameTurboActive = false
-    @Volatile private var isPerAppActive = false
     @Volatile private var isPerAppBypassActive = false
     @Volatile private var isPerAppDndActive = false
     @Volatile private var isDynamicScalingActive = false
@@ -465,7 +466,8 @@ class AutoTweakService : Service() {
         // 1. Instant Foreground App Event
         if (action == ACTION_FOREGROUND_APP_CHANGED) {
             val pkg = intent.getStringExtra(EXTRA_PACKAGE_NAME) ?: ""
-            if (pkg.isNotBlank() && pkg != lastForegroundApp) {
+            val isPhoneControlResuming = (pkg == packageName)
+            if (pkg.isNotBlank() && (pkg != lastForegroundApp || isPhoneControlResuming)) {
                 val previousApp = lastForegroundApp
                 lastForegroundApp = pkg
                 tweakExecutor.execute {
@@ -493,6 +495,7 @@ class AutoTweakService : Service() {
         if (action == "com.example.phonecontrol.ACTION_AI_TICK") {
             val load = intent.getIntExtra("load", 0)
             tweakExecutor.execute {
+                if (isPerAppActive || activePerAppMergedConfig != null) return@execute
                 val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
                 val focus = prefs.getString("selected_focus", "rbFocusDaily")
                 applyAiTweak(load, focus ?: "rbFocusDaily")
@@ -510,7 +513,7 @@ class AutoTweakService : Service() {
                 TweakManager.setSilentSystem(true)
             }
 
-            if (prefs.getString("selected_mode", "rbBalance") == "rbAutomatic") {
+            if (prefs.getString("selected_mode", "rbBalance") == "rbAutomatic" && !isPerAppActive && activePerAppMergedConfig == null) {
                 val focus = prefs.getString("selected_focus", "rbFocusDaily") ?: "rbFocusDaily"
                 val targetPkg = if (lastForegroundApp.isNotBlank()) lastForegroundApp else packageName
                 val load = calculateAppAiLoad(targetPkg)
@@ -548,6 +551,9 @@ class AutoTweakService : Service() {
     }
 
     private fun calculateAppAiLoad(pkg: String): Int {
+        if (pkg == packageName) {
+            return 5 // Phone Control: Idle dashboard inspection, stay calm at baseline 650MHz
+        }
         val lower = pkg.lowercase()
         // 1. Heavy Compute / 3D Games / Video Editing (Stage 3 & 4 - Big Cores Wake Up)
         if (lower.contains("camera") || lower.contains("video") || lower.contains("editor") ||
@@ -575,8 +581,10 @@ class AutoTweakService : Service() {
     }
 
     private fun handleForegroundAppTransition(previousPkg: String, newPkg: String) {
-        // Instant 200ms Window Animation Boost for butter-smooth 120fps app-switch transition
-        TweakManager.triggerAppSwitchBoost()
+        // Instant 200ms Window Animation Boost for butter-smooth 120fps app-switch transition (skip for Phone Control)
+        if (newPkg != packageName) {
+            TweakManager.triggerAppSwitchBoost()
+        }
 
         // Guard: Re-verify Video Call state on app switch to guarantee no stale lock persists
         if (isVideoCallActive || TweakManager.isVideoCallBoostActive) {
@@ -668,11 +676,37 @@ class AutoTweakService : Service() {
             }
         }
 
-        // 1. Collect all live packages in Recent Tasks + Current Foreground
-        val recentPkgs = FreezerManager.getRecentPackages().toMutableSet()
+        // 1. Collect all live packages in Recent Tasks + In-Memory Active Sessions + Current Foreground
+        val recentPkgs = FreezerManager.getRecentPackages(forceRefresh = true).toMutableSet()
+        FreezerManager.activeSessionApps.retainAll(recentPkgs)
+        recentPkgs.addAll(FreezerManager.activeSessionApps)
         if (foregroundPkg.isNotBlank() && !foregroundPkg.contains("launcher", ignoreCase = true) && foregroundPkg != "com.android.systemui" && foregroundPkg != packageName) {
             recentPkgs.add(foregroundPkg)
+            FreezerManager.activeSessionApps.add(foregroundPkg)
         }
+
+        // Check if current foreground app itself has an explicit profile (user actively inside it)
+        val isEligibleFg = foregroundPkg.isNotBlank() && foregroundPkg != packageName && !foregroundPkg.contains("launcher", ignoreCase = true) && foregroundPkg != "com.android.systemui"
+        val fgConfig = if (isEligibleFg) {
+            val directCfg = PerAppManager.getConfig(this, foregroundPkg)
+            val isGame = games.contains(foregroundPkg)
+            if (directCfg != null) {
+                if (isGame && directCfg.mode == "Auto" && turboPrefs.getBoolean("auto_perf_enabled", true)) {
+                    directCfg.copy(mode = "Performance")
+                } else {
+                    directCfg
+                }
+            } else if (isGame) {
+                PerAppManager.AppConfig(
+                    mode = if (turboPrefs.getBoolean("auto_perf_enabled", true)) "Performance" else "Auto",
+                    fps = "Auto Switch",
+                    thermal = if (turboPrefs.getBoolean("auto_thermal_enabled", false)) "Disabled" else "Default",
+                    touch = "On",
+                    bypassCharging = false,
+                    autoDnd = false
+                )
+            } else null
+        } else null
 
         val activeConfigs = mutableListOf<PerAppManager.AppConfig>()
         val activeRulePackages = mutableListOf<String>()
@@ -703,8 +737,14 @@ class AutoTweakService : Service() {
             }
         }
 
-        // 2. Resolve Highest Priority Rule via mergeConfigs
-        val mergedConfig = PerAppManager.mergeConfigs(activeConfigs)
+        // 2. Resolve Highest Priority Rule:
+        // When user is actively inside a configured app, its direct config takes immediate focus.
+        // When user leaves to Phone Control, Launcher, or an unconfigured app, the highest priority rule from active Recents apps takes over!
+        val mergedConfig = if (fgConfig != null) {
+            fgConfig
+        } else {
+            PerAppManager.mergeConfigs(activeConfigs)
+        }
 
         if (mergedConfig != null) {
             val configChanged = mergedConfig != activePerAppMergedConfig || !isPerAppActive
@@ -760,27 +800,42 @@ class AutoTweakService : Service() {
                 activePerAppMergedConfig = mergedConfig
                 isPerAppActive = true
                 isGameTurboActive = activeRulePackages.any { games.contains(it) }
+
+                val dominantPkg = if (fgConfig != null) {
+                    foregroundPkg
+                } else {
+                    activeRulePackages.maxByOrNull { pkg ->
+                        val cfg = PerAppManager.getConfig(this, pkg)
+                        PerAppManager.getModePriority(cfg?.mode ?: "")
+                    } ?: activeRulePackages.firstOrNull() ?: ""
+                }
+                prefs.edit()
+                    .putString("active_per_app_mode", mergedConfig.mode)
+                    .putString("active_per_app_pkg", dominantPkg)
+                    .apply()
+                sendBroadcast(Intent("com.example.phonecontrol.UPDATE_UI"))
+            }
+
+            // Dynamic Load-Aware Scaling for Streaming Mode (950MHz -> 1100MHz -> 1200MHz)
+            if (mergedConfig.mode == "Streaming") {
+                val currentLoad = calculateAppAiLoad(foregroundPkg)
+                TweakManager.applyStreamingDynamic(currentLoad)
             }
         } else {
             // NO configured apps in Recents or Foreground -> REVERT TO GLOBAL BASELINE!
-            if (isPerAppActive || isGameTurboActive || activePerAppMergedConfig != null) {
+            val wasPerApp = isPerAppActive || isGameTurboActive || activePerAppMergedConfig != null
+            if (wasPerApp) {
                 Log.d("AutoTweak", "⚡ All configured apps closed & removed from Recents -> Instant Revert to Global Mode")
                 activePerAppMergedConfig = null
                 isPerAppActive = false
                 isGameTurboActive = false
                 lastAiMode = "" // Force AI Engine to re-evaluate and apply hardware frequencies
 
-                val savedModeKey = prefs.getString("selected_mode", "rbBalance") ?: "rbBalance"
-                when (savedModeKey) {
-                    "rbPowerSaver" -> TweakManager.applyGlobalMode("Power Saver")
-                    "rbPerformance" -> TweakManager.applyGlobalMode("Performance")
-                    "rbAutomatic" -> {
-                        val focus = prefs.getString("selected_focus", "rbFocusDaily") ?: "rbFocusDaily"
-                        val load = calculateAppAiLoad(foregroundPkg)
-                        applyAiTweak(load, focus)
-                    }
-                    else -> TweakManager.applyGlobalMode("Balance")
-                }
+                prefs.edit()
+                    .remove("active_per_app_mode")
+                    .remove("active_per_app_pkg")
+                    .apply()
+                sendBroadcast(Intent("com.example.phonecontrol.UPDATE_UI"))
 
                 // Restore user's saved thermal throttling preference
                 val isThrottlingDisabled = prefs.getBoolean("disable_throttling", false)
@@ -808,14 +863,21 @@ class AutoTweakService : Service() {
                     ShellUtils.fastCmd("cmd notification set_zen_mode 0")
                     isPerAppDndActive = false
                 }
+            }
 
-                activePerAppMergedConfig = null
-                isPerAppActive = false
-                isGameTurboActive = false
-            } else if (prefs.getString("selected_mode", "rbBalance") == "rbAutomatic") {
-                val focus = prefs.getString("selected_focus", "rbFocusDaily") ?: "rbFocusDaily"
-                val load = calculateAppAiLoad(foregroundPkg)
-                applyAiTweak(load, focus)
+            if (!isPerAppActive && activePerAppMergedConfig == null) {
+                val savedModeKey = prefs.getString("selected_mode", "rbBalance") ?: "rbBalance"
+                when (savedModeKey) {
+                    "rbPowerSaver" -> if (wasPerApp) TweakManager.applyGlobalMode("Power Saver")
+                    "rbPerformance" -> if (wasPerApp) TweakManager.applyGlobalMode("Performance")
+                    "rbStreaming" -> if (wasPerApp) TweakManager.applyGlobalMode("Streaming")
+                    "rbAutomatic" -> {
+                        val focus = prefs.getString("selected_focus", "rbFocusDaily") ?: "rbFocusDaily"
+                        val load = calculateAppAiLoad(foregroundPkg)
+                        applyAiTweak(load, focus)
+                    }
+                    else -> if (wasPerApp) TweakManager.applyGlobalMode("Balance")
+                }
             }
         }
     }
@@ -829,6 +891,10 @@ class AutoTweakService : Service() {
         val manualStage = prefs.getInt("manual_stage_override", 0)
         if (manualStage != 0) {
             // Respect Test Lab Manual Stage Override 100% (Do not overwrite user test locks)
+            return
+        }
+        if (isPerAppActive || activePerAppMergedConfig != null) {
+            // Strictly protect active Per-App hierarchy while configured apps remain in Recents!
             return
         }
 
@@ -845,10 +911,12 @@ class AutoTweakService : Service() {
         } else {
             when (focus) {
                 "rbFocusBattery" -> {
-                    // Battery Saver Focus: Stays strictly in Stage 1 Eco (650MHz - 950MHz) for all app switching & daily tasks
+                    // Battery Saver Focus: Progressive 3-Stage EAS Ladder (650M -> 850M -> 950M -> Boost)
                     when {
-                        adjustedLoad > 70 -> "AI_Boost"
-                        else -> "AI_EcoActive"
+                        adjustedLoad > 75 -> "AI_Boost"
+                        adjustedLoad > 45 -> "AI_Eco950"
+                        adjustedLoad > 18 -> "AI_Eco850"
+                        else -> "AI_Eco650"
                     }
                 }
                 "rbFocusDaily" -> {
@@ -857,7 +925,7 @@ class AutoTweakService : Service() {
                         adjustedLoad > 75 -> "AI_Extreme"
                         adjustedLoad > 45 -> "AI_Boost"
                         adjustedLoad > 15 -> "AI_Daily"
-                        else -> "AI_EcoActive"
+                        else -> "AI_Eco650"
                     }
                 }
                 "rbFocusMultitasking" -> {
@@ -866,7 +934,7 @@ class AutoTweakService : Service() {
                         adjustedLoad > 50 -> "AI_Extreme"
                         adjustedLoad > 30 -> "AI_Boost"
                         adjustedLoad > 10 -> "AI_Daily"
-                        else -> "AI_EcoActive"
+                        else -> "AI_Eco650"
                     }
                 }
                 else -> "AI_Daily"
@@ -876,7 +944,7 @@ class AutoTweakService : Service() {
         if (targetMode != lastAiMode) {
             TweakManager.applyGlobalMode(targetMode)
             
-            if (isFloatingWindowActive && adjustedLoad < 50 && (targetMode == "AI_Daily" || targetMode == "AI_Sleeping" || targetMode == "AI_EcoActive")) {
+            if (isFloatingWindowActive && adjustedLoad < 50 && (targetMode == "AI_Daily" || targetMode == "AI_Sleeping" || targetMode.startsWith("AI_Eco"))) {
                 Log.d("AutoTweak", "Floating Active - Enforcing 6-Core Efficiency Priority")
                 TweakManager.setClusterParking(true) 
             }
@@ -886,7 +954,9 @@ class AutoTweakService : Service() {
             val displayLabel = when(targetMode) {
                 "AI_Sleeping" -> "AI: Sleeping"
                 "AI_VideoCall" -> "AI: Video Call (950M Lock)"
-                "AI_EcoActive" -> "AI: Eco Active"
+                "AI_Eco650", "AI_EcoActive" -> "AI: Battery Eco (650M)"
+                "AI_Eco850" -> "AI: Battery Fluid (850M)"
+                "AI_Eco950" -> "AI: Battery Burst (950M)"
                 "AI_Daily" -> "AI: Daily Fluent"
                 "AI_Boost" -> "AI: Multi-Boost"
                 "AI_Extreme" -> "AI: Extreme"
@@ -1058,6 +1128,7 @@ class AutoTweakService : Service() {
             when (savedMode) {
                 "rbPowerSaver" -> TweakManager.applyGlobalMode("Power Saver")
                 "rbPerformance" -> TweakManager.applyGlobalMode("Performance")
+                "rbStreaming" -> TweakManager.applyGlobalMode("Streaming")
                 "rbAutomatic" -> {
                     val focus = prefs.getString("selected_focus", "rbFocusDaily") ?: "rbFocusDaily"
                     val load = calculateAppAiLoad(lastForegroundApp)

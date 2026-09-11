@@ -135,6 +135,7 @@ class PerAppActivity : AppCompatActivity() {
                 "Auto" -> rgMode.check(R.id.rbModeAuto)
                 "Power Saver" -> rgMode.check(R.id.rbModeSaver)
                 "Performance" -> rgMode.check(R.id.rbModePerf)
+                "Streaming" -> rgMode.check(R.id.rbModeStreaming)
                 else -> rgMode.check(R.id.rbModeBalance)
             }
             when (config.fps) {
@@ -155,6 +156,7 @@ class PerAppActivity : AppCompatActivity() {
                     R.id.rbModeAuto -> "Auto"
                     R.id.rbModeSaver -> "Power Saver"
                     R.id.rbModePerf -> "Performance"
+                    R.id.rbModeStreaming -> "Streaming"
                     else -> "Balance"
                 }
                 val fps = when (rgFps.checkedRadioButtonId) {
@@ -258,7 +260,7 @@ class PerAppActivity : AppCompatActivity() {
     private fun showRuleTemplateDialog(packageName: String, appName: String) {
         val templates = arrayOf(
             "🎮 Pro Gamer (Turbo 2.8G + 120Hz + Bypass + DND)",
-            "🎬 Cinema & Video (60Hz Battery Saver + Bypass)",
+            "🎬 Cinema & Video (Streaming 950-1200M + 60Hz + Bypass)",
             "📖 Deep Reader / Eco (650M Floor + 60Hz + DND)",
             "⚙️ Custom Rule (Configure Manually)"
         )
@@ -276,7 +278,7 @@ class PerAppActivity : AppCompatActivity() {
                         autoDnd = true
                     )
                     1 -> PerAppManager.AppConfig(
-                        mode = "Balance",
+                        mode = "Streaming",
                         fps = "60Hz",
                         thermal = "Default",
                         touch = "Off",

@@ -267,19 +267,30 @@ object FreezerManager {
         ShellUtils.fastCmd(script)
     }
 
+    @Volatile private var cachedRecentPackages: Set<String> = emptySet()
+    @Volatile private var lastRecentPackagesTimestamp: Long = 0L
+
     /**
      * Returns the set of all packages currently open in the system's Recent Apps / Recents Task list.
      * Strictly filters for alive tasks (hasTask=true) to avoid dead task tombstones.
+     * Includes in-memory caching with graceful timeout fallback to prevent dropouts.
      */
-    fun getRecentPackages(): Set<String> {
+    fun getRecentPackages(forceRefresh: Boolean = false): Set<String> {
+        val now = System.currentTimeMillis()
+        if (!forceRefresh && now - lastRecentPackagesTimestamp < 1500 && cachedRecentPackages.isNotEmpty()) {
+            return cachedRecentPackages
+        }
+
         return try {
-            val output = ShellUtils.fastCmdResult("dumpsys activity recents | grep -E 'Recent #[0-9]+:|realActivity=|baseActivity=|cmp=|I=' 2>/dev/null", 2500)
-            if (output.isBlank()) return emptySet()
+            val output = ShellUtils.fastCmdResult("dumpsys activity recents | grep -m 35 -E 'Recent #[0-9]+:|realActivity=|baseActivity=|cmp=|I=' 2>/dev/null", 2500)
+            if (output.isBlank()) {
+                return if (now - lastRecentPackagesTimestamp < 10000) cachedRecentPackages else emptySet()
+            }
 
             val pkgs = mutableSetOf<String>()
             val regexes = listOf(
                 Regex("(?:realActivity=|baseActivity=|topActivity=|cmp=|I=)\\{?([a-zA-Z0-9_.]+)/"),
-                Regex("Recent #[0-9]+:.*Task\\{[a-f0-9]+ #[0-9]+ [^}]*I=([a-zA-Z0-9_.]+)/")
+                Regex("Recent #[0-9]+:.*Task\\{[a-f0-9]+ #[0-9]+ [^}]*(?:I=|A=[0-9]+:)([a-zA-Z0-9_.]+)")
             )
             for (line in output.lineSequence()) {
                 for (r in regexes) {
@@ -293,11 +304,20 @@ object FreezerManager {
                     }
                 }
             }
+            if (pkgs.isNotEmpty()) {
+                cachedRecentPackages = pkgs
+                lastRecentPackagesTimestamp = now
+                // Prune closed apps from activeSessionApps
+                activeSessionApps.retainAll { pkg ->
+                    pkgs.contains(pkg)
+                }
+            }
             pkgs
         } catch (e: Exception) {
-            emptySet()
+            if (now - lastRecentPackagesTimestamp < 10000) cachedRecentPackages else emptySet()
         }
     }
+
 
     /**
      * Returns set of packages that are actively playing audio/video (state = PLAYING or started audio track).

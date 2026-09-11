@@ -143,6 +143,7 @@ class BootReceiver : BroadcastReceiver() {
                         val activeMode = when(savedModeKey) {
                             "rbPowerSaver" -> "Power Saver"
                             "rbPerformance" -> "Performance"
+                            "rbStreaming" -> "Streaming"
                             else -> "Balance"
                         }
                         TweakManager.applyGlobalMode(activeMode)

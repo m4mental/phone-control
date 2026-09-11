@@ -39,8 +39,8 @@ object ThermalManager {
         
         val prefs = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
         val manualStage = prefs.getInt("manual_stage_override", 0)
-        if (manualStage != 0 || TweakManager.manualStageOverride != 0) {
-            // Strictly protect user's manual test lock in Test Lab
+        if (manualStage != 0 || TweakManager.manualStageOverride != 0 || AutoTweakService.isPerAppActive || TweakManager.currentMode == "Streaming") {
+            // Strictly protect user's manual test lock in Test Lab and active Per-App / Streaming rules
             return
         }
 
@@ -182,6 +182,7 @@ object ThermalManager {
         when (savedModeKey) {
             "rbPowerSaver" -> TweakManager.applyGlobalMode("Power Saver")
             "rbPerformance" -> TweakManager.applyGlobalMode("Performance")
+            "rbStreaming" -> TweakManager.applyGlobalMode("Streaming")
             "rbAutomatic" -> {
                 val focus = prefs.getString("selected_focus", "rbFocusDaily") ?: "rbFocusDaily"
                 TweakManager.applyGlobalMode("AI_Daily")

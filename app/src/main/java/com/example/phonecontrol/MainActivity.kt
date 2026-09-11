@@ -381,6 +381,17 @@ class MainActivity : AppCompatActivity() {
             val cpuUsage = readKernelCpuUsage()
             val currentFreqKhz = readLittleCoreFreqKhz()
 
+            val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+            if (prefs.getString("selected_mode", "rbBalance") == "rbAutomatic" && !prefs.contains("active_per_app_mode")) {
+                val intentAi = Intent(this@MainActivity, AutoTweakService::class.java).apply {
+                    action = "com.example.phonecontrol.ACTION_AI_TICK"
+                    putExtra("load", cpuUsage)
+                }
+                try {
+                    startService(intentAi)
+                } catch (e: Exception) {}
+            }
+
             runOnUiThread {
                 if (isFinishing) return@runOnUiThread
                 tvLiveTemp.text = batteryInfo.temp
@@ -447,6 +458,8 @@ class MainActivity : AppCompatActivity() {
         val savedMode = prefs.getString("selected_mode", "rbBalance")
         val activeAiLabel = prefs.getString("active_ai_label", "AI: Active")
 
+        val activePerAppMode = prefs.getString("active_per_app_mode", null)
+        val activePerAppPkg = prefs.getString("active_per_app_pkg", null)
         val manualStage = prefs.getInt("manual_stage_override", 0)
 
         val statusText = if (manualStage != 0) {
@@ -461,10 +474,20 @@ class MainActivity : AppCompatActivity() {
                 4 -> "Test Lab: Stage 4 (Turbo)"
                 else -> "Test Lab: Stage Lock"
             }
+        } else if (!activePerAppMode.isNullOrBlank()) {
+            val appLabel = activePerAppPkg?.let { pkgs ->
+                val first = pkgs.split(",").firstOrNull()?.trim() ?: ""
+                try {
+                    val appInfo = packageManager.getApplicationInfo(first, 0)
+                    packageManager.getApplicationLabel(appInfo).toString()
+                } catch (e: Exception) { first }
+            } ?: "Recents"
+            "Per-App: $activePerAppMode ($appLabel)"
         } else when (savedMode) {
             "rbPowerSaver" -> "Manual: Power Saver"
             "rbBalance" -> "Manual: Balanced"
             "rbPerformance" -> "Manual: Performance"
+            "rbStreaming" -> "Manual: Streaming (Media Eco)"
             "rbAutomatic" -> activeAiLabel ?: "Automatic (AI)"
             else -> "Unknown"
         }
@@ -473,14 +496,20 @@ class MainActivity : AppCompatActivity() {
         // Dynamic Status Color
         if (manualStage != 0) {
             tvStatus.setTextColor(Color.parseColor("#FFD700")) // Gold for Test Lab Override
+        } else if (!activePerAppMode.isNullOrBlank()) {
+            tvStatus.setTextColor(Color.parseColor("#00E5FF")) // Bright Cyan for Per-App!
         } else if (savedMode == "rbAutomatic") {
             tvStatus.setTextColor(Color.parseColor("#00C853")) // Bright Green for AI
         } else {
             tvStatus.setTextColor(Color.WHITE)
         }
         
-        // Ensure service is running
-        startService(Intent(this, AutoTweakService::class.java))
+        // Ensure service is running and recents hierarchy is evaluated
+        val serviceIntent = Intent(this, AutoTweakService::class.java).apply {
+            action = AutoTweakService.ACTION_FOREGROUND_APP_CHANGED
+            putExtra(AutoTweakService.EXTRA_PACKAGE_NAME, packageName)
+        }
+        startService(serviceIntent)
     }
 
     private fun updateCardVisibility() {

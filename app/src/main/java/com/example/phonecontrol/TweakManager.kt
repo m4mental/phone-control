@@ -16,19 +16,22 @@ object TweakManager {
     fun applyGlobalMode(mode: String) {
         currentMode = mode
         when (mode) {
-            "Power Saver" -> {
+            "Power Saver", "Saver" -> {
                 applyBatterySaver()
                 applyCpuTuning("power")
                 applyIoOptimization("power")
                 applyAsymmetricCpuFreqTuning("power")
             }
-            "Balance", "Balanced" -> {
+            "Streaming", "Stream" -> {
+                applyStreaming()
+            }
+            "Balance", "Balanced", "Bal" -> {
                 applyBalance()
                 applyCpuTuning("balance")
                 applyIoOptimization("balance")
                 applyAsymmetricCpuFreqTuning("balance")
             }
-            "Performance" -> {
+            "Performance", "Perf" -> {
                 applyPerformance()
                 applyCpuTuning("perf")
                 applyIoOptimization("perf")
@@ -40,15 +43,38 @@ object TweakManager {
                 setClusterParking(false)
                 applyScreenOffSleep()
             }
-            "AI_EcoActive" -> {
-                // Eco Active: Stage 1 (650MHz - 950MHz Little, 400MHz Big Sleep)
+            "AI_EcoActive", "AI_Eco650" -> {
+                // Eco 650M: Pure Base Floor (650MHz Little, 400MHz Big Sleep, 650M touch boost)
+                currentMode = "AI_Eco650"
                 setClusterParking(false)
                 applyGpuTuning("power")
                 applyCpuTuning("power")
                 applyIoOptimization("power")
                 applyEntropyTuning(true)
-                applyInputBoost(true, aggressive = false)
+                applyInputBoostForFreq(650000)
                 applyAsymmetricCpuFreqTuning("power")
+            }
+            "AI_Eco850" -> {
+                // Eco 850M: Moderate Fluid (650M-850M Little, 400M Big Sleep, 850M touch boost)
+                currentMode = "AI_Eco850"
+                setClusterParking(false)
+                applyGpuTuning("power")
+                applyCpuTuning("power")
+                applyIoOptimization("power")
+                applyEntropyTuning(true)
+                applyInputBoostForFreq(850000)
+                applyAsymmetricCpuFreqTuning("eco850")
+            }
+            "AI_Eco950" -> {
+                // Eco 950M: Burst Stage (650M-950M Little, 400M Big Sleep, 950M touch boost)
+                currentMode = "AI_Eco950"
+                setClusterParking(false)
+                applyGpuTuning("power")
+                applyCpuTuning("power")
+                applyIoOptimization("power")
+                applyEntropyTuning(true)
+                applyInputBoostForFreq(950000)
+                applyAsymmetricCpuFreqTuning("eco950")
             }
             "AI_VideoCall" -> {
                 // WhatsApp / Social Video Call & VOIP: Stage 1 Locked 950MHz Little Cores, Big Cores Sleep
@@ -121,6 +147,19 @@ object TweakManager {
             ShellUtils.fastCmd("echo 0 > /proc/touchpanel/game_switch_enable 2>/dev/null")
             ShellUtils.fastCmd("echo 0 > /sys/devices/virtual/touchpanel/smart_wake/touch_responsiveness 2>/dev/null")
         }
+    }
+
+    /**
+     * Touch-Adaptive Frequency Boost specifically bounded to a given ceiling:
+     * e.g. 650000 stays capped at 650MHz, 850000 climbs to 850MHz, 950000 climbs to 950MHz.
+     */
+    fun applyInputBoostForFreq(freqKhz: Int) {
+        ShellUtils.fastCmd("echo 1000 > /sys/devices/system/cpu/cpufreq/policy0/schedutil/rate_limit_us 2>/dev/null")
+        ShellUtils.fastCmd("echo 1 > /sys/module/cpu_boost/parameters/input_boost_enabled 2>/dev/null")
+        ShellUtils.fastCmd("echo 0:$freqKhz 6:0 > /sys/module/cpu_boost/parameters/input_boost_freq 2>/dev/null")
+        ShellUtils.fastCmd("echo 80 > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null")
+        ShellUtils.fastCmd("echo 0 > /proc/touchpanel/game_switch_enable 2>/dev/null")
+        ShellUtils.fastCmd("echo 0 > /sys/devices/virtual/touchpanel/smart_wake/touch_responsiveness 2>/dev/null")
     }
 
     /**
@@ -228,6 +267,57 @@ object TweakManager {
         applyGpuTuning("perf")
         applyEntropyTuning(true)
         applyInputBoost(true, aggressive = true)
+    }
+
+    /**
+     * Dedicated Streaming Mode (Media Eco Dynamic Profile):
+     * - 6 Little Cores: Dynamic 650MHz (Idle floor) to 1200MHz (Turbo ceiling) via schedutil.
+     *   When idle or sitting in Recents: drops to 650MHz.
+     *   When active / streaming: dynamically jumps across 950MHz, 1100MHz, 1200MHz according to load!
+     * - 2 Big Cores deeply sleeping at 400MHz (powersave) eliminating thermal build-up and saving massive battery.
+     */
+    @Volatile
+    private var lastStreamingTargetFreq: Int = 0
+
+    fun applyStreaming() {
+        setClusterParking(false)
+        applyGpuTuning("power")
+        applyEntropyTuning(true)
+        applyInputBoost(true, aggressive = false)
+        applyAsymmetricCpuFreqTuning("streaming")
+        applyCpuTuning("power")
+        applyIoOptimization("power")
+        lastStreamingTargetFreq = 0
+        applyStreamingDynamic(0)
+        Log.d("TweakManager", "🎬 Streaming Mode Applied -> 6 Little Cores Dynamic (650M-1200M), 2 Big Cores at 400M Sleep")
+    }
+
+    /**
+     * Dynamic Load-Aware Scaling for Streaming Mode:
+     * - Low Load (<=30%): 950MHz Little Cores cap (idle in recents / light reading)
+     * - Medium Load (31-65%): 1100MHz Little Cores cap (normal 1080p video / scrolling)
+     * - High Load (>65%): 1200MHz Little Cores cap (buffer burst / heavy web page)
+     * - Big Cores stay locked at 400MHz powersave sleep throughout.
+     */
+    fun applyStreamingDynamic(load: Int) {
+        val targetMaxFreq = when {
+            load > 65 -> 1200000 // Heavy streaming / buffer burst (1.2GHz)
+            load > 30 -> 1100000 // Normal video playback / scrolling (1.1GHz)
+            else -> 950000       // Idle in Recents / low usage (950MHz)
+        }
+        if (targetMaxFreq == lastStreamingTargetFreq) return
+        lastStreamingTargetFreq = targetMaxFreq
+        val script = """
+            chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* /sys/devices/system/cpu/cpu*/cpufreq/scaling_* 2>/dev/null
+            for c in 0 1 2 3 4 5; do
+                echo 650000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
+                echo $targetMaxFreq > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
+            done
+            echo 650000 > /sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq 2>/dev/null
+            echo $targetMaxFreq > /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null
+        """.trimIndent()
+        ShellUtils.fastCmd(script)
+        Log.d("TweakManager", "🎬 Streaming Dynamic Freq: Load=$load% -> Little Core Cap=${targetMaxFreq/1000}MHz")
     }
 
     /**
@@ -452,10 +542,15 @@ object TweakManager {
      * keeping permissions open (chmod 666) so dynamic 650 <-> 950 EAS scaling continues seamlessly.
      */
     fun triggerAppSwitchBoost() {
-        if (isVideoCallBoostActive) return
+        if (isVideoCallBoostActive || currentMode == "Streaming" || AutoTweakService.isPerAppActive) return
+        val isBatteryEco = currentMode == "AI_Eco650" || currentMode == "AI_Eco850" || currentMode == "AI_Eco950" || currentMode == "AI_EcoActive"
+        if (isBatteryEco) {
+            // In Battery Eco focus: do not inject arbitrary spikes on app-switch; stay strictly at active mode cap
+            return
+        }
         val isEcoOrS1 = manualStageOverride == 1 || manualStageOverride == 10 || manualStageOverride == 11 || 
                         manualStageOverride == 12 || manualStageOverride == 13 || 
-                        currentMode == "Power Saver" || currentMode == "AI_EcoActive"
+                        currentMode == "Power Saver"
         val spikeFreq = if (isEcoOrS1) "950000" else "1400000"
         val baseFreq = when {
             manualStageOverride == 13 -> "480000"
@@ -469,7 +564,12 @@ object TweakManager {
             try {
                 ShellUtils.fastCmd("chmod 666 /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null; echo $spikeFreq > /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null")
                 Thread.sleep(250)
-                ShellUtils.fastCmd("echo $baseFreq > /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null; chmod 444 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null")
+                if (currentMode == "Streaming") {
+                    applyStreaming()
+                    return@thread
+                }
+                if (isVideoCallBoostActive || AutoTweakService.isPerAppActive) return@thread
+                ShellUtils.fastCmd("echo $baseFreq > /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null; chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* 2>/dev/null")
             } catch (e: Exception) {}
         }
     }
@@ -530,6 +630,7 @@ object TweakManager {
         when (mode) {
             "rbPowerSaver" -> applyGlobalMode("Power Saver")
             "rbPerformance" -> applyGlobalMode("Performance")
+            "rbStreaming" -> applyGlobalMode("Streaming")
             "rbAutomatic" -> {
                 val intentAi = Intent(context, AutoTweakService::class.java).apply {
                     action = "com.example.phonecontrol.ACTION_AI_TICK"
@@ -564,13 +665,17 @@ object TweakManager {
             "power" -> {
                 // Power Saver / Eco: Pure 650MHz Base Floor (Ice Cold Idle & UI Navigation, Big Cores Sleeping)
                 val script = """
-                    chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* 2>/dev/null
+                    chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* /sys/devices/system/cpu/cpu*/cpufreq/scaling_* 2>/dev/null
                     for c in 0 1 2 3 4 5; do
+                        chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
+                        chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
                         echo 650000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
                         echo 650000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
                         echo schedutil > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_governor 2>/dev/null
                     done
                     for c in 6 7; do
+                        chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
+                        chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
                         echo 400000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
                         echo 400000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
                         echo powersave > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_governor 2>/dev/null
@@ -582,20 +687,112 @@ object TweakManager {
                     echo powersave > /sys/devices/system/cpu/cpufreq/policy6/scaling_governor 2>/dev/null
                     echo 1000 > /sys/devices/system/cpu/cpufreq/policy0/schedutil/rate_limit_us 2>/dev/null
                     echo 20000 > /sys/devices/system/cpu/cpufreq/policy6/schedutil/up_rate_limit_us 2>/dev/null
-                    chmod 444 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
+                    chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* 2>/dev/null
+                """.trimIndent()
+                ShellUtils.fastCmd(script)
+            }
+            "eco850" -> {
+                // Eco 850: 6 Little Cores 650MHz - 850MHz Dynamic, 2 Big Cores Sleeping at 400MHz
+                val script = """
+                    chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* /sys/devices/system/cpu/cpu*/cpufreq/scaling_* 2>/dev/null
+                    for c in 0 1 2 3 4 5; do
+                        chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
+                        chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
+                        echo 650000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
+                        echo 850000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
+                        echo schedutil > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_governor 2>/dev/null
+                    done
+                    for c in 6 7; do
+                        chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
+                        chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
+                        echo 400000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
+                        echo 400000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
+                        echo powersave > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_governor 2>/dev/null
+                    done
+                    echo 650000 > /sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq 2>/dev/null
+                    echo 850000 > /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null
+                    echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_min_freq 2>/dev/null
+                    echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq 2>/dev/null
+                    echo powersave > /sys/devices/system/cpu/cpufreq/policy6/scaling_governor 2>/dev/null
+                    chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* 2>/dev/null
+                """.trimIndent()
+                ShellUtils.fastCmd(script)
+            }
+            "eco950" -> {
+                // Eco 950: 6 Little Cores 650MHz - 950MHz Dynamic, 2 Big Cores Sleeping at 400MHz
+                val script = """
+                    chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* /sys/devices/system/cpu/cpu*/cpufreq/scaling_* 2>/dev/null
+                    for c in 0 1 2 3 4 5; do
+                        chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
+                        chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
+                        echo 650000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
+                        echo 950000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
+                        echo schedutil > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_governor 2>/dev/null
+                    done
+                    for c in 6 7; do
+                        chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
+                        chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
+                        echo 400000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
+                        echo 400000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
+                        echo powersave > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_governor 2>/dev/null
+                    done
+                    echo 650000 > /sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq 2>/dev/null
+                    echo 950000 > /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null
+                    echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_min_freq 2>/dev/null
+                    echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq 2>/dev/null
+                    echo powersave > /sys/devices/system/cpu/cpufreq/policy6/scaling_governor 2>/dev/null
+                    chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* 2>/dev/null
+                """.trimIndent()
+                ShellUtils.fastCmd(script)
+            }
+            "streaming", "stream" -> {
+                // Streaming Mode (Media Eco Dynamic Profile):
+                // - 6 Little Cores: Dynamic 650MHz (Idle floor) to 1200MHz (Turbo ceiling) via schedutil.
+                //   When idle in Recents or reading: drops to 650MHz.
+                //   Under video decode or UI interaction: dynamically spikes across 950MHz -> 1100MHz -> 1200MHz!
+                // - 2 Big Cores: Deeply sleeping at 400MHz powersave (zero phone heating).
+                val script = """
+                    chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* /sys/devices/system/cpu/cpu*/cpufreq/scaling_* 2>/dev/null
+                    for c in 0 1 2 3 4 5; do
+                        chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
+                        chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
+                        echo 650000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
+                        echo 1200000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
+                        echo schedutil > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_governor 2>/dev/null
+                    done
+                    for c in 6 7; do
+                        chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
+                        chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
+                        echo 400000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
+                        echo 400000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
+                        echo powersave > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_governor 2>/dev/null
+                    done
+                    echo 650000 > /sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq 2>/dev/null
+                    echo 1200000 > /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null
+                    echo schedutil > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor 2>/dev/null
+                    echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_min_freq 2>/dev/null
+                    echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq 2>/dev/null
+                    echo powersave > /sys/devices/system/cpu/cpufreq/policy6/scaling_governor 2>/dev/null
+                    echo 1000 > /sys/devices/system/cpu/cpufreq/policy0/schedutil/rate_limit_us 2>/dev/null
+                    echo 20000 > /sys/devices/system/cpu/cpufreq/policy6/schedutil/up_rate_limit_us 2>/dev/null
+                    chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* 2>/dev/null
                 """.trimIndent()
                 ShellUtils.fastCmd(script)
             }
             "balance" -> {
                 // Stage 2 Pure 6-Core Fluid: 6 Little Cores 650MHz - 2.0GHz, 2 Big Cores LOCKED at 400MHz Sleep!
                 val script = """
-                    chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* 2>/dev/null
+                    chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* /sys/devices/system/cpu/cpu*/cpufreq/scaling_* 2>/dev/null
                     for c in 0 1 2 3 4 5; do
+                        chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
+                        chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
                         echo 650000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
                         echo 2000000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
                         echo schedutil > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_governor 2>/dev/null
                     done
                     for c in 6 7; do
+                        chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
+                        chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
                         echo 400000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
                         echo 400000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
                         echo powersave > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_governor 2>/dev/null
@@ -607,20 +804,24 @@ object TweakManager {
                     echo powersave > /sys/devices/system/cpu/cpufreq/policy6/scaling_governor 2>/dev/null
                     echo 1000 > /sys/devices/system/cpu/cpufreq/policy0/schedutil/rate_limit_us 2>/dev/null
                     echo 20000 > /sys/devices/system/cpu/cpufreq/policy6/schedutil/up_rate_limit_us 2>/dev/null
-                    chmod 444 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
+                    chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* 2>/dev/null
                 """.trimIndent()
                 ShellUtils.fastCmd(script)
             }
             "boost" -> {
                 // Stage 3 Dual-Cluster Balanced Compute: 6 Little Cores 2.0GHz, 2 Big Cores 1.5GHz
                 val script = """
-                    chmod 644 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
+                    chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* /sys/devices/system/cpu/cpu*/cpufreq/scaling_* 2>/dev/null
                     for c in 0 1 2 3 4 5; do
+                        chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
+                        chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
                         echo 650000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
                         echo 2000000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
                         echo schedutil > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_governor 2>/dev/null
                     done
                     for c in 6 7; do
+                        chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
+                        chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
                         echo 400000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
                         echo 1500000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
                         echo schedutil > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_governor 2>/dev/null
@@ -633,7 +834,7 @@ object TweakManager {
                     echo 1500000 > /sys/devices/system/cpu/cpufreq/policy7/scaling_max_freq 2>/dev/null
                     echo 1000 > /sys/devices/system/cpu/cpufreq/policy0/schedutil/rate_limit_us 2>/dev/null
                     echo 15000 > /sys/devices/system/cpu/cpufreq/policy6/schedutil/up_rate_limit_us 2>/dev/null
-                    chmod 444 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
+                    chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* 2>/dev/null
                 """.trimIndent()
                 ShellUtils.fastCmd(script)
             }
@@ -707,6 +908,8 @@ object TweakManager {
                 applyAsymmetricCpuFreqTuning("power")
             } else if (savedMode == "rbPerformance") {
                 applyAsymmetricCpuFreqTuning("perf")
+            } else if (savedMode == "rbStreaming") {
+                applyStreaming()
             } else if (savedMode == "rbAutomatic") {
                 context.startService(Intent(context, AutoTweakService::class.java))
             } else {
@@ -1018,7 +1221,7 @@ object TweakManager {
      * 7. CPU Frequency Capping (Percentage based)
      */
     fun limitCpuFrequency(percentage: Int) {
-        if (manualStageOverride != 0) return
+        if (manualStageOverride != 0 || currentMode == "Streaming" || AutoTweakService.isPerAppActive) return
         val unlock = "chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* /sys/devices/system/cpu/cpu*/cpufreq/scaling_* 2>/dev/null"
         val script = if (percentage >= 100) {
             """

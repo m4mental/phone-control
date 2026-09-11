@@ -125,10 +125,11 @@ class ModeControlTileService : TileService() {
 
         val currentMode = prefs.getString("selected_mode", "rbBalance")
 
-        // Cycle: AI Auto -> Balanced -> Power Saver -> Performance -> AI Auto
+        // Cycle: AI Auto -> Balanced -> Streaming -> Power Saver -> Performance -> AI Auto
         val nextMode = when (currentMode) {
             "rbAutomatic" -> "rbBalance"
-            "rbBalance" -> "rbPowerSaver"
+            "rbBalance" -> "rbStreaming"
+            "rbStreaming" -> "rbPowerSaver"
             "rbPowerSaver" -> "rbPerformance"
             "rbPerformance" -> "rbAutomatic"
             else -> "rbAutomatic"
@@ -145,6 +146,7 @@ class ModeControlTileService : TileService() {
                 val displayMode = when (nextMode) {
                     "rbPowerSaver" -> "Power Saver"
                     "rbPerformance" -> "Performance"
+                    "rbStreaming" -> "Streaming"
                     else -> "Balance"
                 }
                 TweakManager.applyGlobalMode(displayMode)
@@ -158,6 +160,7 @@ class ModeControlTileService : TileService() {
 
             val toastMsg = when (nextMode) {
                 "rbAutomatic" -> "🤖 AI Dynamic Mode Active"
+                "rbStreaming" -> "🎬 Streaming Mode (950-1200MHz Media Eco)"
                 "rbPowerSaver" -> "🔋 Power Saver Mode (650MHz Eco)"
                 "rbPerformance" -> "🚀 Performance Mode (Turbo 2.8GHz)"
                 else -> "⚡ Balanced Mode (Fluid 120Hz)"
@@ -220,6 +223,13 @@ class ModeControlTileService : TileService() {
                 tile.label = "Mode: Balanced"
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     tile.subtitle = "Pure 6-Core Fluid"
+                }
+                tile.state = Tile.STATE_ACTIVE
+            }
+            "rbStreaming" -> {
+                tile.label = "Mode: Streaming"
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    tile.subtitle = "Media Eco (950-1200M)"
                 }
                 tile.state = Tile.STATE_ACTIVE
             }

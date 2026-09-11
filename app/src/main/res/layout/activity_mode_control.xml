@@ -63,6 +63,18 @@
                     <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#222222" />
 
                     <RadioButton
+                        android:id="@+id/rbStreaming"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:padding="12dp"
+                        android:text="Manual: Streaming (Media Eco)\nLittle Cores 950–1200MHz, Big Cores 400MHz deep sleep. Zero thermal heating &amp; maximum battery life for video streaming."
+                        android:textColor="@android:color/white"
+                        android:buttonTint="@color/color_mode"
+                        android:textSize="14sp" />
+
+                    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#222222" />
+
+                    <RadioButton
                         android:id="@+id/rbBalance"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"

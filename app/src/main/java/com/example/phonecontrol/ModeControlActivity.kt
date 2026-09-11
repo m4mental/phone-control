@@ -18,6 +18,7 @@ class ModeControlActivity : AppCompatActivity() {
     private lateinit var rgFocus: RadioGroup
     private lateinit var layoutFocusSettings: LinearLayout
     private lateinit var tvCurrentRefreshSummary: TextView
+    private var isProgrammaticUpdate = false
 
     private val uiReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -49,9 +50,11 @@ class ModeControlActivity : AppCompatActivity() {
         }
 
         rgModes.setOnCheckedChangeListener { _, checkedId ->
+            if (isProgrammaticUpdate) return@setOnCheckedChangeListener
             val modeKey = when (checkedId) {
                 R.id.rbPowerSaver -> "rbPowerSaver"
                 R.id.rbPerformance -> "rbPerformance"
+                R.id.rbStreaming -> "rbStreaming"
                 R.id.rbAutomatic -> "rbAutomatic"
                 else -> "rbBalance"
             }
@@ -73,6 +76,7 @@ class ModeControlActivity : AppCompatActivity() {
                 val displayMode = when(modeKey) {
                     "rbPowerSaver" -> "Power Saver"
                     "rbPerformance" -> "Performance"
+                    "rbStreaming" -> "Streaming"
                     else -> "Balance"
                 }
                 thread {
@@ -100,6 +104,7 @@ class ModeControlActivity : AppCompatActivity() {
             val modeKey = when (checkedModeId) {
                 R.id.rbPowerSaver -> "rbPowerSaver"
                 R.id.rbPerformance -> "rbPerformance"
+                R.id.rbStreaming -> "rbStreaming"
                 R.id.rbAutomatic -> "rbAutomatic"
                 else -> "rbBalance"
             }
@@ -117,6 +122,7 @@ class ModeControlActivity : AppCompatActivity() {
                     val displayMode = when (modeKey) {
                         "rbPowerSaver" -> "Power Saver"
                         "rbPerformance" -> "Performance"
+                        "rbStreaming" -> "Streaming"
                         else -> "Balance"
                     }
                     TweakManager.applyGlobalMode(displayMode)
@@ -161,16 +167,22 @@ class ModeControlActivity : AppCompatActivity() {
     }
 
     private fun updateRadioButtonsFromPrefs() {
-        val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
-        val savedMode = prefs.getString("selected_mode", "rbBalance")
+        isProgrammaticUpdate = true
+        try {
+            val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+            val savedMode = prefs.getString("selected_mode", "rbBalance")
 
-        when (savedMode) {
-            "rbPowerSaver" -> findViewById<RadioButton>(R.id.rbPowerSaver).isChecked = true
-            "rbBalance" -> findViewById<RadioButton>(R.id.rbBalance).isChecked = true
-            "rbPerformance" -> findViewById<RadioButton>(R.id.rbPerformance).isChecked = true
-            "rbAutomatic" -> findViewById<RadioButton>(R.id.rbAutomatic).isChecked = true
+            when (savedMode) {
+                "rbPowerSaver" -> findViewById<RadioButton>(R.id.rbPowerSaver).isChecked = true
+                "rbBalance" -> findViewById<RadioButton>(R.id.rbBalance).isChecked = true
+                "rbPerformance" -> findViewById<RadioButton>(R.id.rbPerformance).isChecked = true
+                "rbStreaming" -> findViewById<RadioButton>(R.id.rbStreaming).isChecked = true
+                "rbAutomatic" -> findViewById<RadioButton>(R.id.rbAutomatic).isChecked = true
+            }
+            layoutFocusSettings.visibility = if (savedMode == "rbAutomatic") View.VISIBLE else View.GONE
+        } finally {
+            isProgrammaticUpdate = false
         }
-        layoutFocusSettings.visibility = if (savedMode == "rbAutomatic") View.VISIBLE else View.GONE
     }
 
     private fun updateRefreshSummary() {

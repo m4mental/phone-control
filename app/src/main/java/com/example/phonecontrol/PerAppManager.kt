@@ -68,9 +68,10 @@ object PerAppManager {
 
     fun getModePriority(mode: String): Int {
         return when (mode.trim()) {
-            "Performance" -> 3
-            "Balance" -> 2
-            "Power Saver" -> 1
+            "Performance", "Perf" -> 4
+            "Balance", "Balanced", "Bal" -> 3
+            "Streaming", "Stream" -> 2
+            "Power Saver", "Saver" -> 1
             else -> 0
         }
     }
