@@ -318,7 +318,162 @@ object PowerampPresetManager {
             crossfeedLevel = 0
         ))
 
-        // 6. Studio Bypass / Flat
+        // 6. Gamer Footsteps & Directional (Pin-point Acoustic Imaging)
+        list.add(EqualizerPreset(
+            name = "Gamer Footsteps & Directional",
+            preamp = -1.5f,
+            parametric = false,
+            bands = mutableListOf(
+                EqualizerBand(type = 0, frequency = 90, q = 0.8f, gain = -2.5f), // Subdue heavy rumble
+                EqualizerBand(type = 1, frequency = 10000, q = 0.6f, gain = 2.5f),
+                EqualizerBand(type = 2, frequency = 31, q = 0.0f, gain = -4.0f),
+                EqualizerBand(type = 2, frequency = 62, q = 0.0f, gain = -2.0f),
+                EqualizerBand(type = 2, frequency = 124, q = 0.0f, gain = 0.0f),
+                EqualizerBand(type = 2, frequency = 249, q = 0.0f, gain = 1.0f),
+                EqualizerBand(type = 2, frequency = 498, q = 0.0f, gain = 2.0f),
+                EqualizerBand(type = 2, frequency = 996, q = 0.0f, gain = 4.5f),  // Footstep frequency boost
+                EqualizerBand(type = 2, frequency = 1995, q = 0.0f, gain = 5.5f), // Gunshot reload / gravel steps
+                EqualizerBand(type = 2, frequency = 3993, q = 0.0f, gain = 4.0f), // Glass breaking & weapon swap
+                EqualizerBand(type = 2, frequency = 7993, q = 0.0f, gain = 3.5f), // Directional spatial cues
+                EqualizerBand(type = 2, frequency = 16000, q = 0.0f, gain = 1.5f)
+            ),
+            surroundEnabled = true,
+            surroundStrength = 750, // Ultra-wide 3D field for footsteps
+            reverbEnabled = false,
+            reverbPreset = 2,
+            dynamicSystemEnabled = false,
+            dynamicSystemIntensity = 0,
+            clarityEnabled = true,
+            clarityLevel = 700,
+            crossfeedEnabled = true,
+            crossfeedLevel = 450
+        ))
+
+        // 7. Deep Bass Extender (Subwoofer Rumble)
+        list.add(EqualizerPreset(
+            name = "Deep Bass Extender",
+            preamp = -4.0f,
+            parametric = false,
+            bands = mutableListOf(
+                EqualizerBand(type = 0, frequency = 90, q = 0.8f, gain = 8.0f),
+                EqualizerBand(type = 1, frequency = 10000, q = 0.6f, gain = 3.0f),
+                EqualizerBand(type = 2, frequency = 31, q = 0.0f, gain = 8.5f),
+                EqualizerBand(type = 2, frequency = 62, q = 0.0f, gain = 7.0f),
+                EqualizerBand(type = 2, frequency = 124, q = 0.0f, gain = 4.0f),
+                EqualizerBand(type = 2, frequency = 249, q = 0.0f, gain = 1.0f),
+                EqualizerBand(type = 2, frequency = 498, q = 0.0f, gain = -1.0f),
+                EqualizerBand(type = 2, frequency = 996, q = 0.0f, gain = 0.0f),
+                EqualizerBand(type = 2, frequency = 1995, q = 0.0f, gain = 1.5f),
+                EqualizerBand(type = 2, frequency = 3993, q = 0.0f, gain = 2.0f),
+                EqualizerBand(type = 2, frequency = 7993, q = 0.0f, gain = 3.0f),
+                EqualizerBand(type = 2, frequency = 16000, q = 0.0f, gain = 4.0f)
+            ),
+            surroundEnabled = false,
+            surroundStrength = 0,
+            reverbEnabled = false,
+            reverbPreset = 2,
+            dynamicSystemEnabled = true,
+            dynamicSystemIntensity = 850,
+            clarityEnabled = true,
+            clarityLevel = 400,
+            crossfeedEnabled = false,
+            crossfeedLevel = 0
+        ))
+
+        // 8. Vocal Clarity & Speech (Podcast / Audiobook Target)
+        list.add(EqualizerPreset(
+            name = "Vocal Clarity & Speech",
+            preamp = -1.0f,
+            parametric = false,
+            bands = mutableListOf(
+                EqualizerBand(type = 0, frequency = 90, q = 0.8f, gain = -3.0f),
+                EqualizerBand(type = 1, frequency = 10000, q = 0.6f, gain = 1.5f),
+                EqualizerBand(type = 2, frequency = 31, q = 0.0f, gain = -3.0f),
+                EqualizerBand(type = 2, frequency = 62, q = 0.0f, gain = -1.0f),
+                EqualizerBand(type = 2, frequency = 124, q = 0.0f, gain = 0.5f),
+                EqualizerBand(type = 2, frequency = 249, q = 0.0f, gain = 1.5f),
+                EqualizerBand(type = 2, frequency = 498, q = 0.0f, gain = 2.5f),
+                EqualizerBand(type = 2, frequency = 996, q = 0.0f, gain = 4.8f),
+                EqualizerBand(type = 2, frequency = 1995, q = 0.0f, gain = 5.0f),
+                EqualizerBand(type = 2, frequency = 3993, q = 0.0f, gain = 3.5f),
+                EqualizerBand(type = 2, frequency = 7993, q = 0.0f, gain = 2.0f),
+                EqualizerBand(type = 2, frequency = 16000, q = 0.0f, gain = 1.0f)
+            ),
+            surroundEnabled = false,
+            surroundStrength = 0,
+            reverbEnabled = false,
+            reverbPreset = 2,
+            dynamicSystemEnabled = false,
+            dynamicSystemIntensity = 0,
+            clarityEnabled = true,
+            clarityLevel = 800,
+            crossfeedEnabled = false,
+            crossfeedLevel = 0
+        ))
+
+        // 9. Late Night Dialogue (Anti-Shock Cinema)
+        list.add(EqualizerPreset(
+            name = "Late Night Dialogue",
+            preamp = -2.0f,
+            parametric = false,
+            bands = mutableListOf(
+                EqualizerBand(type = 0, frequency = 90, q = 0.8f, gain = -6.0f),
+                EqualizerBand(type = 1, frequency = 10000, q = 0.6f, gain = 1.0f),
+                EqualizerBand(type = 2, frequency = 31, q = 0.0f, gain = -6.0f),
+                EqualizerBand(type = 2, frequency = 62, q = 0.0f, gain = -4.0f),
+                EqualizerBand(type = 2, frequency = 124, q = 0.0f, gain = -1.0f),
+                EqualizerBand(type = 2, frequency = 249, q = 0.0f, gain = 1.0f),
+                EqualizerBand(type = 2, frequency = 498, q = 0.0f, gain = 3.0f),
+                EqualizerBand(type = 2, frequency = 996, q = 0.0f, gain = 5.0f),
+                EqualizerBand(type = 2, frequency = 1995, q = 0.0f, gain = 4.5f),
+                EqualizerBand(type = 2, frequency = 3993, q = 0.0f, gain = 2.5f),
+                EqualizerBand(type = 2, frequency = 7993, q = 0.0f, gain = 1.5f),
+                EqualizerBand(type = 2, frequency = 16000, q = 0.0f, gain = 0.5f)
+            ),
+            surroundEnabled = false,
+            surroundStrength = 0,
+            reverbEnabled = false,
+            reverbPreset = 2,
+            dynamicSystemEnabled = false,
+            dynamicSystemIntensity = 0,
+            clarityEnabled = true,
+            clarityLevel = 750,
+            crossfeedEnabled = false,
+            crossfeedLevel = 0
+        ))
+
+        // 10. Biquad Precision [Studio Master]
+        list.add(EqualizerPreset(
+            name = "Biquad Precision [Studio Master]",
+            preamp = -1.0f,
+            parametric = false,
+            bands = mutableListOf(
+                EqualizerBand(type = 0, frequency = 90, q = 0.8f, gain = 1.5f),
+                EqualizerBand(type = 1, frequency = 10000, q = 0.6f, gain = 1.2f),
+                EqualizerBand(type = 2, frequency = 31, q = 0.0f, gain = 2.0f),
+                EqualizerBand(type = 2, frequency = 62, q = 0.0f, gain = 1.5f),
+                EqualizerBand(type = 2, frequency = 124, q = 0.0f, gain = 0.0f),
+                EqualizerBand(type = 2, frequency = 249, q = 0.0f, gain = -0.5f),
+                EqualizerBand(type = 2, frequency = 498, q = 0.0f, gain = 0.0f),
+                EqualizerBand(type = 2, frequency = 996, q = 0.0f, gain = 0.5f),
+                EqualizerBand(type = 2, frequency = 1995, q = 0.0f, gain = 1.2f),
+                EqualizerBand(type = 2, frequency = 3993, q = 0.0f, gain = -0.5f),
+                EqualizerBand(type = 2, frequency = 7993, q = 0.0f, gain = 1.8f),
+                EqualizerBand(type = 2, frequency = 16000, q = 0.0f, gain = 1.5f)
+            ),
+            surroundEnabled = false,
+            surroundStrength = 0,
+            reverbEnabled = false,
+            reverbPreset = 2,
+            dynamicSystemEnabled = true,
+            dynamicSystemIntensity = 450,
+            clarityEnabled = true,
+            clarityLevel = 450,
+            crossfeedEnabled = true,
+            crossfeedLevel = 350
+        ))
+
+        // 11. Studio Bypass / Flat
         list.add(EqualizerPreset(
             name = "Studio Flat (Bypass)",
             preamp = 0.0f,
@@ -603,5 +758,57 @@ object PowerampPresetManager {
 
     fun setDialogueBoostLevel(context: Context, levelDb: Float) {
         getPrefs(context).edit().putFloat(KEY_DIALOGUE_BOOST_LEVEL, levelDb).apply()
+    }
+
+    // --- Per-App Equalizer Rules ---
+    private const val PREFS_PER_APP_EQ = "studio_equalizer_per_app_prefs"
+
+    fun setAppPreset(context: Context, packageName: String, presetName: String) {
+        val prefs = context.getSharedPreferences(PREFS_PER_APP_EQ, Context.MODE_PRIVATE)
+        if (presetName.isBlank() || presetName.equals("Default", ignoreCase = true)) {
+            prefs.edit().remove(packageName).apply()
+        } else {
+            prefs.edit().putString(packageName, presetName).apply()
+        }
+    }
+
+    fun getAppPreset(context: Context, packageName: String): String? {
+        val prefs = context.getSharedPreferences(PREFS_PER_APP_EQ, Context.MODE_PRIVATE)
+        return prefs.getString(packageName, null)
+    }
+
+    fun removeAppPreset(context: Context, packageName: String) {
+        context.getSharedPreferences(PREFS_PER_APP_EQ, Context.MODE_PRIVATE).edit().remove(packageName).apply()
+    }
+
+    fun getAllAppPresets(context: Context): Map<String, String> {
+        val all = context.getSharedPreferences(PREFS_PER_APP_EQ, Context.MODE_PRIVATE).all
+        val result = mutableMapOf<String, String>()
+        for ((k, v) in all) {
+            if (v is String && v.isNotBlank()) {
+                result[k] = v
+            }
+        }
+        return result
+    }
+
+    // --- Smart Activation Modes ---
+    private const val KEY_HEADPHONES_ONLY_MODE = "headphones_only_mode"
+    private const val KEY_TARGET_APPS_ONLY_MODE = "target_apps_only_mode"
+
+    fun isHeadphonesOnlyMode(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_HEADPHONES_ONLY_MODE, false)
+    }
+
+    fun setHeadphonesOnlyMode(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_HEADPHONES_ONLY_MODE, enabled).apply()
+    }
+
+    fun isTargetAppsOnlyMode(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_TARGET_APPS_ONLY_MODE, false)
+    }
+
+    fun setTargetAppsOnlyMode(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_TARGET_APPS_ONLY_MODE, enabled).apply()
     }
 }

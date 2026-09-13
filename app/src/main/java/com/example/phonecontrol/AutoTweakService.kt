@@ -57,6 +57,8 @@ class AutoTweakService : Service() {
     @Volatile private var isAudioCurrentlyActive = false
     @Volatile private var isEqualizerFrozen = false
     @Volatile private var activePerAppMergedConfig: PerAppManager.AppConfig? = null
+    @Volatile private var activePerAppEqPreset: String? = null
+    @Volatile private var activeAudioPlayingPkg: String? = null
 
     private val tweakExecutor = Executors.newSingleThreadExecutor()
     private val freezerExecutor = Executors.newSingleThreadExecutor()
@@ -67,6 +69,7 @@ class AutoTweakService : Service() {
     private var audioManager: AudioManager? = null
     private var equalizerFreezeHandler: Handler? = null
     private var equalizerFreezeRunnable: Runnable? = null
+    private var audioPauseDebounceRunnable: Runnable? = null
     private var screenOffFreezeJob: Runnable? = null
     private val screenOffHandler = Handler(Looper.getMainLooper())
 
@@ -136,12 +139,17 @@ class AutoTweakService : Service() {
         override fun onReceive(context: Context, intent: Intent) {
             val action = intent.action ?: return
             tweakExecutor.execute {
-                if (!PowerampPresetManager.isPerDeviceRoutingEnabled(context) && !PowerampPresetManager.isSmartOutputSwitchEnabled(context)) return@execute
                 // Allow audio routing to settle before polling active output
                 try { Thread.sleep(150) } catch (e: Exception) {}
                 val outputType = StudioDspManager.getCurrentAudioOutputType(context)
                 Log.d("AutoTweak", "Audio route event: $action -> Detected output: $outputType")
-                StudioDspManager.notifyAudioDeviceChanged(context, outputType)
+
+                // Pure Event-Driven: Re-evaluate DSP Routing on device connection/disconnection
+                updateStudioDspRouting(lastForegroundApp)
+
+                if (PowerampPresetManager.isPerDeviceRoutingEnabled(context) || PowerampPresetManager.isSmartOutputSwitchEnabled(context)) {
+                    StudioDspManager.notifyAudioDeviceChanged(context, outputType)
+                }
             }
         }
     }
@@ -420,10 +428,11 @@ class AutoTweakService : Service() {
         val hasActiveAudio = isMusicActive || isAnyConfigActive
         if (hasActiveAudio) {
             isAudioCurrentlyActive = true
+            audioPauseDebounceRunnable?.let { equalizerFreezeHandler?.removeCallbacks(it) }
             equalizerFreezeRunnable?.let { equalizerFreezeHandler?.removeCallbacks(it) }
 
-            // Resume internal Studio DSP Engine in 0ms (ensure background initialization!)
-            StudioDspManager.resumeDsp(this)
+            // Pure Event-Driven: Audio streaming began -> awaken DSP and route to playing app
+            updateStudioDspRouting(lastForegroundApp)
 
             if (!FreezerManager.isEqualizerSleepEnabled(this)) return
             val eqPkg = FreezerManager.getDetectedEqualizerPackage(this) ?: return
@@ -437,13 +446,26 @@ class AutoTweakService : Service() {
         } else {
             if (isAudioCurrentlyActive) {
                 isAudioCurrentlyActive = false
-                Log.d("AutoTweak", "⏸️ Audio paused -> Starting 30s grace timer for Equalizer")
+                Log.d("AutoTweak", "⏸️ Audio paused or chunk buffering -> Starting 3s grace debounce for PiP / track transitions")
+
+                audioPauseDebounceRunnable?.let { equalizerFreezeHandler?.removeCallbacks(it) }
+                audioPauseDebounceRunnable = Runnable {
+                    tweakExecutor.execute {
+                        val isStillPlaying = audioManager?.isMusicActive == true || FreezerManager.getActivePlayingAudioPackages(this@AutoTweakService).isNotEmpty()
+                        if (!isStillPlaying) {
+                            Log.d("AutoTweak", "⏸️ 3s elapsed with no audio -> Evaluating DSP sleep state")
+                            updateStudioDspRouting(lastForegroundApp)
+                        }
+                    }
+                }
+                equalizerFreezeHandler?.postDelayed(audioPauseDebounceRunnable!!, 3000)
+
                 equalizerFreezeRunnable?.let { equalizerFreezeHandler?.removeCallbacks(it) }
                 equalizerFreezeRunnable = Runnable {
                     tweakExecutor.execute {
-                        val isStillPlaying = audioManager?.isMusicActive == true
+                        val isStillPlaying = audioManager?.isMusicActive == true || FreezerManager.getActivePlayingAudioPackages(this@AutoTweakService).isNotEmpty()
                         if (!isStillPlaying) {
-                            // Put internal Studio DSP to sleep (0% CPU)
+                            // Put internal Studio DSP hardware to sleep (0% CPU, 0 battery drain)
                             StudioDspManager.pauseDsp()
 
                             val eqPkg = FreezerManager.getDetectedEqualizerPackage(this@AutoTweakService)
@@ -455,7 +477,7 @@ class AutoTweakService : Service() {
                         }
                     }
                 }
-                equalizerFreezeHandler?.postDelayed(equalizerFreezeRunnable!!, 30000)
+                equalizerFreezeHandler?.postDelayed(equalizerFreezeRunnable!!, 10000)
             }
         }
     }
@@ -888,6 +910,149 @@ class AutoTweakService : Service() {
                     }
                     else -> if (wasPerApp) TweakManager.applyGlobalMode("Balance")
                 }
+            }
+        }
+
+        // 3. Smart Event-Driven Studio DSP Routing & Background Audio Guard
+        updateStudioDspRouting(foregroundPkg)
+    }
+
+    /**
+     * Smart Event-Driven Studio DSP Engine Controller.
+     * Evaluates output route (Headphones Only) and playback context (Targeted Apps Only),
+     * ensuring DSP remains 100% active for background music players (Spotify/YT Music)
+     * while putting hardware DSP to true sleep (0% CPU, enabled=false) when unlisted apps play or audio stops.
+     */
+    private fun updateStudioDspRouting(foregroundPkg: String = lastForegroundApp) {
+        if (!PowerampPresetManager.isMasterEnabled(this)) {
+            StudioDspManager.setMasterEnabled(this, false)
+            return
+        }
+
+        // 1. Output Device Check: Headphones Only Mode
+        val isHeadphonesOnly = PowerampPresetManager.isHeadphonesOnlyMode(this)
+        val currentOutput = StudioDspManager.getCurrentAudioOutputType(this)
+        val isSpeaker = currentOutput == PowerampPresetManager.AudioOutputType.SPEAKER
+
+        if (isHeadphonesOnly && isSpeaker) {
+            Log.d("AutoTweak", "🎧 Headphones Only Mode active & Phone Speaker in use -> DSP Sleep (Bypass)")
+            StudioDspManager.setBypass(this, true)
+            return
+        }
+
+        // 2. Targeted Apps Only Mode Check
+        val isTargetAppsOnly = PowerampPresetManager.isTargetAppsOnlyMode(this)
+        val activeAudioPkgs = FreezerManager.getActivePlayingAudioPackages(this)
+        val isMusicPlaying = audioManager?.isMusicActive == true || activeAudioPkgs.isNotEmpty()
+
+        if (isTargetAppsOnly) {
+            val targetedRules = PowerampPresetManager.getAllAppPresets(this)
+            val perAppConfigs = PerAppManager.getAllConfigs(this)
+            val targetedPkgs = (targetedRules.keys + perAppConfigs.keys.filter { pkg ->
+                val cfg = PerAppManager.getConfig(this, pkg)
+                val p = cfg?.eqPreset
+                !p.isNullOrBlank() && p != "Default" && p != "Default (System)"
+            }).toSet()
+
+            // Check if any active audio playing package is a targeted app (Foreground or Background)
+            val playingTargetPkg = activeAudioPkgs.firstOrNull { targetedPkgs.contains(it) }
+
+            if (playingTargetPkg != null) {
+                // Background or foreground targeted player is streaming audio!
+                val presetName = PowerampPresetManager.getAppPreset(this, playingTargetPkg)
+                    ?: PerAppManager.getConfig(this, playingTargetPkg)?.eqPreset
+                    ?: PowerampPresetManager.getActivePresetName(this)
+
+                StudioDspManager.setBypass(this, false)
+                StudioDspManager.resumeDsp(this)
+
+                if (!presetName.isNullOrBlank() && activePerAppEqPreset != presetName) {
+                    Log.d("AutoTweak", "🎯 Targeted Audio Player Active ($playingTargetPkg) -> EQ Preset: $presetName")
+                    StudioDspManager.applyPresetByName(this, presetName)
+                    activePerAppEqPreset = presetName
+                    activeAudioPlayingPkg = playingTargetPkg
+                }
+                return
+            } else if (targetedPkgs.contains(foregroundPkg) && isMusicPlaying) {
+                // Foreground app is targeted and playing audio
+                val presetName = PowerampPresetManager.getAppPreset(this, foregroundPkg)
+                    ?: PerAppManager.getConfig(this, foregroundPkg)?.eqPreset
+                    ?: PowerampPresetManager.getActivePresetName(this)
+
+                StudioDspManager.setBypass(this, false)
+                StudioDspManager.resumeDsp(this)
+
+                if (!presetName.isNullOrBlank() && activePerAppEqPreset != presetName) {
+                    Log.d("AutoTweak", "🎯 Foreground Targeted App ($foregroundPkg) -> EQ Preset: $presetName")
+                    StudioDspManager.applyPresetByName(this, presetName)
+                    activePerAppEqPreset = presetName
+                    activeAudioPlayingPkg = foregroundPkg
+                }
+                return
+            } else {
+                // Neither actively playing audio is from a targeted app nor is foreground app targeted with audio
+                // Put DSP hardware into TRUE SLEEP (0% CPU, 0 battery drain)
+                Log.d("AutoTweak", "🎯 Targeted Apps Mode -> No targeted player streaming -> DSP SLEEP (0% CPU)")
+                StudioDspManager.setBypass(this, true)
+                StudioDspManager.pauseDsp()
+                activePerAppEqPreset = null
+                activeAudioPlayingPkg = null
+                return
+            }
+        }
+
+        // 3. Normal Global Mode (Targeted Apps Only is OFF)
+        StudioDspManager.setBypass(this, false)
+
+        val isEligibleFg = foregroundPkg.isNotBlank() && foregroundPkg != packageName && !foregroundPkg.contains("launcher", ignoreCase = true) && foregroundPkg != "com.android.systemui"
+        val fgEqPreset = if (isEligibleFg) {
+            PowerampPresetManager.getAppPreset(this, foregroundPkg)
+                ?: PerAppManager.getConfig(this, foregroundPkg)?.eqPreset?.takeIf { it.isNotBlank() && it != "Default" && it != "Default (System)" }
+        } else null
+
+        if (isMusicPlaying) {
+            StudioDspManager.resumeDsp(this)
+            val isFgPlayingAudio = activeAudioPkgs.contains(foregroundPkg)
+            if (isFgPlayingAudio) {
+                if (fgEqPreset != null && fgEqPreset != activePerAppEqPreset) {
+                    Log.d("AutoTweak", "🎧 Foreground Audio App $foregroundPkg -> Switching EQ Preset to: $fgEqPreset")
+                    StudioDspManager.applyPresetByName(this, fgEqPreset)
+                    activePerAppEqPreset = fgEqPreset
+                    activeAudioPlayingPkg = foregroundPkg
+                } else if (fgEqPreset == null && activePerAppEqPreset != null && activeAudioPlayingPkg != foregroundPkg) {
+                    Log.d("AutoTweak", "🎧 Foreground Audio App $foregroundPkg has no custom EQ -> Restoring default preset")
+                    StudioDspManager.restoreDefaultOutputPreset(this)
+                    activePerAppEqPreset = null
+                    activeAudioPlayingPkg = foregroundPkg
+                }
+            } else {
+                // Background music playing while foreground app is doing non-audio tasks (e.g. WhatsApp, Browser)
+                val bgPlayingPkg = activeAudioPkgs.firstOrNull()
+                if (bgPlayingPkg != null) {
+                    val bgPreset = PowerampPresetManager.getAppPreset(this, bgPlayingPkg)
+                        ?: PerAppManager.getConfig(this, bgPlayingPkg)?.eqPreset
+                    if (!bgPreset.isNullOrBlank() && bgPreset != "Default" && bgPreset != "Default (System)") {
+                        if (activePerAppEqPreset != bgPreset) {
+                            Log.d("AutoTweak", "🎧 Guarding background audio ($bgPlayingPkg) -> Applying EQ: $bgPreset")
+                            StudioDspManager.applyPresetByName(this, bgPreset)
+                            activePerAppEqPreset = bgPreset
+                            activeAudioPlayingPkg = bgPlayingPkg
+                        }
+                    }
+                }
+            }
+        } else {
+            if (fgEqPreset != null) {
+                if (fgEqPreset != activePerAppEqPreset) {
+                    Log.d("AutoTweak", "🎧 Foreground App $foregroundPkg -> Applying EQ Preset: $fgEqPreset")
+                    StudioDspManager.applyPresetByName(this, fgEqPreset)
+                    activePerAppEqPreset = fgEqPreset
+                }
+            } else if (activePerAppEqPreset != null && !isEligibleFg) {
+                Log.d("AutoTweak", "🎧 Returning to launcher with no audio -> Restoring default output EQ")
+                StudioDspManager.restoreDefaultOutputPreset(this)
+                activePerAppEqPreset = null
+                activeAudioPlayingPkg = null
             }
         }
     }

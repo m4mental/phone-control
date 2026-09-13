@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/nav_eq"
+        android:icon="@drawable/ic_qs_equalizer"
+        android:title="Equalizer" />
+    <item
+        android:id="@+id/nav_effects"
+        android:icon="@drawable/ic_tab_effects"
+        android:title="Effects" />
+    <item
+        android:id="@+id/nav_spatial"
+        android:icon="@drawable/ic_tab_spatial"
+        android:title="Spatial" />
+    <item
+        android:id="@+id/nav_apps"
+        android:icon="@drawable/ic_sub_per_app"
+        android:title="Per-App" />
+</menu>

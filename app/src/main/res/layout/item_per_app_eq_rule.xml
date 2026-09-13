@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:background="#131F37"
+    android:padding="10dp"
+    android:layout_marginBottom="8dp">
+
+    <ImageView
+        android:id="@+id/ivRuleAppIcon"
+        android:layout_width="38dp"
+        android:layout_height="38dp"
+        android:scaleType="fitCenter" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="8dp"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tvRuleAppName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="App Name"
+            android:textColor="#FFFFFF"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+        <TextView
+            android:id="@+id/tvRulePackage"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="com.example.app"
+            android:textColor="#94A3B8"
+            android:textSize="10sp"
+            android:maxLines="1"
+            android:ellipsize="end" />
+    </LinearLayout>
+
+    <Spinner
+        android:id="@+id/spinnerRulePreset"
+        android:layout_width="140dp"
+        android:layout_height="36dp"
+        android:background="#1E293B"
+        android:paddingHorizontal="6dp" />
+
+    <ImageView
+        android:id="@+id/btnDeleteRule"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:layout_marginStart="8dp"
+        android:padding="6dp"
+        android:src="@drawable/ic_delete_trash"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Remove Rule" />
+
+</LinearLayout>

@@ -258,7 +258,8 @@ class PerAppActivity : AppCompatActivity() {
                     customLittleMax = lMax,
                     customBigMin = bMin,
                     customBigMax = bMax,
-                    customGovernor = gov
+                    customGovernor = gov,
+                    eqPreset = config.eqPreset
                 )
                 PerAppManager.saveConfig(this, packageName, newConfig)
                 updateSummaryLabel(newConfig)

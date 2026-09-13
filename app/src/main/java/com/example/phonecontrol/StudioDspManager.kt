@@ -42,6 +42,7 @@ object StudioDspManager {
     @Volatile private var isInitialized = false
     @Volatile private var isCurrentlyEnabled = false
     @Volatile private var isAsleep = false
+    @Volatile private var isBypassed = false
 
     private var currentClarityGain = 0.0f
     private var currentChannelBalance = 0.0f
@@ -293,6 +294,39 @@ object StudioDspManager {
         }
     }
 
+    fun isCurrentlyMasterActive(): Boolean = isCurrentlyEnabled && !isBypassed && !isAsleep
+
+    fun isBypassed(): Boolean = isBypassed
+
+    fun setBypass(context: Context, bypass: Boolean) {
+        isBypassed = bypass
+        val targetEnabled = !bypass && PowerampPresetManager.isMasterEnabled(context)
+        if (isCurrentlyEnabled == targetEnabled) return
+        isCurrentlyEnabled = targetEnabled
+        if (!targetEnabled) {
+            isAsleep = true
+        }
+        try {
+            dynamicsProcessing?.enabled = targetEnabled
+            standardEqualizer?.enabled = targetEnabled
+            bassBoost?.enabled = targetEnabled && PowerampPresetManager.isDynamicSystemEnabled(context)
+            virtualizer?.enabled = targetEnabled && (PowerampPresetManager.isSurroundEnabled(context) || PowerampPresetManager.isCrossfeedEnabled(context))
+            presetReverb?.enabled = targetEnabled && PowerampPresetManager.isReverbEnabled(context)
+
+            sessionDynamicsMap.values.forEach { try { it.enabled = targetEnabled } catch (e: Exception) {} }
+            sessionEqualizerMap.values.forEach { try { it.enabled = targetEnabled } catch (e: Exception) {} }
+            sessionBassBoostMap.values.forEach { try { it.enabled = targetEnabled && PowerampPresetManager.isDynamicSystemEnabled(context) } catch (e: Exception) {} }
+            sessionVirtualizerMap.values.forEach { try { it.enabled = targetEnabled && (PowerampPresetManager.isSurroundEnabled(context) || PowerampPresetManager.isCrossfeedEnabled(context)) } catch (e: Exception) {} }
+            sessionReverbMap.values.forEach { try { it.enabled = targetEnabled && PowerampPresetManager.isReverbEnabled(context) } catch (e: Exception) {} }
+
+            Log.d(TAG, "Studio DSP Bypass set to: $bypass (Active: $targetEnabled)")
+            context.sendBroadcast(android.content.Intent("com.example.phonecontrol.UPDATE_UI").setPackage(context.packageName))
+            StudioEqualizerTileService.updateTileState(context)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting bypass: ${e.message}")
+        }
+    }
+
     fun applyPreset(context: Context, preset: EqualizerPreset) {
         appContext = context.applicationContext
         PowerampPresetManager.setActivePresetName(context, preset.name)
@@ -323,6 +357,25 @@ object StudioDspManager {
         StudioEqualizerTileService.updateTileState(context)
         StudioPresetTileService.updateTileState(context)
     }
+
+    fun applyPresetByName(context: Context, presetName: String): Boolean {
+        if (presetName.isBlank() || presetName.equals("Default", ignoreCase = true)) return false
+        val allPresets = PowerampPresetManager.getAllPresets(context)
+        val target = allPresets.firstOrNull { it.name.equals(presetName, ignoreCase = true) }
+            ?: allPresets.firstOrNull { it.name.contains(presetName, ignoreCase = true) }
+        return if (target != null) {
+            ensureInitialized(context)
+            applyPreset(context, target)
+            true
+        } else false
+    }
+
+    fun restoreDefaultOutputPreset(context: Context) {
+        val outputType = getCurrentAudioOutputType(context)
+        val defaultPreset = PowerampPresetManager.getDevicePresetName(context, outputType)
+        applyPresetByName(context, defaultPreset)
+    }
+
 
     private fun applyDpBandsToEngine(dp: DynamicsProcessing, shelfBands: List<EqualizerBand>, peakingBands: List<EqualizerBand>) {
         try {
@@ -394,7 +447,9 @@ object StudioDspManager {
     private fun applyAntiClippingLimiter(dp: DynamicsProcessing?) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && dp != null) {
             try {
-                // Pro-grade Anti-Clipping Limiter: -0.2 dBFS ceiling, fast 1ms attack, smooth 80ms release, 10:1 ratio
+                // Pro-grade Studio Limiter with Makeup Gain:
+                // Fast 1ms attack, 80ms release, high 10:1 ratio, -0.1 dBFS ceiling.
+                // PostGain +1.5 dB ensures EQ loudness matches native 0dB system volume!
                 val limiter = DynamicsProcessing.Limiter(
                     true,  // inUse
                     true,  // enabled
@@ -402,11 +457,11 @@ object StudioDspManager {
                     1.0f,  // attackTime (ms)
                     80.0f, // releaseTime (ms)
                     10.0f, // ratio
-                    -0.2f, // threshold (dBFS)
-                    0.0f   // postGain (dB)
+                    -0.1f, // threshold (dBFS)
+                    1.5f   // postGain (dB) - Studio Makeup Gain for equal loudness matching!
                 )
                 dp.setLimiterAllChannelsTo(limiter)
-                Log.d(TAG, "Anti-Clipping Hardware Limiter configured successfully (-0.2 dBFS)")
+                Log.d(TAG, "Anti-Clipping Studio Limiter + Makeup Gain configured successfully (-0.1 dBFS, +1.5dB)")
             } catch (e: Exception) {
                 Log.w(TAG, "Could not configure limiter: ${e.message}")
             }
@@ -418,15 +473,14 @@ object StudioDspManager {
         if (!PowerampPresetManager.isAutoPreampEnabled(ctx)) {
             return currentBasePreamp
         }
+        // With the Studio Brickwall Limiter guarding peaks at -0.1 dBFS,
+        // we only apply a gentle -1.0 dB to -1.5 dB safe headroom rather than squashing volume by -8 dB!
         val activePreset = PowerampPresetManager.getPresetByName(ctx, PowerampPresetManager.getActivePresetName(ctx))
         val maxBandGain = activePreset?.bands?.maxOfOrNull { it.gain }?.coerceAtLeast(0.0f) ?: 0.0f
-        val clarityBoost = if (activePreset?.clarityEnabled == true) (activePreset.clarityLevel / 1000.0f * 6.0f) else 0.0f
+        val clarityBoost = if (activePreset?.clarityEnabled == true) (activePreset.clarityLevel / 1000.0f * 4.0f) else 0.0f
         val totalMax = Math.max(maxBandGain, clarityBoost)
-        return if (totalMax > 0.0f) {
-            currentBasePreamp - totalMax
-        } else {
-            currentBasePreamp
-        }
+        val headroom = (totalMax * 0.25f).coerceIn(0.0f, 1.5f)
+        return currentBasePreamp - headroom
     }
 
     fun updateInputGains(context: Context? = appContext) {
@@ -785,7 +839,6 @@ object StudioDspManager {
      * Prevents any idle battery drain when no audio is playing.
      */
     fun pauseDsp() {
-        if (!isCurrentlyEnabled) return
         try {
             dynamicsProcessing?.enabled = false
             standardEqualizer?.enabled = false
@@ -811,7 +864,7 @@ object StudioDspManager {
      */
     fun resumeDsp(context: Context) {
         val masterOn = PowerampPresetManager.isMasterEnabled(context)
-        if (!masterOn) return
+        if (!masterOn || isBypassed) return
 
         // Validate if existing effects still retain control from AudioFlinger
         val hasControl = try {

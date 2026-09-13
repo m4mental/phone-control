@@ -404,6 +404,243 @@ object AutoEqManager {
             )
         ),
 
+        // --- REALME BUDS WIRELESS 3 ---
+        AutoEqHeadphone(
+            brand = "Realme",
+            model = "Realme Buds Wireless 3",
+            description = "Harman Target Neckband (Dynamic Bass & Vocal Balance)",
+            preset = EqualizerPreset(
+                name = "Realme Buds Wireless 3 [AutoEQ]",
+                preamp = -2.5f,
+                parametric = false,
+                bands = mutableListOf(
+                    EqualizerBand(type = 0, frequency = 90, q = 0.8f, gain = 3.2f),
+                    EqualizerBand(type = 1, frequency = 10000, q = 0.6f, gain = 1.5f),
+                    EqualizerBand(type = 2, frequency = 31, q = 0.0f, gain = 3.2f),
+                    EqualizerBand(type = 2, frequency = 62, q = 0.0f, gain = 2.5f),
+                    EqualizerBand(type = 2, frequency = 124, q = 0.0f, gain = 0.5f),
+                    EqualizerBand(type = 2, frequency = 249, q = 0.0f, gain = -1.0f),
+                    EqualizerBand(type = 2, frequency = 498, q = 0.0f, gain = 0.0f),
+                    EqualizerBand(type = 2, frequency = 996, q = 0.0f, gain = 1.0f),
+                    EqualizerBand(type = 2, frequency = 1995, q = 0.0f, gain = 2.2f),
+                    EqualizerBand(type = 2, frequency = 3993, q = 0.0f, gain = -1.2f),
+                    EqualizerBand(type = 2, frequency = 7993, q = 0.0f, gain = 2.0f),
+                    EqualizerBand(type = 2, frequency = 16000, q = 0.0f, gain = 1.5f)
+                ),
+                surroundEnabled = true, surroundStrength = 450
+            )
+        ),
+
+        // --- BOAT ---
+        AutoEqHeadphone(
+            brand = "boAt",
+            model = "boAt Airdopes 141",
+            description = "Harman In-Ear Compensation (Punchy Bass & Clear Vocals)",
+            preset = EqualizerPreset(
+                name = "boAt Airdopes 141 [AutoEQ]",
+                preamp = -3.0f,
+                parametric = false,
+                bands = mutableListOf(
+                    EqualizerBand(type = 0, frequency = 90, q = 0.8f, gain = 3.0f),
+                    EqualizerBand(type = 1, frequency = 10000, q = 0.6f, gain = 1.5f),
+                    EqualizerBand(type = 2, frequency = 31, q = 0.0f, gain = 3.0f),
+                    EqualizerBand(type = 2, frequency = 62, q = 0.0f, gain = 2.5f),
+                    EqualizerBand(type = 2, frequency = 124, q = 0.0f, gain = 1.0f),
+                    EqualizerBand(type = 2, frequency = 249, q = 0.0f, gain = -1.5f),
+                    EqualizerBand(type = 2, frequency = 498, q = 0.0f, gain = -0.5f),
+                    EqualizerBand(type = 2, frequency = 996, q = 0.0f, gain = 0.5f),
+                    EqualizerBand(type = 2, frequency = 1995, q = 0.0f, gain = 2.5f),
+                    EqualizerBand(type = 2, frequency = 3993, q = 0.0f, gain = -1.8f),
+                    EqualizerBand(type = 2, frequency = 7993, q = 0.0f, gain = 2.0f),
+                    EqualizerBand(type = 2, frequency = 16000, q = 0.0f, gain = 1.5f)
+                ),
+                surroundEnabled = true, surroundStrength = 400
+            )
+        ),
+        AutoEqHeadphone(
+            brand = "boAt",
+            model = "boAt Rockerz 255 Pro+",
+            description = "Signature Bass Tuning & Highs Refinement",
+            preset = EqualizerPreset(
+                name = "boAt Rockerz 255 Pro+ [AutoEQ]",
+                preamp = -3.2f,
+                parametric = false,
+                bands = mutableListOf(
+                    EqualizerBand(type = 0, frequency = 90, q = 0.8f, gain = 3.8f),
+                    EqualizerBand(type = 1, frequency = 10000, q = 0.6f, gain = 2.0f),
+                    EqualizerBand(type = 2, frequency = 31, q = 0.0f, gain = 4.0f),
+                    EqualizerBand(type = 2, frequency = 62, q = 0.0f, gain = 3.2f),
+                    EqualizerBand(type = 2, frequency = 124, q = 0.0f, gain = 1.5f),
+                    EqualizerBand(type = 2, frequency = 249, q = 0.0f, gain = -2.0f),
+                    EqualizerBand(type = 2, frequency = 498, q = 0.0f, gain = -1.0f),
+                    EqualizerBand(type = 2, frequency = 996, q = 0.0f, gain = 0.8f),
+                    EqualizerBand(type = 2, frequency = 1995, q = 0.0f, gain = 2.2f),
+                    EqualizerBand(type = 2, frequency = 3993, q = 0.0f, gain = -2.0f),
+                    EqualizerBand(type = 2, frequency = 7993, q = 0.0f, gain = 2.5f),
+                    EqualizerBand(type = 2, frequency = 16000, q = 0.0f, gain = 2.0f)
+                ),
+                surroundEnabled = true, surroundStrength = 500
+            )
+        ),
+
+        // --- ONEPLUS ---
+        AutoEqHeadphone(
+            brand = "OnePlus",
+            model = "OnePlus Bullets Wireless Z2",
+            description = "Harman In-Ear Target (Balanced Bass & Vocal Clarity)",
+            preset = EqualizerPreset(
+                name = "OnePlus Bullets Wireless Z2 [AutoEQ]",
+                preamp = -2.8f,
+                parametric = false,
+                bands = mutableListOf(
+                    EqualizerBand(type = 0, frequency = 90, q = 0.8f, gain = 3.5f),
+                    EqualizerBand(type = 1, frequency = 10000, q = 0.6f, gain = 1.8f),
+                    EqualizerBand(type = 2, frequency = 31, q = 0.0f, gain = 3.5f),
+                    EqualizerBand(type = 2, frequency = 62, q = 0.0f, gain = 2.8f),
+                    EqualizerBand(type = 2, frequency = 124, q = 0.0f, gain = 0.8f),
+                    EqualizerBand(type = 2, frequency = 249, q = 0.0f, gain = -1.2f),
+                    EqualizerBand(type = 2, frequency = 498, q = 0.0f, gain = -0.5f),
+                    EqualizerBand(type = 2, frequency = 996, q = 0.0f, gain = 0.6f),
+                    EqualizerBand(type = 2, frequency = 1995, q = 0.0f, gain = 2.0f),
+                    EqualizerBand(type = 2, frequency = 3993, q = 0.0f, gain = -1.5f),
+                    EqualizerBand(type = 2, frequency = 7993, q = 0.0f, gain = 2.2f),
+                    EqualizerBand(type = 2, frequency = 16000, q = 0.0f, gain = 1.8f)
+                ),
+                surroundEnabled = true, surroundStrength = 400
+            )
+        ),
+        AutoEqHeadphone(
+            brand = "OnePlus",
+            model = "OnePlus Buds Pro 2",
+            description = "Dynaudio Co-Tuned Harman Reference Target",
+            preset = EqualizerPreset(
+                name = "OnePlus Buds Pro 2 [AutoEQ]",
+                preamp = -2.2f,
+                parametric = false,
+                bands = mutableListOf(
+                    EqualizerBand(type = 0, frequency = 90, q = 0.8f, gain = 2.5f),
+                    EqualizerBand(type = 1, frequency = 10000, q = 0.6f, gain = 2.0f),
+                    EqualizerBand(type = 2, frequency = 31, q = 0.0f, gain = 2.5f),
+                    EqualizerBand(type = 2, frequency = 62, q = 0.0f, gain = 1.8f),
+                    EqualizerBand(type = 2, frequency = 124, q = 0.0f, gain = 0.2f),
+                    EqualizerBand(type = 2, frequency = 249, q = 0.0f, gain = -0.8f),
+                    EqualizerBand(type = 2, frequency = 498, q = 0.0f, gain = 0.0f),
+                    EqualizerBand(type = 2, frequency = 996, q = 0.0f, gain = 1.2f),
+                    EqualizerBand(type = 2, frequency = 1995, q = 0.0f, gain = 1.8f),
+                    EqualizerBand(type = 2, frequency = 3993, q = 0.0f, gain = -1.0f),
+                    EqualizerBand(type = 2, frequency = 7993, q = 0.0f, gain = 2.4f),
+                    EqualizerBand(type = 2, frequency = 16000, q = 0.0f, gain = 2.0f)
+                ),
+                surroundEnabled = true, surroundStrength = 550, dynamicSystemEnabled = true, dynamicSystemIntensity = 500
+            )
+        ),
+
+        // --- JBL ---
+        AutoEqHeadphone(
+            brand = "JBL",
+            model = "JBL Tune 510BT",
+            description = "JBL PureBass On-Ear Harman Compensation",
+            preset = EqualizerPreset(
+                name = "JBL Tune 510BT [AutoEQ]",
+                preamp = -3.0f,
+                parametric = false,
+                bands = mutableListOf(
+                    EqualizerBand(type = 0, frequency = 90, q = 0.8f, gain = 2.8f),
+                    EqualizerBand(type = 1, frequency = 10000, q = 0.6f, gain = 1.5f),
+                    EqualizerBand(type = 2, frequency = 31, q = 0.0f, gain = 2.8f),
+                    EqualizerBand(type = 2, frequency = 62, q = 0.0f, gain = 2.0f),
+                    EqualizerBand(type = 2, frequency = 124, q = 0.0f, gain = -0.5f),
+                    EqualizerBand(type = 2, frequency = 249, q = 0.0f, gain = -1.5f),
+                    EqualizerBand(type = 2, frequency = 498, q = 0.0f, gain = -0.2f),
+                    EqualizerBand(type = 2, frequency = 996, q = 0.0f, gain = 1.0f),
+                    EqualizerBand(type = 2, frequency = 1995, q = 0.0f, gain = 2.5f),
+                    EqualizerBand(type = 2, frequency = 3993, q = 0.0f, gain = -2.2f),
+                    EqualizerBand(type = 2, frequency = 7993, q = 0.0f, gain = 2.0f),
+                    EqualizerBand(type = 2, frequency = 16000, q = 0.0f, gain = 1.5f)
+                ),
+                surroundEnabled = true, surroundStrength = 400
+            )
+        ),
+        AutoEqHeadphone(
+            brand = "JBL",
+            model = "JBL Wave 200TWS",
+            description = "Deep Bass & Clear Speech In-Ear Profile",
+            preset = EqualizerPreset(
+                name = "JBL Wave 200TWS [AutoEQ]",
+                preamp = -2.7f,
+                parametric = false,
+                bands = mutableListOf(
+                    EqualizerBand(type = 0, frequency = 90, q = 0.8f, gain = 3.0f),
+                    EqualizerBand(type = 1, frequency = 10000, q = 0.6f, gain = 1.8f),
+                    EqualizerBand(type = 2, frequency = 31, q = 0.0f, gain = 3.0f),
+                    EqualizerBand(type = 2, frequency = 62, q = 0.0f, gain = 2.2f),
+                    EqualizerBand(type = 2, frequency = 124, q = 0.0f, gain = 0.2f),
+                    EqualizerBand(type = 2, frequency = 249, q = 0.0f, gain = -1.2f),
+                    EqualizerBand(type = 2, frequency = 498, q = 0.0f, gain = 0.0f),
+                    EqualizerBand(type = 2, frequency = 996, q = 0.0f, gain = 0.8f),
+                    EqualizerBand(type = 2, frequency = 1995, q = 0.0f, gain = 2.0f),
+                    EqualizerBand(type = 2, frequency = 3993, q = 0.0f, gain = -1.5f),
+                    EqualizerBand(type = 2, frequency = 7993, q = 0.0f, gain = 2.2f),
+                    EqualizerBand(type = 2, frequency = 16000, q = 0.0f, gain = 1.8f)
+                ),
+                surroundEnabled = true, surroundStrength = 450
+            )
+        ),
+
+        // --- SAMSUNG GALAXY BUDS2 PRO ---
+        AutoEqHeadphone(
+            brand = "Samsung",
+            model = "Samsung Galaxy Buds2 Pro",
+            description = "Harman In-Ear Reference Target (AKG Master Tuning)",
+            preset = EqualizerPreset(
+                name = "Samsung Galaxy Buds2 Pro [AutoEQ]",
+                preamp = -2.0f,
+                parametric = false,
+                bands = mutableListOf(
+                    EqualizerBand(type = 0, frequency = 90, q = 0.8f, gain = 2.0f),
+                    EqualizerBand(type = 1, frequency = 10000, q = 0.6f, gain = 1.5f),
+                    EqualizerBand(type = 2, frequency = 31, q = 0.0f, gain = 2.0f),
+                    EqualizerBand(type = 2, frequency = 62, q = 0.0f, gain = 1.5f),
+                    EqualizerBand(type = 2, frequency = 124, q = 0.0f, gain = 0.0f),
+                    EqualizerBand(type = 2, frequency = 249, q = 0.0f, gain = -0.5f),
+                    EqualizerBand(type = 2, frequency = 498, q = 0.0f, gain = 0.0f),
+                    EqualizerBand(type = 2, frequency = 996, q = 0.0f, gain = 0.8f),
+                    EqualizerBand(type = 2, frequency = 1995, q = 0.0f, gain = 1.5f),
+                    EqualizerBand(type = 2, frequency = 3993, q = 0.0f, gain = -0.8f),
+                    EqualizerBand(type = 2, frequency = 7993, q = 0.0f, gain = 1.8f),
+                    EqualizerBand(type = 2, frequency = 16000, q = 0.0f, gain = 1.5f)
+                ),
+                surroundEnabled = true, surroundStrength = 600, clarityEnabled = true, clarityLevel = 500
+            )
+        ),
+
+        // --- KZ ---
+        AutoEqHeadphone(
+            brand = "KZ",
+            model = "KZ ZSN Pro X",
+            description = "Hybrid Dual Driver (Treble Harshness Taming & Harman Bass)",
+            preset = EqualizerPreset(
+                name = "KZ ZSN Pro X [AutoEQ]",
+                preamp = -3.5f,
+                parametric = false,
+                bands = mutableListOf(
+                    EqualizerBand(type = 0, frequency = 90, q = 0.8f, gain = 2.0f),
+                    EqualizerBand(type = 1, frequency = 10000, q = 0.6f, gain = -1.0f),
+                    EqualizerBand(type = 2, frequency = 31, q = 0.0f, gain = 2.0f),
+                    EqualizerBand(type = 2, frequency = 62, q = 0.0f, gain = 1.2f),
+                    EqualizerBand(type = 2, frequency = 124, q = 0.0f, gain = -0.5f),
+                    EqualizerBand(type = 2, frequency = 249, q = 0.0f, gain = -1.0f),
+                    EqualizerBand(type = 2, frequency = 498, q = 0.0f, gain = 0.0f),
+                    EqualizerBand(type = 2, frequency = 996, q = 0.0f, gain = 0.5f),
+                    EqualizerBand(type = 2, frequency = 1995, q = 0.0f, gain = 1.0f),
+                    EqualizerBand(type = 2, frequency = 3993, q = 0.0f, gain = -3.5f), // Tame harsh 4-5kHz spike
+                    EqualizerBand(type = 2, frequency = 7993, q = 0.0f, gain = -2.5f), // Tame sibilant 8kHz spike
+                    EqualizerBand(type = 2, frequency = 16000, q = 0.0f, gain = 1.0f)
+                ),
+                surroundEnabled = false, dynamicSystemEnabled = false
+            )
+        ),
+
         // --- PHONE SPEAKER CALIBRATION ---
         AutoEqHeadphone(
             brand = "Device",

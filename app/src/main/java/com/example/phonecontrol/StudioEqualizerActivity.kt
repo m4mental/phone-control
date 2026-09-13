@@ -1,7 +1,11 @@
 package com.example.phonecontrol
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.media.audiofx.PresetReverb
+import android.os.Build
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -24,7 +28,18 @@ import com.google.android.material.chip.ChipGroup
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.textfield.TextInputEditText
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
+import android.graphics.Color
+import android.view.ViewGroup
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
+import android.widget.ListView
+import android.widget.Spinner
+import androidx.viewpager2.widget.ViewPager2
+import com.google.android.material.bottomnavigation.BottomNavigationView
 import java.util.Locale
+import kotlin.concurrent.thread
 
 class StudioEqualizerActivity : AppCompatActivity() {
 
@@ -80,6 +95,7 @@ class StudioEqualizerActivity : AppCompatActivity() {
     private lateinit var seekChannelBalance: SeekBar
     private lateinit var tvChannelBalance: TextView
     private lateinit var switchSmartOutput: MaterialSwitch
+    private lateinit var switchHeadphonesOnly: MaterialSwitch
 
     // Auto-Preamp Views
     private lateinit var switchAutoPreamp: MaterialSwitch
@@ -100,6 +116,18 @@ class StudioEqualizerActivity : AppCompatActivity() {
     private lateinit var toggleGroupNightMode: com.google.android.material.button.MaterialButtonToggleGroup
     private lateinit var seekDialogueBoost: SeekBar
     private lateinit var tvDialogueBoostValue: TextView
+
+    // Per-App Equalizer Views
+    private lateinit var llPerAppEqContainer: LinearLayout
+    private lateinit var tvNoPerAppEqRules: TextView
+    private lateinit var btnAddPerAppEq: com.google.android.material.button.MaterialButton
+    private lateinit var switchTargetAppsOnly: MaterialSwitch
+    private var cachedInstalledApps: List<ApplicationInfo>? = null
+
+    // Multi-Page Navigation Views
+    private lateinit var viewPagerStudioEq: ViewPager2
+    private lateinit var bottomNavStudioEq: BottomNavigationView
+    private lateinit var btnSaveCustomPreset: View
 
     private var currentPreset: EqualizerPreset? = null
 
@@ -136,29 +164,87 @@ class StudioEqualizerActivity : AppCompatActivity() {
         findViewById<ImageView>(R.id.btnBack).setOnClickListener { finish() }
         switchMasterDsp = findViewById(R.id.switchMasterDsp)
         tvDspStatus = findViewById(R.id.tvDspStatus)
-        tvActivePresetHeader = findViewById(R.id.tvActivePresetHeader)
-        tvProfileTypeBadge = findViewById(R.id.tvProfileTypeBadge)
-        curveView = findViewById(R.id.curveView)
-        chipGroupPresets = findViewById(R.id.chipGroupPresets)
+        viewPagerStudioEq = findViewById(R.id.viewPagerStudioEq)
+        bottomNavStudioEq = findViewById(R.id.bottomNavStudioEq)
 
-        seekPreamp = findViewById(R.id.seekPreamp)
-        tvPreampValue = findViewById(R.id.tvPreampValue)
-        seekToneBass = findViewById(R.id.seekToneBass)
-        tvToneBassValue = findViewById(R.id.tvToneBassValue)
-        seekToneTreble = findViewById(R.id.seekToneTreble)
-        tvToneTrebleValue = findViewById(R.id.tvToneTrebleValue)
+        // Inflate the 4 pages with viewPager as parent to get MATCH_PARENT LayoutParams
+        val pageEq = layoutInflater.inflate(R.layout.layout_tab_eq, viewPagerStudioEq, false)
+        val pageEffects = layoutInflater.inflate(R.layout.layout_tab_effects, viewPagerStudioEq, false)
+        val pageSpatial = layoutInflater.inflate(R.layout.layout_tab_spatial, viewPagerStudioEq, false)
+        val pageApps = layoutInflater.inflate(R.layout.layout_tab_apps_cinema, viewPagerStudioEq, false)
 
-        seekBassBoost = findViewById(R.id.seekBassBoost)
-        tvBassBoostTitle = findViewById(R.id.tvBassBoostTitle)
-        seekVirtualizer = findViewById(R.id.seekVirtualizer)
-        tvVirtualizerTitle = findViewById(R.id.tvVirtualizerTitle)
+        val pages = listOf(pageEq, pageEffects, pageSpatial, pageApps)
 
-        llBandsContainer = findViewById(R.id.llBandsContainer)
+        viewPagerStudioEq.offscreenPageLimit = 3
+        viewPagerStudioEq.adapter = object : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+            override fun getItemCount(): Int = pages.size
+            override fun getItemViewType(position: Int): Int = position
+            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+                val page = pages[viewType]
+                if (page.parent != null) {
+                    (page.parent as? ViewGroup)?.removeView(page)
+                }
+                return object : RecyclerView.ViewHolder(page) {}
+            }
+            override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {}
+        }
+
+        // Connect ViewPager2 swipe with BottomNavigationView
+        viewPagerStudioEq.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
+            override fun onPageSelected(position: Int) {
+                super.onPageSelected(position)
+                val menuItemId = when (position) {
+                    0 -> R.id.nav_eq
+                    1 -> R.id.nav_effects
+                    2 -> R.id.nav_spatial
+                    3 -> R.id.nav_apps
+                    else -> R.id.nav_eq
+                }
+                if (bottomNavStudioEq.selectedItemId != menuItemId) {
+                    bottomNavStudioEq.selectedItemId = menuItemId
+                }
+            }
+        })
+
+        bottomNavStudioEq.setOnItemSelectedListener { item ->
+            val targetPage = when (item.itemId) {
+                R.id.nav_eq -> 0
+                R.id.nav_effects -> 1
+                R.id.nav_spatial -> 2
+                R.id.nav_apps -> 3
+                else -> 0
+            }
+            if (viewPagerStudioEq.currentItem != targetPage) {
+                viewPagerStudioEq.setCurrentItem(targetPage, true)
+            }
+            true
+        }
 
         // Set initial Master switch state
         val isEnabled = PowerampPresetManager.isMasterEnabled(this)
         switchMasterDsp.isChecked = isEnabled
         updateMasterStatusText(isEnabled)
+
+        // --- Bind Tab 1: Equalizer & Presets ---
+        tvActivePresetHeader = pageEq.findViewById(R.id.tvActivePresetHeader)
+        tvProfileTypeBadge = pageEq.findViewById(R.id.tvProfileTypeBadge)
+        curveView = pageEq.findViewById(R.id.curveView)
+        chipGroupPresets = pageEq.findViewById(R.id.chipGroupPresets)
+        btnSaveCustomPreset = pageEq.findViewById(R.id.btnSaveCustomPreset)
+        llBandsContainer = pageEq.findViewById(R.id.llBandsContainer)
+
+        // --- Bind Tab 2: Effects & Tone ---
+        seekPreamp = pageEffects.findViewById(R.id.seekPreamp)
+        tvPreampValue = pageEffects.findViewById(R.id.tvPreampValue)
+        seekToneBass = pageEffects.findViewById(R.id.seekToneBass)
+        tvToneBassValue = pageEffects.findViewById(R.id.tvToneBassValue)
+        seekToneTreble = pageEffects.findViewById(R.id.seekToneTreble)
+        tvToneTrebleValue = pageEffects.findViewById(R.id.tvToneTrebleValue)
+
+        seekBassBoost = pageEffects.findViewById(R.id.seekBassBoost)
+        tvBassBoostTitle = pageEffects.findViewById(R.id.tvBassBoostTitle)
+        seekVirtualizer = pageEffects.findViewById(R.id.seekVirtualizer)
+        tvVirtualizerTitle = pageEffects.findViewById(R.id.tvVirtualizerTitle)
 
         // Set Bass Boost & Virtualizer
         val bb = PowerampPresetManager.getBassBoostStrength(this)
@@ -170,41 +256,38 @@ class StudioEqualizerActivity : AppCompatActivity() {
         tvVirtualizerTitle.text = "3D Virtualizer: ${virt / 10}%"
 
         // ViPER FX Suite Views
-        switchSurround = findViewById(R.id.switchSurround)
-        seekSurround = findViewById(R.id.seekSurround)
-        tvSurroundStrength = findViewById(R.id.tvSurroundStrength)
-        layoutSurroundControls = findViewById(R.id.layoutSurroundControls)
+        switchSurround = pageEffects.findViewById(R.id.switchSurround)
+        seekSurround = pageEffects.findViewById(R.id.seekSurround)
+        tvSurroundStrength = pageEffects.findViewById(R.id.tvSurroundStrength)
+        layoutSurroundControls = pageEffects.findViewById(R.id.layoutSurroundControls)
 
-        switchReverb = findViewById(R.id.switchReverb)
-        scrollReverbChips = findViewById(R.id.scrollReverbChips)
-        chipGroupReverb = findViewById(R.id.chipGroupReverb)
-        chipReverbSmallRoom = findViewById(R.id.chipReverbSmallRoom)
-        chipReverbMediumRoom = findViewById(R.id.chipReverbMediumRoom)
-        chipReverbLargeRoom = findViewById(R.id.chipReverbLargeRoom)
-        chipReverbMediumHall = findViewById(R.id.chipReverbMediumHall)
-        chipReverbLargeHall = findViewById(R.id.chipReverbLargeHall)
-        chipReverbPlate = findViewById(R.id.chipReverbPlate)
+        switchReverb = pageEffects.findViewById(R.id.switchReverb)
+        scrollReverbChips = pageEffects.findViewById(R.id.scrollReverbChips)
+        chipGroupReverb = pageEffects.findViewById(R.id.chipGroupReverb)
+        chipReverbSmallRoom = pageEffects.findViewById(R.id.chipReverbSmallRoom)
+        chipReverbMediumRoom = pageEffects.findViewById(R.id.chipReverbMediumRoom)
+        chipReverbLargeRoom = pageEffects.findViewById(R.id.chipReverbLargeRoom)
+        chipReverbMediumHall = pageEffects.findViewById(R.id.chipReverbMediumHall)
+        chipReverbLargeHall = pageEffects.findViewById(R.id.chipReverbLargeHall)
+        chipReverbPlate = pageEffects.findViewById(R.id.chipReverbPlate)
 
-        switchDynamicSystem = findViewById(R.id.switchDynamicSystem)
-        seekDynamicSystem = findViewById(R.id.seekDynamicSystem)
-        tvDynamicIntensity = findViewById(R.id.tvDynamicIntensity)
-        layoutDynamicControls = findViewById(R.id.layoutDynamicControls)
+        switchDynamicSystem = pageEffects.findViewById(R.id.switchDynamicSystem)
+        seekDynamicSystem = pageEffects.findViewById(R.id.seekDynamicSystem)
+        tvDynamicIntensity = pageEffects.findViewById(R.id.tvDynamicIntensity)
+        layoutDynamicControls = pageEffects.findViewById(R.id.layoutDynamicControls)
 
-        switchClarity = findViewById(R.id.switchClarity)
-        seekClarity = findViewById(R.id.seekClarity)
-        tvClarityLevel = findViewById(R.id.tvClarityLevel)
-        layoutClarityControls = findViewById(R.id.layoutClarityControls)
+        switchClarity = pageEffects.findViewById(R.id.switchClarity)
+        seekClarity = pageEffects.findViewById(R.id.seekClarity)
+        tvClarityLevel = pageEffects.findViewById(R.id.tvClarityLevel)
+        layoutClarityControls = pageEffects.findViewById(R.id.layoutClarityControls)
 
-        // Acoustics & Channel Balance Views
-        switchCrossfeed = findViewById(R.id.switchCrossfeed)
-        seekCrossfeed = findViewById(R.id.seekCrossfeed)
-        tvCrossfeedLevel = findViewById(R.id.tvCrossfeedLevel)
-        layoutCrossfeedControls = findViewById(R.id.layoutCrossfeedControls)
-        seekChannelBalance = findViewById(R.id.seekChannelBalance)
-        tvChannelBalance = findViewById(R.id.tvChannelBalance)
-        switchSmartOutput = findViewById(R.id.switchSmartOutput)
+        // Auto-Preamp Views
+        switchAutoPreamp = pageEffects.findViewById(R.id.switchAutoPreamp)
+        tvAutoPreampSubtitle = pageEffects.findViewById(R.id.tvAutoPreampSubtitle)
+        switchAutoPreamp.isChecked = PowerampPresetManager.isAutoPreampEnabled(this)
+        updateAutoPreampSubtitle()
 
-        // Populate initial states
+        // Populate Effects initial states
         val surroundOn = PowerampPresetManager.isSurroundEnabled(this)
         val surroundStr = PowerampPresetManager.getSurroundStrength(this)
         switchSurround.isChecked = surroundOn
@@ -240,6 +323,15 @@ class StudioEqualizerActivity : AppCompatActivity() {
         tvClarityLevel.text = "Level: ${clarityLvl / 10}%"
         layoutClarityControls.alpha = if (clarityOn) 1.0f else 0.4f
 
+        // --- Bind Tab 3: Spatial & Devices ---
+        switchCrossfeed = pageSpatial.findViewById(R.id.switchCrossfeed)
+        seekCrossfeed = pageSpatial.findViewById(R.id.seekCrossfeed)
+        tvCrossfeedLevel = pageSpatial.findViewById(R.id.tvCrossfeedLevel)
+        layoutCrossfeedControls = pageSpatial.findViewById(R.id.layoutCrossfeedControls)
+        seekChannelBalance = pageSpatial.findViewById(R.id.seekChannelBalance)
+        tvChannelBalance = pageSpatial.findViewById(R.id.tvChannelBalance)
+        switchSmartOutput = pageSpatial.findViewById(R.id.switchSmartOutput)
+
         val crossfeedOn = PowerampPresetManager.isCrossfeedEnabled(this)
         val crossfeedLvl = PowerampPresetManager.getCrossfeedLevel(this)
         switchCrossfeed.isChecked = crossfeedOn
@@ -254,28 +346,24 @@ class StudioEqualizerActivity : AppCompatActivity() {
         val smartRoutingOn = PowerampPresetManager.isPerDeviceRoutingEnabled(this)
         switchSmartOutput.isChecked = smartRoutingOn
 
-        // Auto-Preamp Views
-        switchAutoPreamp = findViewById(R.id.switchAutoPreamp)
-        tvAutoPreampSubtitle = findViewById(R.id.tvAutoPreampSubtitle)
-        switchAutoPreamp.isChecked = PowerampPresetManager.isAutoPreampEnabled(this)
-        updateAutoPreampSubtitle()
+        switchHeadphonesOnly = pageSpatial.findViewById(R.id.switchHeadphonesOnly)
+        switchHeadphonesOnly.isChecked = PowerampPresetManager.isHeadphonesOnlyMode(this)
 
-        // Per-Device Output Routing Views
-        tvActiveOutputDevice = findViewById(R.id.tvActiveOutputDevice)
-        tvSpeakerProfilePreset = findViewById(R.id.tvSpeakerProfilePreset)
-        btnSetSpeakerProfile = findViewById(R.id.btnSetSpeakerProfile)
-        tvBluetoothProfilePreset = findViewById(R.id.tvBluetoothProfilePreset)
-        btnSetBluetoothProfile = findViewById(R.id.btnSetBluetoothProfile)
-        tvWiredProfilePreset = findViewById(R.id.tvWiredProfilePreset)
-        btnSetWiredProfile = findViewById(R.id.btnSetWiredProfile)
+        tvActiveOutputDevice = pageSpatial.findViewById(R.id.tvActiveOutputDevice)
+        tvSpeakerProfilePreset = pageSpatial.findViewById(R.id.tvSpeakerProfilePreset)
+        btnSetSpeakerProfile = pageSpatial.findViewById(R.id.btnSetSpeakerProfile)
+        tvBluetoothProfilePreset = pageSpatial.findViewById(R.id.tvBluetoothProfilePreset)
+        btnSetBluetoothProfile = pageSpatial.findViewById(R.id.btnSetBluetoothProfile)
+        tvWiredProfilePreset = pageSpatial.findViewById(R.id.tvWiredProfilePreset)
+        btnSetWiredProfile = pageSpatial.findViewById(R.id.btnSetWiredProfile)
         refreshDeviceRoutingUi()
 
-        // Movie & Night Mode Views
-        switchNightMode = findViewById(R.id.switchNightMode)
-        layoutNightModeControls = findViewById(R.id.layoutNightModeControls)
-        toggleGroupNightMode = findViewById(R.id.toggleGroupNightMode)
-        seekDialogueBoost = findViewById(R.id.seekDialogueBoost)
-        tvDialogueBoostValue = findViewById(R.id.tvDialogueBoostValue)
+        // --- Bind Tab 4: Apps & Cinema ---
+        switchNightMode = pageApps.findViewById(R.id.switchNightMode)
+        layoutNightModeControls = pageApps.findViewById(R.id.layoutNightModeControls)
+        toggleGroupNightMode = pageApps.findViewById(R.id.toggleGroupNightMode)
+        seekDialogueBoost = pageApps.findViewById(R.id.seekDialogueBoost)
+        tvDialogueBoostValue = pageApps.findViewById(R.id.tvDialogueBoostValue)
 
         val nightOn = PowerampPresetManager.isNightModeEnabled(this)
         switchNightMode.isChecked = nightOn
@@ -292,6 +380,15 @@ class StudioEqualizerActivity : AppCompatActivity() {
         val dialogueLvl = PowerampPresetManager.getDialogueBoostLevel(this)
         seekDialogueBoost.progress = (dialogueLvl * 10).toInt().coerceIn(0, 80)
         tvDialogueBoostValue.text = String.format(Locale.US, "%+.1f dB", dialogueLvl)
+
+        // Per-App Sound Profiles Views
+        llPerAppEqContainer = pageApps.findViewById(R.id.llPerAppEqContainer)
+        tvNoPerAppEqRules = pageApps.findViewById(R.id.tvNoPerAppEqRules)
+        btnAddPerAppEq = pageApps.findViewById(R.id.btnAddPerAppEq)
+        btnAddPerAppEq.setOnClickListener { showPerAppPicker() }
+        switchTargetAppsOnly = pageApps.findViewById(R.id.switchTargetAppsOnly)
+        switchTargetAppsOnly.isChecked = PowerampPresetManager.isTargetAppsOnlyMode(this)
+        loadPerAppRules()
     }
 
     private fun updateBalanceText(balance: Int) {
@@ -317,7 +414,7 @@ class StudioEqualizerActivity : AppCompatActivity() {
             showImportJsonDialog()
         }
 
-        findViewById<View>(R.id.btnSaveCustomPreset).setOnClickListener {
+        btnSaveCustomPreset.setOnClickListener {
             showSavePresetDialog()
         }
 
@@ -566,6 +663,22 @@ class StudioEqualizerActivity : AppCompatActivity() {
             Toast.makeText(this, if (isChecked) "Device Output Profiles: Active" else "Device Profiles: Disabled", Toast.LENGTH_SHORT).show()
         }
 
+        switchHeadphonesOnly.setOnCheckedChangeListener { _, isChecked ->
+            PowerampPresetManager.setHeadphonesOnlyMode(this, isChecked)
+            sendBroadcast(Intent("com.example.phonecontrol.UPDATE_UI").setPackage(packageName))
+            updateMasterStatusText()
+            val msg = if (isChecked) "Headphones Only: Equalizer auto-disabled on phone speaker 🔇" else "Equalizer Active on All Outputs"
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+        }
+
+        switchTargetAppsOnly.setOnCheckedChangeListener { _, isChecked ->
+            PowerampPresetManager.setTargetAppsOnlyMode(this, isChecked)
+            sendBroadcast(Intent("com.example.phonecontrol.UPDATE_UI").setPackage(packageName))
+            updateMasterStatusText()
+            val msg = if (isChecked) "Targeted Apps Only: Active (Whitelisted Apps) 🎯" else "Global Equalizer: Active on All Apps"
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+        }
+
         btnSetSpeakerProfile.setOnClickListener {
             showSelectDevicePresetDialog(PowerampPresetManager.AudioOutputType.SPEAKER)
         }
@@ -670,9 +783,57 @@ class StudioEqualizerActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateMasterStatusText(enabled: Boolean) {
-        tvDspStatus.text = if (enabled) "Poweramp DSP Engine • Active" else "Poweramp DSP Engine • Disabled"
-        tvDspStatus.setTextColor(android.graphics.Color.parseColor(if (enabled) "#00E5FF" else "#94A3B8"))
+    private fun updateMasterStatusText(enabled: Boolean = PowerampPresetManager.isMasterEnabled(this)) {
+        if (!enabled) {
+            tvDspStatus.text = "Poweramp DSP Engine • Disabled"
+            tvDspStatus.setTextColor(android.graphics.Color.parseColor("#94A3B8"))
+            return
+        }
+
+        val isHeadphonesOnly = PowerampPresetManager.isHeadphonesOnlyMode(this)
+        val currentOutput = StudioDspManager.getCurrentAudioOutputType(this)
+        val isSpeaker = currentOutput == PowerampPresetManager.AudioOutputType.SPEAKER
+
+        if (isHeadphonesOnly && isSpeaker) {
+            tvDspStatus.text = "DSP Sleeping • Speaker (Headphones Only Mode)"
+            tvDspStatus.setTextColor(android.graphics.Color.parseColor("#F59E0B"))
+            return
+        }
+
+        val isTargetAppsOnly = PowerampPresetManager.isTargetAppsOnlyMode(this)
+        if (isTargetAppsOnly) {
+            val targetedRules = PowerampPresetManager.getAllAppPresets(this)
+            val perAppConfigs = PerAppManager.getAllConfigs(this)
+            val targetedPkgs = (targetedRules.keys + perAppConfigs.keys.filter { pkg ->
+                val cfg = PerAppManager.getConfig(this, pkg)
+                val p = cfg?.eqPreset
+                !p.isNullOrBlank() && p != "Default" && p != "Default (System)"
+            }).toSet()
+
+            val activeAudioPkgs = FreezerManager.getActivePlayingAudioPackages(this)
+            val playingTargetPkg = activeAudioPkgs.firstOrNull { targetedPkgs.contains(it) }
+
+            if (playingTargetPkg != null) {
+                val presetName = PowerampPresetManager.getAppPreset(this, playingTargetPkg)
+                    ?: PerAppManager.getConfig(this, playingTargetPkg)?.eqPreset
+                    ?: PowerampPresetManager.getActivePresetName(this)
+                tvDspStatus.text = "Target App Active • $presetName"
+                tvDspStatus.setTextColor(android.graphics.Color.parseColor("#00E5FF"))
+            } else {
+                tvDspStatus.text = "DSP Sleeping • Waiting for Target App"
+                tvDspStatus.setTextColor(android.graphics.Color.parseColor("#C084FC"))
+            }
+            return
+        }
+
+        if (StudioDspManager.isCurrentlyMasterActive()) {
+            val activeName = PowerampPresetManager.getActivePresetName(this)
+            tvDspStatus.text = "Poweramp DSP Engine • $activeName"
+            tvDspStatus.setTextColor(android.graphics.Color.parseColor("#00E5FF"))
+        } else {
+            tvDspStatus.text = "Poweramp DSP Engine • Standby"
+            tvDspStatus.setTextColor(android.graphics.Color.parseColor("#38BDF8"))
+        }
     }
 
     private fun loadActivePreset() {
@@ -978,13 +1139,40 @@ class StudioEqualizerActivity : AppCompatActivity() {
             .show()
     }
 
+    private val dspUiReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            runOnUiThread {
+                updateMasterStatusText()
+                refreshDeviceRoutingUi()
+            }
+        }
+    }
+
     override fun onResume() {
         super.onResume()
+        try {
+            val filter = IntentFilter("com.example.phonecontrol.UPDATE_UI")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(dspUiReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                registerReceiver(dspUiReceiver, filter)
+            }
+        } catch (e: Exception) {}
         val isEnabled = PowerampPresetManager.isMasterEnabled(this)
         switchMasterDsp.isChecked = isEnabled
         updateMasterStatusText(isEnabled)
         refreshDeviceRoutingUi()
         updateAutoPreampSubtitle()
+        switchHeadphonesOnly.isChecked = PowerampPresetManager.isHeadphonesOnlyMode(this)
+        switchTargetAppsOnly.isChecked = PowerampPresetManager.isTargetAppsOnlyMode(this)
+        loadPerAppRules()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        try {
+            unregisterReceiver(dspUiReceiver)
+        } catch (e: Exception) {}
     }
 
     private fun getSelectedNightModeProfile(): Int {
@@ -999,9 +1187,7 @@ class StudioEqualizerActivity : AppCompatActivity() {
     private fun updateAutoPreampSubtitle() {
         val enabled = PowerampPresetManager.isAutoPreampEnabled(this)
         if (enabled) {
-            val maxBoost = currentPreset?.bands?.maxOfOrNull { it.gain } ?: 0f
-            val margin = if (maxBoost > 0f) maxBoost else 0f
-            tvAutoPreampSubtitle.text = String.format(Locale.US, "Auto safe margin: -%.1f dB headroom", margin)
+            tvAutoPreampSubtitle.text = "Studio Limiter Active • Dynamic headroom & +1.5 dB Makeup Gain"
         } else {
             tvAutoPreampSubtitle.text = "Manual preamp (Risk of clipping at 100% volume)"
         }
@@ -1044,6 +1230,186 @@ class StudioEqualizerActivity : AppCompatActivity() {
                         rebuildPresetChips(preset.name)
                     }
                 }
+                dialog.dismiss()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun loadPerAppRules() {
+        val rules = PowerampPresetManager.getAllAppPresets(this)
+        if (rules.isEmpty()) {
+            tvNoPerAppEqRules.visibility = View.VISIBLE
+            llPerAppEqContainer.visibility = View.GONE
+            llPerAppEqContainer.removeAllViews()
+            return
+        }
+
+        tvNoPerAppEqRules.visibility = View.GONE
+        llPerAppEqContainer.visibility = View.VISIBLE
+        llPerAppEqContainer.removeAllViews()
+
+        val allPresets = PowerampPresetManager.getAllPresets(this)
+        val presetNames = allPresets.map { it.name }
+        val pm = packageManager
+
+        for ((pkg, presetName) in rules) {
+            val itemView = layoutInflater.inflate(R.layout.item_per_app_eq_rule, llPerAppEqContainer, false)
+            val ivIcon = itemView.findViewById<ImageView>(R.id.ivRuleAppIcon)
+            val tvName = itemView.findViewById<TextView>(R.id.tvRuleAppName)
+            val tvPackage = itemView.findViewById<TextView>(R.id.tvRulePackage)
+            val spinner = itemView.findViewById<Spinner>(R.id.spinnerRulePreset)
+            val btnDelete = itemView.findViewById<ImageView>(R.id.btnDeleteRule)
+
+            try {
+                val appInfo = pm.getApplicationInfo(pkg, 0)
+                ivIcon.setImageDrawable(pm.getApplicationIcon(appInfo))
+                tvName.text = pm.getApplicationLabel(appInfo)
+            } catch (e: Exception) {
+                ivIcon.setImageResource(android.R.drawable.sym_def_app_icon)
+                tvName.text = pkg
+            }
+            tvPackage.text = pkg
+
+            val adapter = object : ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, presetNames) {
+                override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                    val view = super.getView(position, convertView, parent) as TextView
+                    view.setTextColor(Color.WHITE)
+                    view.textSize = 12f
+                    view.maxLines = 1
+                    view.ellipsize = android.text.TextUtils.TruncateAt.END
+                    return view
+                }
+
+                override fun getDropDownView(position: Int, convertView: View?, parent: ViewGroup): View {
+                    val view = super.getDropDownView(position, convertView, parent) as TextView
+                    view.setTextColor(Color.WHITE)
+                    view.setBackgroundColor(Color.parseColor("#1E293B"))
+                    view.setPadding(24, 24, 24, 24)
+                    return view
+                }
+            }
+            spinner.adapter = adapter
+
+            val selectedIndex = presetNames.indexOf(presetName).coerceAtLeast(0)
+            spinner.setSelection(selectedIndex, false)
+
+            var isFirstCall = true
+            spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                    if (isFirstCall) {
+                        isFirstCall = false
+                        return
+                    }
+                    val newPreset = presetNames[position]
+                    PowerampPresetManager.setAppPreset(this@StudioEqualizerActivity, pkg, newPreset)
+                }
+
+                override fun onNothingSelected(parent: AdapterView<*>?) {}
+            }
+
+            btnDelete.setOnClickListener {
+                MaterialAlertDialogBuilder(this)
+                    .setTitle("Remove Audio Profile?")
+                    .setMessage("Remove custom equalizer rule for ${tvName.text}?")
+                    .setPositiveButton("Remove") { _, _ ->
+                        PowerampPresetManager.removeAppPreset(this, pkg)
+                        loadPerAppRules()
+                        Toast.makeText(this, "Rule removed", Toast.LENGTH_SHORT).show()
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
+
+            llPerAppEqContainer.addView(itemView)
+        }
+    }
+
+    private fun showPerAppPicker() {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_per_app_picker, null)
+        val etSearch = dialogView.findViewById<EditText>(R.id.etSearchApp)
+        val tvAppCount = dialogView.findViewById<TextView>(R.id.tvAppCount)
+        val btnClose = dialogView.findViewById<ImageView>(R.id.btnCloseDialog)
+        val listView = dialogView.findViewById<ListView>(R.id.lvApps)
+
+        val pm = packageManager
+
+        fun getInstalledApps(): List<ApplicationInfo> {
+            val flags = PackageManager.GET_META_DATA
+            return pm.getInstalledApplications(flags).filter {
+                (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 ||
+                pm.getLaunchIntentForPackage(it.packageName) != null
+            }.sortedBy { pm.getApplicationLabel(it).toString().lowercase(Locale.ROOT) }
+        }
+
+        val allApps = cachedInstalledApps ?: getInstalledApps().also { cachedInstalledApps = it }
+        val filteredApps = allApps.toMutableList()
+        tvAppCount.text = "${filteredApps.size} apps available"
+
+        val adapter = object : ArrayAdapter<ApplicationInfo>(this, R.layout.item_per_app_picker, filteredApps) {
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val view = convertView ?: layoutInflater.inflate(R.layout.item_per_app_picker, parent, false)
+                val app = getItem(position)!!
+                view.findViewById<ImageView>(R.id.ivAppIcon).setImageDrawable(pm.getApplicationIcon(app))
+                view.findViewById<TextView>(R.id.tvAppName).text = pm.getApplicationLabel(app)
+                view.findViewById<TextView>(R.id.tvPackageName).text = app.packageName
+                return view
+            }
+        }
+        listView.adapter = adapter
+
+        etSearch.addTextChangedListener(object : TextWatcher {
+            override fun afterTextChanged(s: Editable?) {
+                filteredApps.clear()
+                val query = s?.toString()?.trim()?.lowercase(Locale.ROOT) ?: ""
+                if (query.isEmpty()) {
+                    filteredApps.addAll(allApps)
+                    tvAppCount.text = "${filteredApps.size} apps available"
+                } else {
+                    filteredApps.addAll(allApps.filter {
+                        pm.getApplicationLabel(it).toString().lowercase(Locale.ROOT).contains(query) ||
+                        it.packageName.lowercase(Locale.ROOT).contains(query)
+                    })
+                    tvAppCount.text = "${filteredApps.size} apps found"
+                }
+                adapter.notifyDataSetChanged()
+            }
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+        })
+
+        val dialog = AlertDialog.Builder(this).setView(dialogView).create()
+        btnClose.setOnClickListener { dialog.dismiss() }
+
+        listView.setOnItemClickListener { _, _, pos, _ ->
+            val app = filteredApps[pos]
+            val pkg = app.packageName
+            val label = pm.getApplicationLabel(app).toString()
+            dialog.dismiss()
+
+            showSelectPresetForAppDialog(pkg, label)
+        }
+
+        dialog.show()
+        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+        val width = (resources.displayMetrics.widthPixels * 0.94).toInt()
+        val height = (resources.displayMetrics.heightPixels * 0.88).toInt()
+        dialog.window?.setLayout(width, height)
+    }
+
+    private fun showSelectPresetForAppDialog(packageName: String, appName: String) {
+        val allPresets = PowerampPresetManager.getAllPresets(this)
+        val names = allPresets.map { it.name }.toTypedArray()
+        val currentAssigned = PowerampPresetManager.getAppPreset(this, packageName) ?: allPresets.firstOrNull()?.name ?: "Flat Studio"
+        val selectedIndex = names.indexOf(currentAssigned).coerceAtLeast(0)
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Audio Profile for $appName")
+            .setSingleChoiceItems(names, selectedIndex) { dialog, which ->
+                val chosenName = names[which]
+                PowerampPresetManager.setAppPreset(this, packageName, chosenName)
+                loadPerAppRules()
+                Toast.makeText(this, "Profile '$chosenName' assigned to $appName", Toast.LENGTH_SHORT).show()
                 dialog.dismiss()
             }
             .setNegativeButton("Cancel", null)

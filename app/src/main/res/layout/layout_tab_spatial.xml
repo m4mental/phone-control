@@ -1,0 +1,391 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:background="#050811">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:paddingBottom="80dp">
+
+        <!-- 🎛️ Acoustics & Spatial Imaging (Crossfeed & Channel Balance) -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            app:cardBackgroundColor="#0D1527"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="0dp"
+            app:strokeColor="#1E293B"
+            app:strokeWidth="1dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🎛️ Acoustics &amp; Channel Imaging"
+                    android:textColor="#C084FC"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="12dp" />
+
+                <!-- Bauer Stereo Crossfeed -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:background="#131F37"
+                    android:padding="12dp"
+                    android:layout_marginBottom="10dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Bauer stereo crossfeed"
+                                android:textColor="#FFFFFF"
+                                android:textSize="13sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Simulate speaker room acoustics &amp; reduce ear fatigue"
+                                android:textColor="#94A3B8"
+                                android:textSize="11sp" />
+                        </LinearLayout>
+
+                        <com.google.android.material.materialswitch.MaterialSwitch
+                            android:id="@+id/switchCrossfeed"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/layoutCrossfeedControls"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/tvCrossfeedLevel"
+                            android:layout_width="70dp"
+                            android:layout_height="wrap_content"
+                            android:text="Level: 50%"
+                            android:textColor="#A855F7"
+                            android:textSize="11sp"
+                            android:textStyle="bold" />
+
+                        <SeekBar
+                            android:id="@+id/seekCrossfeed"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:max="1000"
+                            android:progress="500"
+                            android:progressTint="#A855F7"
+                            android:thumbTint="#A855F7" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- L/R Channel Balance -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:background="#131F37"
+                    android:padding="12dp"
+                    android:layout_marginBottom="10dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Left / Right channel balance"
+                            android:textColor="#FFFFFF"
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/tvChannelBalance"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Center (0)"
+                            android:textColor="#00E5FF"
+                            android:textSize="11sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <SeekBar
+                        android:id="@+id/seekChannelBalance"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:max="200"
+                        android:progress="100"
+                        android:progressTint="#00E5FF"
+                        android:thumbTint="#00E5FF" />
+                </LinearLayout>
+
+                <!-- Per-Device Output Routing Profiles -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="#131F37"
+                    android:padding="12dp"
+                    android:orientation="vertical">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Per-Device Output Profiles"
+                                android:textColor="#FFFFFF"
+                                android:textSize="13sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Auto-load saved profile when routing changes"
+                                android:textColor="#94A3B8"
+                                android:textSize="11sp" />
+                        </LinearLayout>
+
+                        <com.google.android.material.materialswitch.MaterialSwitch
+                            android:id="@+id/switchSmartOutput"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content" />
+                    </LinearLayout>
+
+                    <!-- Auto-Disable on Phone Speaker Switch -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="8dp"
+                        android:background="#070E1E"
+                        android:paddingHorizontal="10dp"
+                        android:paddingVertical="8dp"
+                        android:orientation="horizontal">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="🎧 Auto-Disable on Phone Speaker"
+                                android:textColor="#38BDF8"
+                                android:textSize="12sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Only enable DSP when Bluetooth or Wired earphones are connected"
+                                android:textColor="#94A3B8"
+                                android:textSize="10sp" />
+                        </LinearLayout>
+
+                        <com.google.android.material.materialswitch.MaterialSwitch
+                            android:id="@+id/switchHeadphonesOnly"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content" />
+                    </LinearLayout>
+
+                    <!-- Currently Connected Audio Destination Badge -->
+                    <LinearLayout
+                        android:id="@+id/layoutActiveOutputBadge"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="8dp"
+                        android:background="#0A101D"
+                        android:paddingHorizontal="10dp"
+                        android:paddingVertical="6dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Active Sink: "
+                            android:textColor="#64748B"
+                            android:textSize="11sp" />
+
+                        <TextView
+                            android:id="@+id/tvActiveOutputDevice"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Phone Speaker"
+                            android:textColor="#00E5FF"
+                            android:textSize="11sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <!-- 3-Device Routing Profile Selectors -->
+                    <LinearLayout
+                        android:id="@+id/layoutDeviceRoutingProfiles"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:layout_marginTop="8dp">
+
+                        <!-- Speaker Profile Row -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:paddingVertical="4dp"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="90dp"
+                                android:layout_height="wrap_content"
+                                android:text="🔊 Speaker:"
+                                android:textColor="#E2E8F0"
+                                android:textSize="11sp" />
+
+                            <TextView
+                                android:id="@+id/tvSpeakerProfilePreset"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="Speaker Clarity Guard"
+                                android:textColor="#38BDF8"
+                                android:textSize="11sp"
+                                android:singleLine="true"
+                                android:ellipsize="end" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnSetSpeakerProfile"
+                                style="@style/Widget.Material3.Button.TextButton"
+                                android:layout_width="wrap_content"
+                                android:layout_height="36dp"
+                                android:text="Assign"
+                                android:textSize="10sp"
+                                android:textColor="#38BDF8" />
+                        </LinearLayout>
+
+                        <!-- Bluetooth Profile Row -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:paddingVertical="4dp"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="90dp"
+                                android:layout_height="wrap_content"
+                                android:text="🎧 Bluetooth:"
+                                android:textColor="#E2E8F0"
+                                android:textSize="11sp" />
+
+                            <TextView
+                                android:id="@+id/tvBluetoothProfilePreset"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="Nothing Ear (2) - Harman Target"
+                                android:textColor="#C084FC"
+                                android:textSize="11sp"
+                                android:singleLine="true"
+                                android:ellipsize="end" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnSetBluetoothProfile"
+                                style="@style/Widget.Material3.Button.TextButton"
+                                android:layout_width="wrap_content"
+                                android:layout_height="36dp"
+                                android:text="Assign"
+                                android:textSize="10sp"
+                                android:textColor="#C084FC" />
+                        </LinearLayout>
+
+                        <!-- Wired / USB-C Profile Row -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:paddingVertical="4dp"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="90dp"
+                                android:layout_height="wrap_content"
+                                android:text="🔌 Wired / DAC:"
+                                android:textColor="#E2E8F0"
+                                android:textSize="11sp" />
+
+                            <TextView
+                                android:id="@+id/tvWiredProfilePreset"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="Audiophile Harman Target"
+                                android:textColor="#34D399"
+                                android:textSize="11sp"
+                                android:singleLine="true"
+                                android:ellipsize="end" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnSetWiredProfile"
+                                style="@style/Widget.Material3.Button.TextButton"
+                                android:layout_width="wrap_content"
+                                android:layout_height="36dp"
+                                android:text="Assign"
+                                android:textSize="10sp"
+                                android:textColor="#34D399" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+    </LinearLayout>
+</androidx.core.widget.NestedScrollView>

@@ -16,7 +16,8 @@ object PerAppManager {
         val customLittleMax: Int = 0,
         val customBigMin: Int = 0,
         val customBigMax: Int = 0,
-        val customGovernor: String = "schedutil"
+        val customGovernor: String = "schedutil",
+        val eqPreset: String = "Default"
     )
 
     fun saveConfig(
@@ -32,11 +33,12 @@ object PerAppManager {
         customLittleMax: Int = 0,
         customBigMin: Int = 0,
         customBigMax: Int = 0,
-        customGovernor: String = "schedutil"
+        customGovernor: String = "schedutil",
+        eqPreset: String = "Default"
     ) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val customStr = "$customLittleMin:$customLittleMax:$customBigMin:$customBigMax:$customGovernor"
-        prefs.edit().putString(packageName, "$mode|$fps|$thermal|$touch|$bypassCharging|$autoDnd|$customStr").apply()
+        prefs.edit().putString(packageName, "$mode|$fps|$thermal|$touch|$bypassCharging|$autoDnd|$customStr|$eqPreset").apply()
     }
 
     fun saveConfig(context: Context, packageName: String, config: AppConfig) {
@@ -53,7 +55,8 @@ object PerAppManager {
             config.customLittleMax,
             config.customBigMin,
             config.customBigMax,
-            config.customGovernor
+            config.customGovernor,
+            config.eqPreset
         )
     }
 
@@ -72,6 +75,7 @@ object PerAppManager {
         val customBigMin = customParts?.getOrNull(2)?.toIntOrNull() ?: 0
         val customBigMax = customParts?.getOrNull(3)?.toIntOrNull() ?: 0
         val customGovernor = customParts?.getOrNull(4) ?: "schedutil"
+        val eqPreset = parts.getOrNull(7)?.takeIf { it.isNotBlank() } ?: "Default"
 
         return if (parts.size >= 2) {
             AppConfig(
@@ -85,7 +89,8 @@ object PerAppManager {
                 customLittleMax = customLittleMax,
                 customBigMin = customBigMin,
                 customBigMax = customBigMax,
-                customGovernor = customGovernor
+                customGovernor = customGovernor,
+                eqPreset = eqPreset
             )
         } else null
     }
@@ -120,7 +125,7 @@ object PerAppManager {
      */
     fun mergeConfigs(configs: List<AppConfig>): AppConfig? {
         val activeRules = configs.filter {
-            it.mode != "Auto" || it.fps != "Auto Switch" || it.thermal == "Disabled" || it.touch == "On" || it.bypassCharging || it.autoDnd
+            it.mode != "Auto" || it.fps != "Auto Switch" || it.thermal == "Disabled" || it.touch == "On" || it.bypassCharging || it.autoDnd || (it.eqPreset != "Default" && it.eqPreset.isNotBlank())
         }
         if (activeRules.isEmpty()) return null
 
@@ -131,6 +136,7 @@ object PerAppManager {
         val touch = if (activeRules.any { it.touch == "On" }) "On" else "Off"
         val bypass = activeRules.any { it.bypassCharging }
         val dnd = activeRules.any { it.autoDnd }
+        val eqPreset = activeRules.firstOrNull { it.eqPreset != "Default" && it.eqPreset.isNotBlank() }?.eqPreset ?: "Default"
 
         return AppConfig(
             mode = highestMode,
@@ -143,7 +149,8 @@ object PerAppManager {
             customLittleMax = highestConfig?.customLittleMax ?: 0,
             customBigMin = highestConfig?.customBigMin ?: 0,
             customBigMax = highestConfig?.customBigMax ?: 0,
-            customGovernor = highestConfig?.customGovernor ?: "schedutil"
+            customGovernor = highestConfig?.customGovernor ?: "schedutil",
+            eqPreset = eqPreset
         )
     }
 }
