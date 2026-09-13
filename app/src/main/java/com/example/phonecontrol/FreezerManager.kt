@@ -95,7 +95,12 @@ object FreezerManager {
      */
     fun freezeMultipleApps(context: Context, packages: Collection<String>) {
         if (packages.isEmpty()) return
-        val pkgList = packages.filter { it != lastLaunchedPackage && !isAppActiveSession(it) && !isAppCurrentlyVisible(it) }.joinToString(" ")
+        val currentFocus = getCurrentlyFocusedWindowInfo()
+        val pkgList = packages.filter { 
+            it != lastLaunchedPackage && 
+            !isAppActiveSession(it) && 
+            (currentFocus.isBlank() || !currentFocus.contains(it)) 
+        }.joinToString(" ")
         if (pkgList.isBlank()) return
 
         val script = """
@@ -353,16 +358,23 @@ object FreezerManager {
     }
 
     /**
+     * Gets currently focused window info string from dumpsys.
+     */
+    fun getCurrentlyFocusedWindowInfo(): String {
+        return try {
+            ShellUtils.fastCmdResult("dumpsys window | grep 'mCurrentFocus' 2>/dev/null", 1000)
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
+    /**
      * Checks if an app is currently visible on the screen or in focus.
      */
     fun isAppCurrentlyVisible(packageName: String): Boolean {
         if (packageName.isBlank()) return false
-        return try {
-            val out = ShellUtils.fastCmdResult("dumpsys window | grep 'mCurrentFocus' 2>/dev/null", 1000)
-            out.contains(packageName)
-        } catch (e: Exception) {
-            false
-        }
+        val out = getCurrentlyFocusedWindowInfo()
+        return out.contains(packageName)
     }
 
     fun getActivePackages(packages: Collection<String>): Set<String> {

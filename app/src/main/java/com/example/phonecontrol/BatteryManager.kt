@@ -16,15 +16,6 @@ object BatteryManager {
         val wear: String
     )
 
-    data class BatteryAnalytics(
-        val voltageMv: Int,
-        val tempDeciC: Int,
-        val currentWatts: Double,
-        val cycles: Int,
-        val health: String,
-        val wearPercent: Int
-    )
-
     @Volatile private var cachedBatteryInfo: BatteryInfo = BatteryInfo(
         voltage = "4.10V",
         temp = "34°C",
@@ -73,24 +64,6 @@ object BatteryManager {
         )
         cachedBatteryInfo = newInfo
         return newInfo
-    }
-
-    fun getBatteryAnalytics(context: Context): BatteryAnalytics {
-        val stats = getBatteryStats()
-        val voltMv = (stats.voltage.replace("V", "").toDoubleOrNull() ?: 4.0 * 1000).toInt()
-        val tempDeciC = (stats.temp.replace("°C", "").toDoubleOrNull() ?: 30.0 * 10).toInt()
-        val currentWatts = stats.wattage.replace("W", "").toDoubleOrNull() ?: 0.0
-        val cycles = stats.cycles.toIntOrNull() ?: 0
-        val wearPercent = stats.wear.replace("%", "").toIntOrNull() ?: 100
-
-        return BatteryAnalytics(
-            voltageMv = voltMv,
-            tempDeciC = tempDeciC,
-            currentWatts = currentWatts,
-            cycles = cycles,
-            health = stats.health,
-            wearPercent = wearPercent
-        )
     }
 
     fun setChargingEnabled(enabled: Boolean) {

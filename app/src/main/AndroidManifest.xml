@@ -77,11 +77,6 @@
             android:theme="@style/Theme.PhoneControl" />
 
         <activity
-            android:name=".BatteryHealthActivity"
-            android:exported="false"
-            android:theme="@style/Theme.PhoneControl" />
-
-        <activity
             android:name=".ChargingProtectionActivity"
             android:exported="false"
             android:theme="@style/Theme.PhoneControl" />

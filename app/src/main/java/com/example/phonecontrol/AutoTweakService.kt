@@ -821,7 +821,7 @@ class AutoTweakService : Service() {
                     .putString("active_per_app_mode", mergedConfig.mode)
                     .putString("active_per_app_pkg", dominantPkg)
                     .apply()
-                sendBroadcast(Intent("com.example.phonecontrol.UPDATE_UI"))
+                sendSafeUiUpdate()
                 ModeControlTileService.updateTile(this)
             }
 
@@ -844,7 +844,7 @@ class AutoTweakService : Service() {
                     .remove("active_per_app_mode")
                     .remove("active_per_app_pkg")
                     .apply()
-                sendBroadcast(Intent("com.example.phonecontrol.UPDATE_UI"))
+                sendSafeUiUpdate()
                 ModeControlTileService.updateTile(this)
 
                 // Restore user's saved thermal throttling preference

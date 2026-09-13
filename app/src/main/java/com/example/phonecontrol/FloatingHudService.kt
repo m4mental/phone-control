@@ -59,8 +59,7 @@ class FloatingHudService : Service() {
 
         // Ensure overlay permission via Root if not yet granted
         if (!Settings.canDrawOverlays(this)) {
-            ShellUtils.fastCmd("appops set $packageName SYSTEM_ALERT_WINDOW allow 2>/dev/null")
-            ShellUtils.fastCmd("pm grant $packageName android.permission.SYSTEM_ALERT_WINDOW 2>/dev/null")
+            ShellUtils.fastCmdResult("appops set $packageName SYSTEM_ALERT_WINDOW allow && pm grant $packageName android.permission.SYSTEM_ALERT_WINDOW", 2000)
         }
 
         initHudView()
@@ -144,10 +143,22 @@ class FloatingHudService : Service() {
             }
         })
 
-        try {
+        val isAdded = try {
             windowManager?.addView(view, params)
+            true
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to add HUD view: ${e.message}")
+            Log.e(TAG, "Failed to add HUD view on first attempt: ${e.message}")
+            false
+        }
+
+        if (!isAdded) {
+            mainHandler.postDelayed({
+                try {
+                    windowManager?.addView(view, params)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Retry add HUD view failed: ${e.message}")
+                }
+            }, 600)
         }
     }
 
@@ -181,10 +192,15 @@ class FloatingHudService : Service() {
                     currentMode
                 }
 
-                // 3. Read Battery Temp reliably via BatteryManager
-                val batteryStatus = registerReceiver(null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-                val rawTemp = batteryStatus?.getIntExtra(android.os.BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0
-                val tempC = if (rawTemp > 0) rawTemp / 10f else 0f
+                // 3. Read Battery Temp: Direct sysfs first (zero IPC drain), fallback to BatteryManager
+                val sysfsTemp = readSysfsInt("/sys/class/power_supply/battery/temp")
+                val tempC = if (sysfsTemp > 0) {
+                    sysfsTemp / 10f
+                } else {
+                    val batteryStatus = registerReceiver(null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+                    val rawTemp = batteryStatus?.getIntExtra(android.os.BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0
+                    if (rawTemp > 0) rawTemp / 10f else 0f
+                }
 
                 // Update UI on main thread
                 mainHandler.post {
@@ -192,7 +208,7 @@ class FloatingHudService : Service() {
                         root.findViewById<TextView>(R.id.tvHudMode).text = "Mode: $modeLabel"
                         root.findViewById<TextView>(R.id.tvHudLittleFreq).text = "L: ${littleFreqKHz / 1000} MHz"
                         root.findViewById<TextView>(R.id.tvHudBigFreq).text = "B: ${bigFreqKHz / 1000} MHz"
-                        root.findViewById<TextView>(R.id.tvHudTemp).text = String.format("%.1f°C", tempC)
+                        root.findViewById<TextView>(R.id.tvHudTemp).text = String.format(java.util.Locale.US, "%.1f°C", tempC)
                     }
                 }
 
