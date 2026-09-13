@@ -205,7 +205,10 @@ class MainActivity : AppCompatActivity() {
 
         // Periodic 7-Day Auto-Backup Check
         BackupManager.checkAndRunScheduledAutoBackup(this)
+
+        updateDisplayStatus()
     }
+
 
     override fun onDestroy() {
         try { unregisterReceiver(uiReceiver) } catch (e: Exception) {}

@@ -354,6 +354,28 @@
             </intent-filter>
         </service>
 
+        <!-- Floating Performance HUD Service -->
+        <service
+            android:name=".FloatingHudService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Floating real-time CPU frequency and mode status overlay" />
+        </service>
+
+        <!-- Performance HUD Quick Settings Tile -->
+        <service
+            android:name=".HudTileService"
+            android:exported="true"
+            android:label="Perf HUD"
+            android:icon="@drawable/ic_qs_mode_control"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <!-- Private DNS / Ad-Blocker QS Tile (1-Tap Cycle: AdGuard -> Cloudflare -> Google -> Off) -->
         <service
             android:name=".PrivateDnsTileService"

@@ -321,6 +321,54 @@ object TweakManager {
     }
 
     /**
+     * Dedicated Custom Per-App Profile:
+     * Applies custom Little cluster min/max frequencies, Big cluster min/max frequencies, and governor.
+     */
+    fun applyCustomAppProfile(littleMin: Int, littleMax: Int, bigMin: Int, bigMax: Int, governor: String) {
+        currentMode = "Custom"
+        val lMin = if (littleMin > 0) littleMin else 650000
+        val lMax = if (littleMax > 0 && littleMax >= lMin) littleMax else 2000000
+        val bMin = if (bigMin > 0) bigMin else 400000
+        val bMax = if (bigMax > 0 && bigMax >= bMin) bigMax else 2800000
+        val gov = if (governor.isNotBlank()) governor else "schedutil"
+
+        val script = """
+            chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
+            chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_min_freq 2>/dev/null
+            chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_governor 2>/dev/null
+            
+            # Policy 0 (Little cores 0-5)
+            echo $gov > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor 2>/dev/null
+            echo $lMax > /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null
+            echo $lMin > /sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq 2>/dev/null
+            for c in 0 1 2 3 4 5; do
+                chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
+                chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
+                chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_governor 2>/dev/null
+                echo $gov > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_governor 2>/dev/null
+                echo $lMax > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
+                echo $lMin > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
+            done
+
+            # Policy 6 (Big cores 6-7)
+            echo $gov > /sys/devices/system/cpu/cpufreq/policy6/scaling_governor 2>/dev/null
+            echo $bMax > /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq 2>/dev/null
+            echo $bMin > /sys/devices/system/cpu/cpufreq/policy6/scaling_min_freq 2>/dev/null
+            for c in 6 7; do
+                chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
+                chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
+                chmod 666 /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_governor 2>/dev/null
+                echo $gov > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_governor 2>/dev/null
+                echo $bMax > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
+                echo $bMin > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
+            done
+            chmod 444 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
+        """.trimIndent()
+        ShellUtils.fastCmd(script)
+        Log.d("TweakManager", "🎛️ Custom Per-App Profile Applied -> L: ${lMin/1000}-${lMax/1000}MHz, B: ${bMin/1000}-${bMax/1000}MHz, Gov: $gov")
+    }
+
+    /**
      * Intelligent Asymmetric CPU Frequency & Cluster Tuning
      * - Daily/Power/Balance: 6 Little Cores boosted to max (2.0GHz) for 120Hz fluid smoothness,
      *   2 Big Cores capped at cool 1.2GHz - 1.5GHz (eliminates 80% phone heating).

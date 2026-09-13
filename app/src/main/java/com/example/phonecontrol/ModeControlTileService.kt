@@ -211,6 +211,28 @@ class ModeControlTileService : TileService() {
         val activeMode = forcedMode ?: prefs.getString("selected_mode", "rbBalance")
         val activeAiLabel = prefs.getString("active_ai_label", "AI: Active")
 
+        val activePerAppMode = prefs.getString("active_per_app_mode", null)
+        val activePerAppPkg = prefs.getString("active_per_app_pkg", null)
+        if (forcedMode == null && activePerAppMode != null) {
+            val appLabel = try {
+                if (!activePerAppPkg.isNullOrBlank()) {
+                    packageManager.getApplicationLabel(packageManager.getApplicationInfo(activePerAppPkg, 0)).toString()
+                } else null
+            } catch (e: Exception) {
+                activePerAppPkg
+            }
+            tile.label = "Mode: $activePerAppMode"
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                tile.subtitle = if (appLabel != null) "Per-App: $appLabel" else "Per-App Profile"
+            }
+            tile.state = Tile.STATE_ACTIVE
+            try {
+                tile.icon = Icon.createWithResource(this, R.drawable.ic_qs_mode_control)
+            } catch (e: Exception) {}
+            tile.updateTile()
+            return
+        }
+
         when (activeMode) {
             "rbAutomatic" -> {
                 tile.label = "Mode: AI Auto"

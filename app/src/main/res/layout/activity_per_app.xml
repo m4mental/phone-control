@@ -40,6 +40,19 @@
             app:backgroundTint="@android:color/white"
             app:cornerRadius="8dp" />
 
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnToggleHud"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🖥️ Floating Performance HUD (Overlay)"
+            android:textColor="#00E5FF"
+            android:textStyle="bold"
+            app:strokeColor="#00E5FF"
+            app:strokeWidth="1dp"
+            app:backgroundTint="#1A00E5FF"
+            app:cornerRadius="8dp"
+            android:layout_marginTop="8dp" />
+
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -51,6 +64,7 @@
     </LinearLayout>
 
     <androidx.core.widget.NestedScrollView
+        android:id="@+id/scrollPerApp"
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 

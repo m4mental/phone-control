@@ -752,7 +752,15 @@ class AutoTweakService : Service() {
                 Log.d("AutoTweak", "⚡ Per-App Hierarchy Applied: Mode=${mergedConfig.mode}, FPS=${mergedConfig.fps}, Thermal=${mergedConfig.thermal}, Touch=${mergedConfig.touch}, Bypass=${mergedConfig.bypassCharging}, DND=${mergedConfig.autoDnd}. Active Configured Apps in Recents: $activeRulePackages")
                 lastAiMode = ""
                 
-                if (mergedConfig.mode != "Auto") {
+                if (mergedConfig.mode == "Custom") {
+                    TweakManager.applyCustomAppProfile(
+                        mergedConfig.customLittleMin,
+                        mergedConfig.customLittleMax,
+                        mergedConfig.customBigMin,
+                        mergedConfig.customBigMax,
+                        mergedConfig.customGovernor
+                    )
+                } else if (mergedConfig.mode != "Auto") {
                     TweakManager.applyGlobalMode(mergedConfig.mode)
                 }
                 if (mergedConfig.fps != "Auto Switch") {
@@ -814,6 +822,7 @@ class AutoTweakService : Service() {
                     .putString("active_per_app_pkg", dominantPkg)
                     .apply()
                 sendBroadcast(Intent("com.example.phonecontrol.UPDATE_UI"))
+                ModeControlTileService.updateTile(this)
             }
 
             // Dynamic Load-Aware Scaling for Streaming Mode (950MHz -> 1100MHz -> 1200MHz)
@@ -836,6 +845,7 @@ class AutoTweakService : Service() {
                     .remove("active_per_app_pkg")
                     .apply()
                 sendBroadcast(Intent("com.example.phonecontrol.UPDATE_UI"))
+                ModeControlTileService.updateTile(this)
 
                 // Restore user's saved thermal throttling preference
                 val isThrottlingDisabled = prefs.getBoolean("disable_throttling", false)
