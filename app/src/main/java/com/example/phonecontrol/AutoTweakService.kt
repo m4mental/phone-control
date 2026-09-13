@@ -963,6 +963,8 @@ class AutoTweakService : Service() {
                     ?: PerAppManager.getConfig(this, playingTargetPkg)?.eqPreset
                     ?: PowerampPresetManager.getActivePresetName(this)
 
+                val stateChanged = StudioDspManager.getActiveTargetAppPkg() != playingTargetPkg
+                StudioDspManager.setActiveTargetApp(playingTargetPkg, presetName)
                 StudioDspManager.setBypass(this, false)
                 StudioDspManager.resumeDsp(this)
 
@@ -972,6 +974,9 @@ class AutoTweakService : Service() {
                     activePerAppEqPreset = presetName
                     activeAudioPlayingPkg = playingTargetPkg
                 }
+                if (stateChanged) {
+                    sendBroadcast(Intent("com.example.phonecontrol.UPDATE_UI").setPackage(packageName))
+                }
                 return
             } else if (targetedPkgs.contains(foregroundPkg) && isMusicPlaying) {
                 // Foreground app is targeted and playing audio
@@ -979,6 +984,8 @@ class AutoTweakService : Service() {
                     ?: PerAppManager.getConfig(this, foregroundPkg)?.eqPreset
                     ?: PowerampPresetManager.getActivePresetName(this)
 
+                val stateChanged = StudioDspManager.getActiveTargetAppPkg() != foregroundPkg
+                StudioDspManager.setActiveTargetApp(foregroundPkg, presetName)
                 StudioDspManager.setBypass(this, false)
                 StudioDspManager.resumeDsp(this)
 
@@ -988,15 +995,23 @@ class AutoTweakService : Service() {
                     activePerAppEqPreset = presetName
                     activeAudioPlayingPkg = foregroundPkg
                 }
+                if (stateChanged) {
+                    sendBroadcast(Intent("com.example.phonecontrol.UPDATE_UI").setPackage(packageName))
+                }
                 return
             } else {
                 // Neither actively playing audio is from a targeted app nor is foreground app targeted with audio
                 // Put DSP hardware into TRUE SLEEP (0% CPU, 0 battery drain)
+                val wasActive = StudioDspManager.getActiveTargetAppPkg() != null
                 Log.d("AutoTweak", "🎯 Targeted Apps Mode -> No targeted player streaming -> DSP SLEEP (0% CPU)")
+                StudioDspManager.setActiveTargetApp(null, null)
                 StudioDspManager.setBypass(this, true)
                 StudioDspManager.pauseDsp()
                 activePerAppEqPreset = null
                 activeAudioPlayingPkg = null
+                if (wasActive) {
+                    sendBroadcast(Intent("com.example.phonecontrol.UPDATE_UI").setPackage(packageName))
+                }
                 return
             }
         }

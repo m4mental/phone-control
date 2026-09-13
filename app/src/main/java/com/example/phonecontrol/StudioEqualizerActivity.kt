@@ -802,22 +802,21 @@ class StudioEqualizerActivity : AppCompatActivity() {
 
         val isTargetAppsOnly = PowerampPresetManager.isTargetAppsOnlyMode(this)
         if (isTargetAppsOnly) {
-            val targetedRules = PowerampPresetManager.getAllAppPresets(this)
-            val perAppConfigs = PerAppManager.getAllConfigs(this)
-            val targetedPkgs = (targetedRules.keys + perAppConfigs.keys.filter { pkg ->
-                val cfg = PerAppManager.getConfig(this, pkg)
-                val p = cfg?.eqPreset
-                !p.isNullOrBlank() && p != "Default" && p != "Default (System)"
-            }).toSet()
+            val cachedTargetPreset = StudioDspManager.getActiveTargetAppPreset()
+            val cachedTargetPkg = StudioDspManager.getActiveTargetAppPkg()
 
-            val activeAudioPkgs = FreezerManager.getActivePlayingAudioPackages(this)
-            val playingTargetPkg = activeAudioPkgs.firstOrNull { targetedPkgs.contains(it) }
+            if (!cachedTargetPreset.isNullOrBlank() && StudioDspManager.isCurrentlyMasterActive()) {
+                val appLabel = if (!cachedTargetPkg.isNullOrBlank()) {
+                    try {
+                        val pm = packageManager
+                        val appInfo = pm.getApplicationInfo(cachedTargetPkg, 0)
+                        pm.getApplicationLabel(appInfo).toString()
+                    } catch (e: Exception) {
+                        null
+                    }
+                } else null
 
-            if (playingTargetPkg != null) {
-                val presetName = PowerampPresetManager.getAppPreset(this, playingTargetPkg)
-                    ?: PerAppManager.getConfig(this, playingTargetPkg)?.eqPreset
-                    ?: PowerampPresetManager.getActivePresetName(this)
-                tvDspStatus.text = "Target App Active • $presetName"
+                tvDspStatus.text = if (!appLabel.isNullOrBlank()) "Target App: $appLabel • $cachedTargetPreset" else "Target App Active • $cachedTargetPreset"
                 tvDspStatus.setTextColor(android.graphics.Color.parseColor("#00E5FF"))
             } else {
                 tvDspStatus.text = "DSP Sleeping • Waiting for Target App"
@@ -1166,6 +1165,22 @@ class StudioEqualizerActivity : AppCompatActivity() {
         switchHeadphonesOnly.isChecked = PowerampPresetManager.isHeadphonesOnlyMode(this)
         switchTargetAppsOnly.isChecked = PowerampPresetManager.isTargetAppsOnlyMode(this)
         loadPerAppRules()
+
+        // Trigger an asynchronous audio state re-evaluation in background for instant detection
+        Thread {
+            try {
+                val activeAudio = FreezerManager.getActivePlayingAudioPackages(this)
+                val targetedRules = PowerampPresetManager.getAllAppPresets(this)
+                val target = activeAudio.firstOrNull { targetedRules.containsKey(it) }
+                if (target != null) {
+                    val preset = PowerampPresetManager.getAppPreset(this, target)
+                    StudioDspManager.setActiveTargetApp(target, preset)
+                    StudioDspManager.setBypass(this, false)
+                    StudioDspManager.resumeDsp(this)
+                    runOnUiThread { updateMasterStatusText() }
+                }
+            } catch (e: Exception) {}
+        }.start()
     }
 
     override fun onPause() {

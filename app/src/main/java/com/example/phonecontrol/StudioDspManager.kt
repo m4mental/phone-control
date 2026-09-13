@@ -43,10 +43,20 @@ object StudioDspManager {
     @Volatile private var isCurrentlyEnabled = false
     @Volatile private var isAsleep = false
     @Volatile private var isBypassed = false
+    @Volatile private var activeTargetAppPkg: String? = null
+    @Volatile private var activeTargetAppPreset: String? = null
 
     private var currentClarityGain = 0.0f
     private var currentChannelBalance = 0.0f
     private var currentBasePreamp = 0.0f
+
+    fun setActiveTargetApp(packageName: String?, presetName: String?) {
+        activeTargetAppPkg = packageName
+        activeTargetAppPreset = presetName
+    }
+
+    fun getActiveTargetAppPkg(): String? = activeTargetAppPkg
+    fun getActiveTargetAppPreset(): String? = activeTargetAppPreset
 
     fun ensureInitialized(context: Context) {
         if (!isInitialized || (dynamicsProcessing == null && standardEqualizer == null)) {
