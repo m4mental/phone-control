@@ -73,6 +73,10 @@ class AutoTweakService : Service() {
     private var audioPauseDebounceRunnable: Runnable? = null
     private var screenOffFreezeJob: Runnable? = null
     private val screenOffHandler = Handler(Looper.getMainLooper())
+    private var aiTickerHandler: Handler? = null
+    private var aiTickerRunnable: Runnable? = null
+    private var lastServiceCpuTotal = 0L
+    private var lastServiceCpuIdle = 0L
 
     private val cameraAvailabilityCallback = object : CameraManager.AvailabilityCallback() {
         override fun onCameraUnavailable(cameraId: String) {
@@ -401,6 +405,9 @@ class AutoTweakService : Service() {
                 StudioDspManager.init(this@AutoTweakService)
             }
         }
+
+        aiTickerHandler = Handler(Looper.getMainLooper())
+        startAiTicker()
     }
 
     private fun handleAudioPlaybackStateChanged(configs: List<AudioPlaybackConfiguration>?) {
@@ -543,6 +550,15 @@ class AutoTweakService : Service() {
                 val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
                 val focus = prefs.getString("selected_focus", "rbFocusDaily")
                 applyAiTweak(load, focus ?: "rbFocusDaily")
+            }
+            return START_STICKY
+        }
+
+        // 3. Instant AI Focus / Mode Re-apply Signal
+        if (action == "com.example.phonecontrol.ACTION_REAPPLY_AI") {
+            lastAiMode = ""
+            tweakExecutor.execute {
+                checkAndApplyDynamicAiTweak()
             }
             return START_STICKY
         }
@@ -1140,6 +1156,74 @@ class AutoTweakService : Service() {
         }
     }
 
+    private fun startAiTicker() {
+        stopAiTicker()
+        if (!isScreenOn) return
+        aiTickerRunnable = object : Runnable {
+            override fun run() {
+                if (isScreenOn) {
+                    tweakExecutor.execute {
+                        checkAndApplyDynamicAiTweak()
+                    }
+                }
+                aiTickerHandler?.postDelayed(this, 1500)
+            }
+        }
+        aiTickerHandler?.postDelayed(aiTickerRunnable!!, 1500)
+    }
+
+    private fun stopAiTicker() {
+        aiTickerRunnable?.let { aiTickerHandler?.removeCallbacks(it) }
+        aiTickerRunnable = null
+    }
+
+    private fun checkAndApplyDynamicAiTweak() {
+        val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+        if (prefs.getString("selected_mode", "rbBalance") != "rbAutomatic") return
+        if (isPerAppActive || activePerAppMergedConfig != null) return
+        if (prefs.getInt("manual_stage_override", 0) != 0 || TweakManager.manualStageOverride != 0) return
+        if (TweakManager.isPostBootTurboActive) return
+
+        val liveCpuUsage = readCurrentCpuUsage()
+        val focus = prefs.getString("selected_focus", "rbFocusDaily") ?: "rbFocusDaily"
+        applyAiTweak(liveCpuUsage, focus)
+    }
+
+    private fun readCurrentCpuUsage(): Int {
+        return try {
+            val reader = java.io.BufferedReader(java.io.FileReader("/proc/stat"))
+            val line = reader.readLine()
+            reader.close()
+            if (line != null && line.startsWith("cpu ")) {
+                val parts = line.trim().split("\\s+".toRegex())
+                if (parts.size >= 5) {
+                    val user = parts[1].toLong()
+                    val nice = parts[2].toLong()
+                    val system = parts[3].toLong()
+                    val idle = parts[4].toLong()
+                    val iowait = if (parts.size > 5) parts[5].toLong() else 0L
+                    val irq = if (parts.size > 6) parts[6].toLong() else 0L
+                    val softirq = if (parts.size > 7) parts[7].toLong() else 0L
+
+                    val total = user + nice + system + idle + iowait + irq + softirq
+                    val active = total - (idle + iowait)
+
+                    val totalDelta = total - lastServiceCpuTotal
+                    val activeDelta = active - (lastServiceCpuTotal - lastServiceCpuIdle)
+
+                    lastServiceCpuTotal = total
+                    lastServiceCpuIdle = idle + iowait
+
+                    if (totalDelta > 0 && activeDelta >= 0) {
+                        (activeDelta * 100 / totalDelta).toInt().coerceIn(0, 100)
+                    } else 0
+                } else 0
+            } else 0
+        } catch (e: Exception) {
+            0
+        }
+    }
+
     private fun applyAiTweak(load: Int, focus: String) {
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
         if (TweakManager.isPostBootTurboActive) {
@@ -1147,7 +1231,7 @@ class AutoTweakService : Service() {
             return
         }
         val manualStage = prefs.getInt("manual_stage_override", 0)
-        if (manualStage != 0) {
+        if (manualStage != 0 || TweakManager.manualStageOverride != 0) {
             // Respect Test Lab Manual Stage Override 100% (Do not overwrite user test locks)
             return
         }
@@ -1169,30 +1253,37 @@ class AutoTweakService : Service() {
         } else {
             when (focus) {
                 "rbFocusBattery" -> {
-                    // Battery Saver Focus: Progressive 3-Stage EAS Ladder (650M -> 850M -> 950M -> Boost)
+                    // Battery Saver Focus: 4-Stage Progressive Dynamic EAS Ladder
+                    // Stage 1 (0-35% load): 650M -> 850M -> 950M (Big Cores 400MHz Sleep)
+                    // Stage 2 (35-70% load): Pure 6-Core Fluid up to 2.0GHz (Big Cores 400MHz Sleep)
+                    // Stage 3 (70-90% load): Dual-Cluster Compute (2.0GHz Little + 1.5GHz Big)
+                    // Stage 4 (>90% load): Extreme Turbo Unleashed (2.0GHz Little + 2.8GHz Big Turbo)
                     when {
-                        adjustedLoad > 75 -> "AI_Boost"
-                        adjustedLoad > 45 -> "AI_Eco950"
-                        adjustedLoad > 18 -> "AI_Eco850"
+                        adjustedLoad > 90 -> "AI_Extreme"
+                        adjustedLoad > 70 -> "AI_Boost"
+                        adjustedLoad > 40 -> "AI_Daily"
+                        adjustedLoad > 25 -> "AI_Eco950"
+                        adjustedLoad > 14 -> "AI_Eco850"
                         else -> "AI_Eco650"
                     }
                 }
                 "rbFocusDaily" -> {
-                    // Daily Fluent Focus: Idle drops to Stage 1 (650M-950M), active gestures/switches jump to Stage 2 (120fps), heavy tasks to Stage 3
+                    // Daily Usage Focus: Smart balance between speed and battery
                     when {
-                        adjustedLoad > 75 -> "AI_Extreme"
-                        adjustedLoad > 45 -> "AI_Boost"
-                        adjustedLoad > 15 -> "AI_Daily"
+                        adjustedLoad > 85 -> "AI_Extreme"
+                        adjustedLoad > 60 -> "AI_Boost"
+                        adjustedLoad > 18 -> "AI_Daily"
+                        adjustedLoad > 8 -> "AI_Eco850"
                         else -> "AI_Eco650"
                     }
                 }
                 "rbFocusMultitasking" -> {
                     // Multitasking Focus: Instant Stage 2 & 3 throughput with idle saver
                     when {
-                        adjustedLoad > 50 -> "AI_Extreme"
-                        adjustedLoad > 30 -> "AI_Boost"
-                        adjustedLoad > 10 -> "AI_Daily"
-                        else -> "AI_Eco650"
+                        adjustedLoad > 75 -> "AI_Extreme"
+                        adjustedLoad > 45 -> "AI_Boost"
+                        adjustedLoad > 12 -> "AI_Daily"
+                        else -> "AI_Eco850"
                     }
                 }
                 else -> "AI_Daily"
@@ -1217,7 +1308,7 @@ class AutoTweakService : Service() {
                 "AI_Eco950" -> "AI: Battery Burst (950M)"
                 "AI_Daily" -> "AI: Daily Fluent"
                 "AI_Boost" -> "AI: Multi-Boost"
-                "AI_Extreme" -> "AI: Extreme"
+                "AI_Extreme" -> "AI: Extreme Turbo"
                 else -> "AI: Active"
             }
             getSharedPreferences("prefs", MODE_PRIVATE).edit().putString("active_ai_label", displayLabel).apply()
@@ -1229,6 +1320,7 @@ class AutoTweakService : Service() {
     private fun onScreenOff(prefs: android.content.SharedPreferences) {
         isScreenOn = false
         isWakeupBoosting = false
+        stopAiTicker()
         
         Log.d("AutoTweak", "Screen OFF Event - Transitioning to Deep Sleep (Async)")
         ShellUtils.fastCmd("echo 'off' > /data/local/tmp/pc_screen")
@@ -1321,10 +1413,8 @@ class AutoTweakService : Service() {
         }
 
         // 9. Zero-Drain Deep Sleep Profile (480MHz Hardware Minimum Floor)
-        val manualStage = prefs.getInt("manual_stage_override", 0)
-        if (manualStage == 0) {
-            TweakManager.applyScreenOffSleep()
-        }
+        // Strictly applies to ALL modes (Manual Stages, Manual Profiles & AI Engine)
+        TweakManager.applyScreenOffSleep()
     }
 
     private fun scheduleScreenOffFreeze(delaySeconds: Int, allSafeApps: Set<String>) {
@@ -1391,6 +1481,7 @@ class AutoTweakService : Service() {
                     val focus = prefs.getString("selected_focus", "rbFocusDaily") ?: "rbFocusDaily"
                     val load = calculateAppAiLoad(lastForegroundApp)
                     applyAiTweak(load, focus)
+                    startAiTicker()
                 }
                 else -> TweakManager.applyGlobalMode("Balance")
             }
@@ -1439,6 +1530,7 @@ class AutoTweakService : Service() {
     }
 
     override fun onDestroy() {
+        stopAiTicker()
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && audioManager != null && audioPlaybackCallback != null) {
                 audioManager?.unregisterAudioPlaybackCallback(audioPlaybackCallback)

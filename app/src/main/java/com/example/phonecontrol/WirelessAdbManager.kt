@@ -85,8 +85,14 @@ object WirelessAdbManager {
     }
 
     private fun getFallbackIp(): String {
-        val out = ShellUtils.fastCmdResult("ip -4 addr show | grep -oP '(?<=inet\\s)\\d+(\\.\\d+){3}' | grep -v '127.0.0.1' | head -n 1", 1000).trim()
-        return if (out.isNotBlank()) out else "127.0.0.1"
+        try {
+            val out = ShellUtils.fastCmdResult("ip route get 1.1.1.1 | tr ' ' '\\n' | grep -A 1 src | tail -n 1", 500).trim()
+            if (out.matches(Regex("\\d+\\.\\d+\\.\\d+\\.\\d+"))) return out
+            val out2 = ShellUtils.fastCmdResult("ip -4 addr show wlan0", 500)
+            val match = Regex("inet\\s+(\\d+\\.\\d+\\.\\d+\\.\\d+)").find(out2)
+            if (match != null) return match.groupValues[1]
+        } catch (e: Exception) {}
+        return "127.0.0.1"
     }
 
     fun getConnectCommand(): String {

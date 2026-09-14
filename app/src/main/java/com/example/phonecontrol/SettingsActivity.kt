@@ -128,6 +128,9 @@ class SettingsActivity : AppCompatActivity() {
             val willExpandAll = expandedCategoryKeys.size < categoryHolders.size
             for (holder in categoryHolders) {
                 if (willExpandAll) {
+                    if (holder.subItems.isEmpty()) {
+                        renderSubFeatures(holder, holder.swMaster.isChecked)
+                    }
                     holder.containerSub.visibility = View.VISIBLE
                     holder.divider.visibility = View.VISIBLE
                     holder.ivChevron.animate().rotation(180f).setDuration(220).start()
@@ -156,8 +159,29 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        setupIndependentWirelessAdbCard()
-        refreshToggles()
+        if (categoryHolders.isEmpty()) {
+            setupIndependentWirelessAdbCard()
+            refreshToggles()
+        } else {
+            syncToggleStates()
+        }
+    }
+
+    private fun syncToggleStates() {
+        val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+        for (holder in categoryHolders) {
+            val isMasterOn = prefs.getBoolean(holder.category.masterKey, true)
+            holder.swMaster.setOnCheckedChangeListener(null)
+            holder.swMaster.isChecked = isMasterOn
+            for (item in holder.subItems) {
+                val isSubOn = prefs.getBoolean(item.sub.prefKey, item.sub.defaultEnabled)
+                item.sw.setOnCheckedChangeListener(null)
+                item.sw.isChecked = isSubOn
+                item.sw.isEnabled = isMasterOn
+                item.view.alpha = if (isMasterOn) 1.0f else 0.45f
+            }
+            updateCategoryBadge(holder)
+        }
     }
 
     private fun setupIndependentWirelessAdbCard() {
@@ -172,9 +196,6 @@ class SettingsActivity : AppCompatActivity() {
         fun refreshUi(enabled: Boolean) {
             sw.setOnCheckedChangeListener(null)
             sw.isChecked = enabled
-            val ip = WirelessAdbManager.getDeviceIpAddress()
-            val cmd = "adb connect $ip:${WirelessAdbManager.ADB_PORT}"
-            tvCmd.text = cmd
 
             if (enabled) {
                 badge.text = "ONLINE : 5555"
@@ -182,7 +203,7 @@ class SettingsActivity : AppCompatActivity() {
                 badge.setTextColor(Color.parseColor("#00E676"))
                 cardWirelessAdb.strokeColor = Color.parseColor("#00E5FF")
                 layoutCmd.visibility = View.VISIBLE
-                tvSubtitle.text = "Active on IP $ip (Port 5555). Auto-starts on boot."
+                tvSubtitle.text = "Active on Port 5555. Auto-starts on boot."
             } else {
                 badge.text = "OFFLINE"
                 badge.setBackgroundResource(R.drawable.bg_badge_pill_off)
@@ -190,6 +211,18 @@ class SettingsActivity : AppCompatActivity() {
                 cardWirelessAdb.strokeColor = Color.parseColor("#333333")
                 layoutCmd.visibility = View.GONE
                 tvSubtitle.text = "Direct Wi-Fi & Hotspot debugging. Auto-starts on boot."
+            }
+
+            thread {
+                val ip = WirelessAdbManager.getDeviceIpAddress()
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    val cmd = "adb connect $ip:${WirelessAdbManager.ADB_PORT}"
+                    tvCmd.text = cmd
+                    if (enabled) {
+                        tvSubtitle.text = "Active on IP $ip (Port 5555). Auto-starts on boot."
+                    }
+                }
             }
 
             sw.setOnCheckedChangeListener { _, isChecked ->
@@ -479,6 +512,9 @@ class SettingsActivity : AppCompatActivity() {
         layoutHeader.setOnClickListener {
             val willBeExpanded = containerSub.visibility != View.VISIBLE
             if (willBeExpanded) {
+                if (holder.subItems.isEmpty()) {
+                    renderSubFeatures(holder, holder.swMaster.isChecked)
+                }
                 containerSub.visibility = View.VISIBLE
                 divider.visibility = View.VISIBLE
                 ivChevron.animate().rotation(180f).setDuration(220).start()
@@ -511,6 +547,9 @@ class SettingsActivity : AppCompatActivity() {
             } else {
                 // When turned ON, auto-expand dropdown if currently collapsed
                 if (containerSub.visibility != View.VISIBLE) {
+                    if (holder.subItems.isEmpty()) {
+                        renderSubFeatures(holder, true)
+                    }
                     containerSub.visibility = View.VISIBLE
                     divider.visibility = View.VISIBLE
                     ivChevron.animate().rotation(180f).setDuration(220).start()
@@ -521,11 +560,15 @@ class SettingsActivity : AppCompatActivity() {
 
             editor.commit()
             // Refresh sub-views inside container
-            renderSubFeatures(holder, isChecked)
+            if (holder.subItems.isNotEmpty() || isChecked) {
+                renderSubFeatures(holder, isChecked)
+            }
             updateCategoryBadge(holder)
         }
 
-        renderSubFeatures(holder, isMasterOn)
+        if (isExpanded) {
+            renderSubFeatures(holder, isMasterOn)
+        }
         updateCategoryBadge(holder)
         layoutToggleContainer.addView(cardView)
     }
@@ -626,6 +669,9 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         for (holder in categoryHolders) {
+            if (holder.subItems.isEmpty()) {
+                renderSubFeatures(holder, holder.swMaster.isChecked)
+            }
             val titleMatches = holder.category.title.lowercase().contains(q)
             val descMatches = holder.category.description.lowercase().contains(q)
             var anySubMatches = false

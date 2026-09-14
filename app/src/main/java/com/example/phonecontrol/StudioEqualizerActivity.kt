@@ -1276,13 +1276,19 @@ class StudioEqualizerActivity : AppCompatActivity() {
             val spinner = itemView.findViewById<Spinner>(R.id.spinnerRulePreset)
             val btnDelete = itemView.findViewById<ImageView>(R.id.btnDeleteRule)
 
-            try {
-                val appInfo = pm.getApplicationInfo(pkg, 0)
-                ivIcon.setImageDrawable(pm.getApplicationIcon(appInfo))
-                tvName.text = pm.getApplicationLabel(appInfo)
-            } catch (e: Exception) {
-                ivIcon.setImageResource(android.R.drawable.sym_def_app_icon)
-                tvName.text = pkg
+            ivIcon.setImageResource(android.R.drawable.sym_def_app_icon)
+            tvName.text = pkg
+            thread {
+                try {
+                    val appInfo = pm.getApplicationInfo(pkg, 0)
+                    val label = pm.getApplicationLabel(appInfo)
+                    val icon = pm.getApplicationIcon(appInfo)
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+                        ivIcon.setImageDrawable(icon)
+                        tvName.text = label
+                    }
+                } catch (e: Exception) {}
             }
             tvPackage.text = pkg
 

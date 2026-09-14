@@ -366,7 +366,7 @@ object TweakManager {
                 echo $bMax > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_max_freq 2>/dev/null
                 echo $bMin > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
             done
-            chmod 444 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
+            chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* 2>/dev/null
         """.trimIndent()
         ShellUtils.fastCmd(script)
         Log.d("TweakManager", "🎛️ Custom Per-App Profile Applied -> L: ${lMin/1000}-${lMax/1000}MHz, B: ${bMin/1000}-${bMax/1000}MHz, Gov: $gov")
@@ -408,7 +408,7 @@ object TweakManager {
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq 2>/dev/null
                     echo powersave > /sys/devices/system/cpu/cpufreq/policy6/scaling_governor 2>/dev/null
                     echo 1000 > /sys/devices/system/cpu/cpufreq/policy0/schedutil/rate_limit_us 2>/dev/null
-                    chmod 444 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
+                    chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* 2>/dev/null
                 """.trimIndent()
                 ShellUtils.fastCmd(script)
             }
@@ -433,7 +433,7 @@ object TweakManager {
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq 2>/dev/null
                     echo powersave > /sys/devices/system/cpu/cpufreq/policy6/scaling_governor 2>/dev/null
                     echo 1000 > /sys/devices/system/cpu/cpufreq/policy0/schedutil/rate_limit_us 2>/dev/null
-                    chmod 444 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
+                    chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* 2>/dev/null
                 """.trimIndent()
                 ShellUtils.fastCmd(script)
             }
@@ -457,7 +457,7 @@ object TweakManager {
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_min_freq 2>/dev/null
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq 2>/dev/null
                     echo powersave > /sys/devices/system/cpu/cpufreq/policy6/scaling_governor 2>/dev/null
-                    chmod 444 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
+                    chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* 2>/dev/null
                 """.trimIndent()
                 ShellUtils.fastCmd(script)
             }
@@ -481,7 +481,7 @@ object TweakManager {
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_min_freq 2>/dev/null
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq 2>/dev/null
                     echo powersave > /sys/devices/system/cpu/cpufreq/policy6/scaling_governor 2>/dev/null
-                    chmod 444 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
+                    chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* 2>/dev/null
                 """.trimIndent()
                 ShellUtils.fastCmd(script)
             }
@@ -505,7 +505,7 @@ object TweakManager {
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_min_freq 2>/dev/null
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq 2>/dev/null
                     echo powersave > /sys/devices/system/cpu/cpufreq/policy6/scaling_governor 2>/dev/null
-                    chmod 444 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
+                    chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* 2>/dev/null
                 """.trimIndent()
                 ShellUtils.fastCmd(script)
             }
@@ -529,7 +529,7 @@ object TweakManager {
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_min_freq 2>/dev/null
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq 2>/dev/null
                     echo powersave > /sys/devices/system/cpu/cpufreq/policy6/scaling_governor 2>/dev/null
-                    chmod 444 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
+                    chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* 2>/dev/null
                 """.trimIndent()
                 ShellUtils.fastCmd(script)
             }
@@ -553,7 +553,7 @@ object TweakManager {
                     echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_min_freq 2>/dev/null
                     echo 1500000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq 2>/dev/null
                     echo schedutil > /sys/devices/system/cpu/cpufreq/policy6/scaling_governor 2>/dev/null
-                    chmod 444 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
+                    chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* 2>/dev/null
                 """.trimIndent()
                 ShellUtils.fastCmd(script)
             }
@@ -580,7 +580,7 @@ object TweakManager {
                     echo 1 > /sys/kernel/gpu/gpu_max_clock 2>/dev/null
                     echo 55 > /proc/sys/kernel/sched_upmigrate 2>/dev/null
                     echo 45 > /proc/sys/kernel/sched_downmigrate 2>/dev/null
-                    chmod 444 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
+                    chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* 2>/dev/null
                 """.trimIndent()
                 ShellUtils.fastCmd(script)
             }
@@ -660,7 +660,7 @@ object TweakManager {
             echo powersave > /sys/devices/system/cpu/cpufreq/policy6/scaling_governor 2>/dev/null
             echo 1000 > /sys/devices/system/cpu/cpufreq/policy0/schedutil/rate_limit_us 2>/dev/null
             echo 20000 > /sys/devices/system/cpu/cpufreq/policy6/schedutil/up_rate_limit_us 2>/dev/null
-            chmod 444 /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq 2>/dev/null
+            chmod 666 /sys/devices/system/cpu/cpufreq/policy*/scaling_* 2>/dev/null
         """.trimIndent()
         ShellUtils.fastCmd(script)
         android.util.Log.d("TweakManager", "📹 Video Call Boost Applied -> 6 Little Cores LOCKED at 950MHz")

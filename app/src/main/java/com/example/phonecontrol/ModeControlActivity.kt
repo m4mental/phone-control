@@ -96,6 +96,13 @@ class ModeControlActivity : AppCompatActivity() {
                 else -> "rbFocusDaily"
             }
             prefs.edit().putString("selected_focus", focusKey).apply()
+
+            if (prefs.getString("selected_mode", "rbBalance") == "rbAutomatic") {
+                val intentAi = Intent(this, AutoTweakService::class.java).apply {
+                    action = "com.example.phonecontrol.ACTION_REAPPLY_AI"
+                }
+                startService(intentAi)
+            }
         }
 
         // Explicit Apply Mode Button

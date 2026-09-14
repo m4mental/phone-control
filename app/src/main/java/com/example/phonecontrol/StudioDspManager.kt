@@ -68,12 +68,14 @@ object StudioDspManager {
     fun init(context: Context) {
         if (isInitialized && (dynamicsProcessing != null || standardEqualizer != null)) return
         try {
-            // Auto-grant permissions via root for system-wide audio control
-            try {
-                ShellUtils.fastCmd("pm grant ${context.packageName} android.permission.MODIFY_AUDIO_SETTINGS")
-                ShellUtils.fastCmd("pm grant ${context.packageName} android.permission.DUMP")
-                ShellUtils.fastCmd("pm grant ${context.packageName} android.permission.RECORD_AUDIO")
-            } catch (e: Exception) {}
+            // Auto-grant permissions via root for system-wide audio control in background
+            kotlin.concurrent.thread {
+                try {
+                    ShellUtils.fastCmd("pm grant ${context.packageName} android.permission.MODIFY_AUDIO_SETTINGS")
+                    ShellUtils.fastCmd("pm grant ${context.packageName} android.permission.DUMP")
+                    ShellUtils.fastCmd("pm grant ${context.packageName} android.permission.RECORD_AUDIO")
+                } catch (e: Exception) {}
+            }
 
             // 1. Initialize BassBoost, Virtualizer & PresetReverb on Global Session
             try {
