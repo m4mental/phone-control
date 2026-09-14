@@ -23,9 +23,25 @@
 ---
 
 ## ✨ What's New & Recent Fixes
+* **🌐 Independent Developer & Wireless ADB Engine + Quick Settings Tile:**
+  * Root-level persistent TCP/IP debugging on fixed **Port 5555** (`service.adb.tcp.port 5555`).
+  * **Completely Decoupled:** Dedicated card in Master Settings that functions independently from System Tools Hub and Master presets.
+  * **Reboot Persistence:** Automatically re-applies port 5555 on device boot via `BootReceiver`.
+  * **Dedicated Quick Settings (QS) Tile (`WirelessAdbTileService`):** 1-tap wireless debugging toggle in the notification shade, live IP subtitle (`<IP>:5555`), and automatic clipboard copy of the `adb connect` command.
+  * **Hotspot-Aware IP Detection:** Prioritizes mobile hotspot interfaces (`ap0`, `softap0`, `swlan0`) over Wi-Fi (`wlan0`) for instant tethered computer debugging.
+* **🎧 Studio DSP Multi-Tab UI, AutoEQ Engine & Zero-Dropout Audio Shield:**
+  * **Redesigned Multi-Tab Interface:** Sleek 4-tab bottom navigation (`Effects`, `Apps & Cinema`, `Spatial`, `EQ`) with smooth transitions.
+  * **AutoEQ Headphone Database Integration (`AutoEqManager`):** Built-in parametric headphone frequency correction database with search and 1-tap profile application.
+  * **Audio Dropout & Flickering Shield:** Removed destructive `hasControl()` engine teardowns in `StudioDspManager.kt` so media playback never glitches or resets DSP on resume.
+  * **Notification Audio Bypass Protection:** Filtered `USAGE_NOTIFICATION*` and `USAGE_ASSISTANCE_SONIFICATION` audio attributes in `AutoTweakService.kt` and excluded `com.android.systemui` in `FreezerManager.kt` so incoming notifications and alert dings never cut out, mute, or bypass the Equalizer.
+  * **Dynamic Equal-Loudness Limiter & Bass Drive:** Auto-compensates gain for punchy, distortion-free dynamics.
+* **📊 Floating Performance HUD & Granular Per-App Frequency Controls:**
+  * **Real-Time Floating Performance HUD (`FloatingHudService` & `HudTileService`):** Draggable on-screen overlay monitoring live CPU core frequencies, GPU clock, real-time FPS, and device thermals.
+  * **Granular Frequency Tuning:** Per-app custom frequency sliders spanning 480 MHz to 2.8 GHz (including the dedicated 750 MHz step), with CPU governor locks and scheduler tuning.
+  * **Recents-Aware Priority Hierarchy & Streaming Mode:** Prevents background streaming apps (YouTube PiP, Spotify, audio players) from stuttering with progressive EAS battery scaling and 4-second freeze debounce protection.
 * **🛡️ System-wide Private DNS Switcher & Ad-Blocker + Quick Settings Tile:**
   * 1-Tap switching between `Off (ISP)`, `AdGuard DNS` (system-wide ad & tracker blocking without VPN battery drain), `Cloudflare 1.1.1.1`, and `Google DNS`.
-  * Added dedicated Quick Settings (QS) Tile (`PrivateDnsTileService`) in the notification shade with live dynamic state badges.
+  * Dedicated Quick Settings (QS) Tile (`PrivateDnsTileService`) in notification shade with live dynamic state badges.
 * **📦 Installed App Extractor & Backup (.apk / .apks Bundles):**
   * Extract any installed user or system application directly to `/sdcard/PHONE_CONTROL/extracted_apks/`.
   * Automatically bundles modern multi-split Google Play apps into standard `.apks` archives via high-performance Java `ZipOutputStream`.
@@ -453,16 +469,53 @@ Phone Control features a high-precision, studio-grade audio mastering suite buil
 * **Master Tone & Spatial Controls:**
   * Tone Bass (90Hz Shelf) and Tone Treble (10kHz Shelf) sliders.
   * Hardware Subwoofer Bass Boost and 3D Spatial Virtualizer.
-* **✨ ViPER FX Suite (Acoustics, Widening & Harmonics):**
-  * 🎧 **Differential Surround:** Stereo soundstage expansion via Haas effect phase delays, creating an immersive 3D surround atmosphere in headphones.
-  * 🏛️ **Reverberation:** Acoustic simulation powered by Android's native `PresetReverb` engine (Small Room, Medium Room, Large Room, Concert Hall, Studio Plate).
-  * 🔊 **Dynamic System:** ViPER-inspired harmonic bass drive and diaphragm resonance algorithm delivering deep, punchy subwoofer rumble without distortion.
-* **🎵 Persistent Background Auto-Attach & Audio Session Receiver:**
-  * Auto-initializes on system boot and service startup, running 100% seamlessly in the background without requiring the Phone Control app to be opened.
-  * Dynamically hooks into Android's `OPEN_AUDIO_EFFECT_CONTROL_SESSION` broadcasts to attach Studio DSP filters, 3D Surround, and Equalizer presets directly to any active media player (Spotify, YouTube Music, local players) in 0ms.
-* **Smart Sleep Guard & Dual Coexistence:**
-  * Auto-sleeps the DSP engine to **0% CPU / 0% RAM usage** when music is paused, waking up in **0ms** upon audio track playback.
-  * Seamlessly co-exists with the App Freezer's external **Smart Equalizer Audio Guard** (protecting external apps like Poweramp Equalizer / Wavelet if user prefers external equalizers).
+* **🛡️ Zero-Dropout Audio Shield & Notification Bypass Protection:**
+  * **No Flickering / Dropout:** Eliminates destructive `hasControl()` effect teardowns in `StudioDspManager.kt`. Effects remain cleanly attached across playback transitions without volume dips or cutouts.
+  * **System Notification Filtering:** `AutoTweakService.kt` filters out `USAGE_NOTIFICATION`, `USAGE_NOTIFICATION_COMMUNICATION_INSTANT`, and `USAGE_ASSISTANCE_SONIFICATION` events, ensuring incoming notification alerts and ringtones never disengage DSP filters or reset equalizers.
+  * **SystemUI Exclusion:** `FreezerManager.kt` explicitly ignores `com.android.systemui` audio streams, keeping media playback priority strictly on active music and video applications.
+* **🎧 AutoEQ Headphone Database Integration (`AutoEqManager`):**
+  * Integrated database containing thousands of parametric compensation curves for consumer, audiophile, and studio monitor headphones.
+  * Instant search filter by headphone brand and model with 1-tap parametric EQ target curve application.
+* **🎚️ 4-Tab Bottom Navigation Architecture:**
+  * **Effects Tab:** Preamp Gain, Brickwall Peak Limiter, Equal Loudness Limiter, Bass Drive, and Dynamics Compressor.
+  * **Apps & Cinema Tab:** Per-app equalizer assignment, Cinema Voice Boost, and YouTube / Media player auto-switching.
+  * **Spatial Tab:** Differential Surround widening, Virtualizer, and Multi-Environment Acoustic Reverb.
+  * **EQ Tab:** 10-Band Graphic/Parametric Equalizer with Bézier curve visualizer and preset management.
+
+---
+
+## 🌐 Developer Tools & Wireless ADB Engine (Port 5555)
+
+Engineered for seamless wireless development and debugging over local Wi-Fi and Mobile Hotspot connections without cables or dynamic port confusion:
+* **⚡ Fixed TCP/IP Port 5555 Daemon:**
+  * Directly switches Android's `adbd` daemon to listen on standardized port 5555 via root execution:
+    ```bash
+    setprop service.adb.tcp.port 5555; stop adbd; start adbd
+    ```
+  * Eliminates the need to repeatedly enable Android 11+'s rotating dynamic pairing ports in Developer Options.
+* **🔄 Boot & Restart Persistence:**
+  * Automatically registered in `BootReceiver.kt`. Whenever the device restarts, port 5555 is immediately re-opened in the background if the feature was enabled.
+* **📱 Dedicated Quick Settings (QS) Tile (`WirelessAdbTileService`):**
+  * 1-Tap toggle in the notification shade to activate or deactivate wireless debugging on the fly.
+  * **Dynamic Subtitle:** Displays the active IP and port (e.g. `10.18.16.233:5555`) or `Off`.
+  * **Auto-Clipboard Copy:** Tapping the tile to enable immediately copies `adb connect <IP>:5555` to the device clipboard for 1-click terminal execution on your computer.
+* **📶 Mobile Hotspot-First IP Resolution:**
+  * Intelligently scans network interfaces and prioritizes soft AP/Hotspot interfaces (`ap0`, `softap0`, `swlan0`, `rndis`) over standard Wi-Fi (`wlan0`), ensuring immediate connectivity when working tethered to your phone.
+* **🧩 Fully Decoupled Architecture:**
+  * Isolated into its own standalone card in Master Settings (`cardWirelessAdb`), guaranteeing that toggling System Tools Hub or changing master optimization presets never accidentally disconnects your active ADB debugging session.
+
+---
+
+## 📊 Floating Performance HUD & Granular Per-App Frequency Control
+
+* **Real-Time Floating Performance HUD (`FloatingHudService` & `HudTileService`):**
+  * Draggable, ultra-compact on-screen overlay presenting live CPU frequencies for Little and Big core clusters, GPU clock speeds, real-time FPS counter, and battery/thermal temperatures.
+  * Dedicated Quick Settings Tile (`HudTileService`) to toggle the overlay on and off instantly without opening the app.
+* **Granular Frequency Tuning (480 MHz – 2.8 GHz):**
+  * Precision frequency limiters supporting every discrete CPU clock frequency on the Dimensity 7200 Pro, including the dedicated 750 MHz low-power step.
+  * Per-app CPU governor locks (`schedutil`, `performance`, `powersave`) and interactive task affinity.
+* **Recents-Aware Streaming Priority:**
+  * Smart priority scheduler detects active Picture-in-Picture (PiP) and background streaming apps (e.g., YouTube, Twitch, Spotify), providing a 4-second freeze debounce and progressive Energy-Aware Scheduling (EAS) to prevent audio stutters during multitasking.
 
 ---
 
