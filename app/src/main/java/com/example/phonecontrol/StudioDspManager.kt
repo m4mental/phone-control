@@ -869,23 +869,16 @@ object StudioDspManager {
 
     /**
      * Smart Sleep Guard: Resumes DSP processing atomically when audio playback begins.
-     * Checks hasControl() to handle AudioFlinger session reclaims, and performs a 
-     * clean atomic re-handshake to guarantee instant hook without requiring app toggling.
+     * Preserves existing AudioEffect pipelines without destructive teardown,
+     * seamlessly waking up the equalizer in 0ms.
      */
     fun resumeDsp(context: Context) {
         val masterOn = PowerampPresetManager.isMasterEnabled(context)
         if (!masterOn || isBypassed) return
 
-        // Validate if existing effects still retain control from AudioFlinger
-        val hasControl = try {
-            (dynamicsProcessing != null && dynamicsProcessing?.hasControl() == true) ||
-            (standardEqualizer != null && standardEqualizer?.hasControl() == true)
-        } catch (e: Exception) { false }
-
-        // If not initialized, lost control, or null, execute fresh atomic re-initialization
-        if (!isInitialized || !hasControl || (dynamicsProcessing == null && standardEqualizer == null)) {
-            Log.d(TAG, "Studio DSP re-initializing on active playback (hasControl: $hasControl, isInit: $isInitialized)")
-            release()
+        // If not initialized or references null, initialize cleanly once
+        if (!isInitialized || (dynamicsProcessing == null && standardEqualizer == null)) {
+            Log.d(TAG, "Studio DSP initializing on active playback (isInit: $isInitialized)")
             init(context)
             isAsleep = false
             return
@@ -912,10 +905,10 @@ object StudioDspManager {
                 }
 
                 isAsleep = false
-                Log.d(TAG, "Studio DSP WOKE UP in 0ms with fresh handshake (Active Sessions: ${sessionDynamicsMap.size + 1})")
+                Log.d(TAG, "Studio DSP WOKE UP in 0ms (Active Sessions: ${sessionDynamicsMap.size + 1})")
             } else {
-                dynamicsProcessing?.enabled = true
-                standardEqualizer?.enabled = true
+                if (dynamicsProcessing?.enabled != true) dynamicsProcessing?.enabled = true
+                if (standardEqualizer?.enabled != true) standardEqualizer?.enabled = true
             }
         } catch (e: Exception) {
             Log.w(TAG, "Error in resumeDsp, recovering with fresh init: ${e.message}")

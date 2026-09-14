@@ -150,12 +150,79 @@ class SettingsActivity : AppCompatActivity() {
             override fun afterTextChanged(s: Editable?) {}
         })
 
+        setupIndependentWirelessAdbCard()
         refreshToggles()
     }
 
     override fun onResume() {
         super.onResume()
+        setupIndependentWirelessAdbCard()
         refreshToggles()
+    }
+
+    private fun setupIndependentWirelessAdbCard() {
+        val cardWirelessAdb = findViewById<MaterialCardView>(R.id.cardWirelessAdb) ?: return
+        val sw = findViewById<SwitchMaterial>(R.id.switchWirelessAdbIndependent) ?: return
+        val badge = findViewById<TextView>(R.id.tvWirelessAdbBadge) ?: return
+        val tvCmd = findViewById<TextView>(R.id.tvWirelessAdbCmd) ?: return
+        val layoutCmd = findViewById<LinearLayout>(R.id.layoutWirelessAdbCommand) ?: return
+        val btnCopy = findViewById<MaterialButton>(R.id.btnCopyAdbCmd) ?: return
+        val tvSubtitle = findViewById<TextView>(R.id.tvWirelessAdbSubtitle) ?: return
+
+        fun refreshUi(enabled: Boolean) {
+            sw.setOnCheckedChangeListener(null)
+            sw.isChecked = enabled
+            val ip = WirelessAdbManager.getDeviceIpAddress()
+            val cmd = "adb connect $ip:${WirelessAdbManager.ADB_PORT}"
+            tvCmd.text = cmd
+
+            if (enabled) {
+                badge.text = "ONLINE : 5555"
+                badge.setBackgroundResource(R.drawable.bg_badge_pill)
+                badge.setTextColor(Color.parseColor("#00E676"))
+                cardWirelessAdb.strokeColor = Color.parseColor("#00E5FF")
+                layoutCmd.visibility = View.VISIBLE
+                tvSubtitle.text = "Active on IP $ip (Port 5555). Auto-starts on boot."
+            } else {
+                badge.text = "OFFLINE"
+                badge.setBackgroundResource(R.drawable.bg_badge_pill_off)
+                badge.setTextColor(Color.parseColor("#888888"))
+                cardWirelessAdb.strokeColor = Color.parseColor("#333333")
+                layoutCmd.visibility = View.GONE
+                tvSubtitle.text = "Direct Wi-Fi & Hotspot debugging. Auto-starts on boot."
+            }
+
+            sw.setOnCheckedChangeListener { _, isChecked ->
+                thread {
+                    val newCmd = if (isChecked) {
+                        WirelessAdbManager.enable(this@SettingsActivity)
+                    } else {
+                        WirelessAdbManager.disable(this@SettingsActivity)
+                        ""
+                    }
+                    runOnUiThread {
+                        refreshUi(isChecked)
+                        if (isChecked && newCmd.isNotBlank()) {
+                            val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                            val clip = android.content.ClipData.newPlainText("ADB Connect", newCmd)
+                            clipboard.setPrimaryClip(clip)
+                            Toast.makeText(this@SettingsActivity, "⚡ Wireless ADB Active (Port 5555)!\nCopied: $newCmd", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+            }
+        }
+
+        val isEnabled = WirelessAdbManager.isEnabled(this)
+        refreshUi(isEnabled)
+
+        btnCopy.setOnClickListener {
+            val cmd = tvCmd.text.toString()
+            val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            val clip = android.content.ClipData.newPlainText("ADB Connect", cmd)
+            clipboard.setPrimaryClip(clip)
+            Toast.makeText(this, "Copied: $cmd", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun loadDiagnosticsAsync() {
@@ -672,6 +739,9 @@ class SettingsActivity : AppCompatActivity() {
                 }
                 "app_extractor_enabled" -> {
                     // Feature state toggled off; card in System Tools hub dynamically hides
+                }
+                "wireless_adb_enabled" -> {
+                    WirelessAdbManager.disable(this)
                 }
                 "vault_enabled" -> {
                     getSharedPreferences("vault_prefs", MODE_PRIVATE).edit().clear().commit()

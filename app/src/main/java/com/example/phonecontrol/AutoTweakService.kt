@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.hardware.camera2.CameraManager
+import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.AudioPlaybackConfiguration
 import android.media.audiofx.AudioEffect
@@ -407,6 +408,24 @@ class AutoTweakService : Service() {
         var isAnyConfigActive = false
         if (configs != null) {
             for (config in configs) {
+                // Filter out notification/ringtone/sonification usages so transient system alerts don't interrupt music DSP
+                val usage = try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        config.audioAttributes?.usage ?: AudioAttributes.USAGE_UNKNOWN
+                    } else AudioAttributes.USAGE_UNKNOWN
+                } catch (e: Exception) { AudioAttributes.USAGE_UNKNOWN }
+
+                val isIgnoredUsage = usage == AudioAttributes.USAGE_NOTIFICATION ||
+                        usage == AudioAttributes.USAGE_NOTIFICATION_RINGTONE ||
+                        usage == AudioAttributes.USAGE_NOTIFICATION_COMMUNICATION_REQUEST ||
+                        usage == AudioAttributes.USAGE_NOTIFICATION_COMMUNICATION_INSTANT ||
+                        usage == AudioAttributes.USAGE_NOTIFICATION_COMMUNICATION_DELAYED ||
+                        usage == AudioAttributes.USAGE_NOTIFICATION_EVENT ||
+                        usage == AudioAttributes.USAGE_ASSISTANCE_SONIFICATION ||
+                        usage == AudioAttributes.USAGE_ALARM
+
+                if (isIgnoredUsage) continue
+
                 try {
                     val method = config.javaClass.getMethod("isActive")
                     if (method.invoke(config) as? Boolean == true) {
@@ -446,19 +465,22 @@ class AutoTweakService : Service() {
         } else {
             if (isAudioCurrentlyActive) {
                 isAudioCurrentlyActive = false
-                Log.d("AutoTweak", "⏸️ Audio paused or chunk buffering -> Starting 3s grace debounce for PiP / track transitions")
+                Log.d("AutoTweak", "⏸️ Audio paused or chunk buffering -> Starting 4s grace debounce for PiP / track transitions")
 
                 audioPauseDebounceRunnable?.let { equalizerFreezeHandler?.removeCallbacks(it) }
                 audioPauseDebounceRunnable = Runnable {
                     tweakExecutor.execute {
                         val isStillPlaying = audioManager?.isMusicActive == true || FreezerManager.getActivePlayingAudioPackages(this@AutoTweakService).isNotEmpty()
                         if (!isStillPlaying) {
-                            Log.d("AutoTweak", "⏸️ 3s elapsed with no audio -> Evaluating DSP sleep state")
+                            Log.d("AutoTweak", "⏸️ 4s elapsed with no audio -> Evaluating DSP sleep state")
+                            updateStudioDspRouting(lastForegroundApp)
+                        } else {
+                            // If audio resumed or is still playing after temporary pause/duck, ensure DSP is awake!
                             updateStudioDspRouting(lastForegroundApp)
                         }
                     }
                 }
-                equalizerFreezeHandler?.postDelayed(audioPauseDebounceRunnable!!, 3000)
+                equalizerFreezeHandler?.postDelayed(audioPauseDebounceRunnable!!, 4000)
 
                 equalizerFreezeRunnable?.let { equalizerFreezeHandler?.removeCallbacks(it) }
                 equalizerFreezeRunnable = Runnable {
@@ -955,7 +977,9 @@ class AutoTweakService : Service() {
             }).toSet()
 
             // Check if any active audio playing package is a targeted app (Foreground or Background)
+            val prevPlayingTarget = activeAudioPlayingPkg?.takeIf { targetedPkgs.contains(it) }
             val playingTargetPkg = activeAudioPkgs.firstOrNull { targetedPkgs.contains(it) }
+                ?: if (isMusicPlaying) prevPlayingTarget else null
 
             if (playingTargetPkg != null) {
                 // Background or foreground targeted player is streaming audio!
@@ -1000,6 +1024,14 @@ class AutoTweakService : Service() {
                 }
                 return
             } else {
+                // Check if music is still actually active in the system before sleeping DSP
+                if (isMusicPlaying && prevPlayingTarget != null) {
+                    // Audio is still actively streaming (e.g. YouTube in PiP/background during track transition or notification ducking)
+                    Log.d("AutoTweak", "🎯 Guarding active targeted playback ($prevPlayingTarget) during audio flux")
+                    StudioDspManager.resumeDsp(this)
+                    return
+                }
+
                 // Neither actively playing audio is from a targeted app nor is foreground app targeted with audio
                 // Put DSP hardware into TRUE SLEEP (0% CPU, 0 battery drain)
                 val wasActive = StudioDspManager.getActiveTargetAppPkg() != null
@@ -1042,7 +1074,7 @@ class AutoTweakService : Service() {
                 }
             } else {
                 // Background music playing while foreground app is doing non-audio tasks (e.g. WhatsApp, Browser)
-                val bgPlayingPkg = activeAudioPkgs.firstOrNull()
+                val bgPlayingPkg = activeAudioPkgs.firstOrNull() ?: activeAudioPlayingPkg
                 if (bgPlayingPkg != null) {
                     val bgPreset = PowerampPresetManager.getAppPreset(this, bgPlayingPkg)
                         ?: PerAppManager.getConfig(this, bgPlayingPkg)?.eqPreset

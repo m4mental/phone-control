@@ -419,6 +419,18 @@
             </intent-filter>
         </service>
 
+        <!-- Wireless ADB QS Tile (1-Tap Port 5555 Toggle & Auto Command Copy) -->
+        <service
+            android:name=".WirelessAdbTileService"
+            android:exported="true"
+            android:label="Wireless ADB"
+            android:icon="@drawable/ic_qs_wireless_adb"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <!-- Quick Settings Tile Preference Handler for Long-Press (Preset Picker & Night Mode Dialog) -->
         <activity
             android:name=".StudioPresetPickerActivity"

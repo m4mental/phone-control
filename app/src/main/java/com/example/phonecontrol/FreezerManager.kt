@@ -330,6 +330,13 @@ object FreezerManager {
      */
     fun getActivePlayingAudioPackages(context: Context): Set<String> {
         val activePlaying = mutableSetOf<String>()
+        val ignoredAudioPkgs = setOf(
+            "com.android.server.telecom",
+            "com.android.systemui",
+            "android",
+            "com.google.android.googlequicksearchbox",
+            "com.example.phonecontrol"
+        )
         try {
             val script = """
                 dumpsys media_session 2>/dev/null | grep -B 15 'state=PLAYING' | grep 'package=' | cut -d '=' -f2
@@ -341,7 +348,7 @@ object FreezerManager {
             val out = ShellUtils.fastCmdResult(script, 1500)
             for (line in out.lineSequence()) {
                 val pkg = line.trim()
-                if (pkg.isNotBlank() && pkg != "com.android.server.telecom") {
+                if (pkg.isNotBlank() && !ignoredAudioPkgs.contains(pkg)) {
                     activePlaying.add(pkg)
                 }
             }
@@ -349,7 +356,7 @@ object FreezerManager {
             // Fallback: Also check all active media session packages
             if (activePlaying.isEmpty()) {
                 val allSessions = ShellUtils.fastCmdResult("dumpsys media_session | grep 'package=' | cut -d '=' -f2 2>/dev/null", 1000)
-                activePlaying.addAll(allSessions.lineSequence().map { it.trim() }.filter { it.isNotBlank() && it != "com.android.server.telecom" })
+                activePlaying.addAll(allSessions.lineSequence().map { it.trim() }.filter { it.isNotBlank() && !ignoredAudioPkgs.contains(it) })
             }
         } catch (e: Exception) {}
         return activePlaying

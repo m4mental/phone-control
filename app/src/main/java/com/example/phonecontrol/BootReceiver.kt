@@ -117,6 +117,11 @@ class BootReceiver : BroadcastReceiver() {
                     StudioDspManager.init(context)
                 }
 
+                // Re-apply Wireless ADB port 5555 if enabled
+                if (WirelessAdbManager.isEnabled(context)) {
+                    WirelessAdbManager.applyBootPersistence(context)
+                }
+
                 val serviceIntent = Intent(context, AutoTweakService::class.java).apply {
                     putExtra("delayed_start", true)
                 }

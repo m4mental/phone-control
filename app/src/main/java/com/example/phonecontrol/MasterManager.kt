@@ -179,13 +179,15 @@ object MasterManager {
         editor.putBoolean("freezer_enabled", false)
         editor.putBoolean("bloatware_enabled", false)
         editor.putBoolean("app_extractor_enabled", false)
+        editor.putBoolean("wireless_adb_enabled", false)
         editor.putBoolean("vault_enabled", false)
         editor.putBoolean("adb_enabled", false)
 
         editor.putString("selected_mode", "rbBalance")
         editor.commit()
 
-        // 12. Stop Background Daemons & Services
+        // 12. Stop Background Daemons, Services & Wireless ADB
+        WirelessAdbManager.disable(context)
         DaemonManager.stopDaemon()
         context.stopService(Intent(context, AutoTweakService::class.java))
         
