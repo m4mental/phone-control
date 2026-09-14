@@ -1,0 +1,85 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- ================================================================= -->
+    <!-- NOTHING OS DOT-MATRIX GEAR (AUTHENTIC PURE AMOLED DOT MATRIX)    -->
+    <!-- Strictly discrete LED-style circular matrix dots                 -->
+    <!-- ================================================================= -->
+
+    <!-- Outer Gear Teeth - 8 Tip Dots (R=11.0, White #FFFFFF) -->
+    <!-- 270° North -->
+    <path android:fillColor="#FFFFFF" android:pathData="M12,0.1a0.9,0.9 0 1,0 0,1.8a0.9,0.9 0 1,0 0,-1.8" />
+    <!-- 315° North-East -->
+    <path android:fillColor="#FFFFFF" android:pathData="M19.78,3.32a0.9,0.9 0 1,0 0,1.8a0.9,0.9 0 1,0 0,-1.8" />
+    <!-- 0° East -->
+    <path android:fillColor="#FFFFFF" android:pathData="M23,11.1a0.9,0.9 0 1,0 0,1.8a0.9,0.9 0 1,0 0,-1.8" />
+    <!-- 45° South-East -->
+    <path android:fillColor="#FFFFFF" android:pathData="M19.78,18.88a0.9,0.9 0 1,0 0,1.8a0.9,0.9 0 1,0 0,-1.8" />
+    <!-- 90° South -->
+    <path android:fillColor="#FFFFFF" android:pathData="M12,22.1a0.9,0.9 0 1,0 0,1.8a0.9,0.9 0 1,0 0,-1.8" />
+    <!-- 135° South-West -->
+    <path android:fillColor="#FFFFFF" android:pathData="M4.22,18.88a0.9,0.9 0 1,0 0,1.8a0.9,0.9 0 1,0 0,-1.8" />
+    <!-- 180° West -->
+    <path android:fillColor="#FFFFFF" android:pathData="M1,11.1a0.9,0.9 0 1,0 0,1.8a0.9,0.9 0 1,0 0,-1.8" />
+    <!-- 225° North-West -->
+    <path android:fillColor="#FFFFFF" android:pathData="M4.22,3.32a0.9,0.9 0 1,0 0,1.8a0.9,0.9 0 1,0 0,-1.8" />
+
+    <!-- Outer Gear Teeth - 8 Base Dots (R=9.0, Sub-matrix Grey #AAAAAA) -->
+    <!-- 270° North -->
+    <path android:fillColor="#AAAAAA" android:pathData="M12,2.2a0.8,0.8 0 1,0 0,1.6a0.8,0.8 0 1,0 0,-1.6" />
+    <!-- 315° North-East -->
+    <path android:fillColor="#AAAAAA" android:pathData="M18.36,4.84a0.8,0.8 0 1,0 0,1.6a0.8,0.8 0 1,0 0,-1.6" />
+    <!-- 0° East -->
+    <path android:fillColor="#AAAAAA" android:pathData="M21,11.2a0.8,0.8 0 1,0 0,1.6a0.8,0.8 0 1,0 0,-1.6" />
+    <!-- 45° South-East -->
+    <path android:fillColor="#AAAAAA" android:pathData="M18.36,17.56a0.8,0.8 0 1,0 0,1.6a0.8,0.8 0 1,0 0,-1.6" />
+    <!-- 90° South -->
+    <path android:fillColor="#AAAAAA" android:pathData="M12,20.2a0.8,0.8 0 1,0 0,1.6a0.8,0.8 0 1,0 0,-1.6" />
+    <!-- 135° South-West -->
+    <path android:fillColor="#AAAAAA" android:pathData="M5.64,17.56a0.8,0.8 0 1,0 0,1.6a0.8,0.8 0 1,0 0,-1.6" />
+    <!-- 180° West -->
+    <path android:fillColor="#AAAAAA" android:pathData="M3,11.2a0.8,0.8 0 1,0 0,1.6a0.8,0.8 0 1,0 0,-1.6" />
+    <!-- 225° North-West -->
+    <path android:fillColor="#AAAAAA" android:pathData="M5.64,4.84a0.8,0.8 0 1,0 0,1.6a0.8,0.8 0 1,0 0,-1.6" />
+
+    <!-- Circular Gear Body Matrix (12 Dots at R=6.5, Crisp White #E0E0E0) -->
+    <!-- 0° East -->
+    <path android:fillColor="#E0E0E0" android:pathData="M18.5,11.15a0.85,0.85 0 1,0 0,1.7a0.85,0.85 0 1,0 0,-1.7" />
+    <!-- 30° -->
+    <path android:fillColor="#E0E0E0" android:pathData="M17.63,14.4a0.85,0.85 0 1,0 0,1.7a0.85,0.85 0 1,0 0,-1.7" />
+    <!-- 60° -->
+    <path android:fillColor="#E0E0E0" android:pathData="M15.25,16.78a0.85,0.85 0 1,0 0,1.7a0.85,0.85 0 1,0 0,-1.7" />
+    <!-- 90° South -->
+    <path android:fillColor="#E0E0E0" android:pathData="M12,17.65a0.85,0.85 0 1,0 0,1.7a0.85,0.85 0 1,0 0,-1.7" />
+    <!-- 120° -->
+    <path android:fillColor="#E0E0E0" android:pathData="M8.75,16.78a0.85,0.85 0 1,0 0,1.7a0.85,0.85 0 1,0 0,-1.7" />
+    <!-- 150° -->
+    <path android:fillColor="#E0E0E0" android:pathData="M6.37,14.4a0.85,0.85 0 1,0 0,1.7a0.85,0.85 0 1,0 0,-1.7" />
+    <!-- 180° West -->
+    <path android:fillColor="#E0E0E0" android:pathData="M5.5,11.15a0.85,0.85 0 1,0 0,1.7a0.85,0.85 0 1,0 0,-1.7" />
+    <!-- 210° -->
+    <path android:fillColor="#E0E0E0" android:pathData="M6.37,7.9a0.85,0.85 0 1,0 0,1.7a0.85,0.85 0 1,0 0,-1.7" />
+    <!-- 240° -->
+    <path android:fillColor="#E0E0E0" android:pathData="M8.75,5.52a0.85,0.85 0 1,0 0,1.7a0.85,0.85 0 1,0 0,-1.7" />
+    <!-- 270° North -->
+    <path android:fillColor="#E0E0E0" android:pathData="M12,4.65a0.85,0.85 0 1,0 0,1.7a0.85,0.85 0 1,0 0,-1.7" />
+    <!-- 300° -->
+    <path android:fillColor="#E0E0E0" android:pathData="M15.25,5.52a0.85,0.85 0 1,0 0,1.7a0.85,0.85 0 1,0 0,-1.7" />
+    <!-- 330° -->
+    <path android:fillColor="#E0E0E0" android:pathData="M17.63,7.9a0.85,0.85 0 1,0 0,1.7a0.85,0.85 0 1,0 0,-1.7" />
+
+    <!-- 4 Inner Crosshair Matrix Dots (R=3.8, Subtle Muted #666666) -->
+    <path android:fillColor="#777777" android:pathData="M12,7.4a0.8,0.8 0 1,0 0,1.6a0.8,0.8 0 1,0 0,-1.6" />
+    <path android:fillColor="#777777" android:pathData="M15.8,11.2a0.8,0.8 0 1,0 0,1.6a0.8,0.8 0 1,0 0,-1.6" />
+    <path android:fillColor="#777777" android:pathData="M12,15a0.8,0.8 0 1,0 0,1.6a0.8,0.8 0 1,0 0,-1.6" />
+    <path android:fillColor="#777777" android:pathData="M8.2,11.2a0.8,0.8 0 1,0 0,1.6a0.8,0.8 0 1,0 0,-1.6" />
+
+    <!-- Iconic Nothing Red Central Core Point (Center (12,12), R=1.8, #D71921) -->
+    <path
+        android:fillColor="#D71921"
+        android:pathData="M12,10.2a1.8,1.8 0 1,0 0,3.6a1.8,1.8 0 1,0 0,-3.6" />
+
+</vector>

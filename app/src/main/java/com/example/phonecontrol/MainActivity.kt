@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.widget.ImageView
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -17,20 +18,27 @@ import com.google.android.material.button.MaterialButton
 
 class MainActivity : AppCompatActivity() {
 
+    private lateinit var ivStatusIcon: ImageView
     private lateinit var tvStatus: TextView
     private lateinit var tvRootStatus: TextView
     private lateinit var tvKernelStatus: TextView
     
-    private lateinit var tvLiveTemp: TextView
     private lateinit var tvLiveWatts: TextView
     private lateinit var tvLiveVolt: TextView
-    private lateinit var tvLiveHealth: TextView
     private lateinit var tvLiveCycles: TextView
-    private lateinit var tvLiveWear: TextView
     private lateinit var tvLiveRam: TextView
     private lateinit var tvLiveCpuCap: TextView
     private lateinit var tvLiveCpuUsage: TextView
     private lateinit var tvActiveStageOverride: TextView
+    
+    // Nothing OS Live Telemetry Views
+    private lateinit var tvLiveLittleFreq: TextView
+    private lateinit var pbLittleCluster: ProgressBar
+    private lateinit var tvLiveBigFreq: TextView
+    private lateinit var pbBigCluster: ProgressBar
+    private lateinit var tvLiveSocTemp: TextView
+    private lateinit var tvLiveBattTemp: TextView
+    private lateinit var tvLiveCurrentMa: TextView
 
     private val uiReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -48,6 +56,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        ivStatusIcon = findViewById(R.id.ivStatusIcon)
         tvStatus = findViewById(R.id.tvStatus)
         tvRootStatus = findViewById(R.id.tvRootStatus)
         tvKernelStatus = findViewById(R.id.tvKernelStatus)
@@ -61,15 +70,26 @@ class MainActivity : AppCompatActivity() {
             registerReceiver(uiReceiver, uiFilter)
         }
         
-        tvLiveTemp = findViewById(R.id.tvLiveTemp)
         tvLiveWatts = findViewById(R.id.tvLiveWatts)
         tvLiveVolt = findViewById(R.id.tvLiveVolt)
-        tvLiveHealth = findViewById(R.id.tvLiveHealth)
         tvLiveCycles = findViewById(R.id.tvLiveCycles)
-        tvLiveWear = findViewById(R.id.tvLiveWear)
         tvLiveRam = findViewById(R.id.tvLiveRam)
         tvLiveCpuCap = findViewById(R.id.tvLiveCpuCap)
         tvLiveCpuUsage = findViewById(R.id.tvLiveCpuUsage)
+
+        // Telemetry Highlights & Dual-Cluster Bars
+        tvLiveLittleFreq = findViewById(R.id.tvLiveLittleFreq)
+        pbLittleCluster = findViewById(R.id.pbLittleCluster)
+        tvLiveBigFreq = findViewById(R.id.tvLiveBigFreq)
+        pbBigCluster = findViewById(R.id.pbBigCluster)
+        tvLiveSocTemp = findViewById(R.id.tvLiveSocTemp)
+        tvLiveBattTemp = findViewById(R.id.tvLiveBattTemp)
+        tvLiveCurrentMa = findViewById(R.id.tvLiveCurrentMa)
+
+        // Master Settings Click Listener (Nothing OS Dot-Matrix Pill)
+        findViewById<View>(R.id.btnSettings)?.setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
 
         // Navigation Hub
         findViewById<View>(R.id.cardGameTurbo).setOnClickListener { 
@@ -239,8 +259,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun checkRootAsync() {
         if (ShellUtils.isRootGrantedCached == true) {
-            tvRootStatus.text = "Root: Granted"; tvRootStatus.setTextColor(Color.GREEN)
-            tvKernelStatus.text = "Kernel Engine: Active (BBR+EAS)"; tvKernelStatus.setTextColor(Color.GREEN)
+            tvRootStatus.text = "ROOT: GRANTED"
+            tvRootStatus.setTextColor(Color.WHITE)
+            tvKernelStatus.text = "BBR+EAS ACTIVE"
+            tvKernelStatus.setTextColor(Color.WHITE)
         }
 
         kotlin.concurrent.thread {
@@ -249,18 +271,25 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     if (isFinishing || isDestroyed) return@runOnUiThread
                     if (isRooted) {
-                        tvRootStatus.text = "Root: Granted"; tvRootStatus.setTextColor(Color.GREEN)
-                        tvKernelStatus.text = "Kernel Engine: Active (BBR+EAS)"; tvKernelStatus.setTextColor(Color.GREEN)
+                        tvRootStatus.text = "ROOT: GRANTED"
+                        tvRootStatus.setTextColor(Color.WHITE)
+                        tvKernelStatus.text = "BBR+EAS ACTIVE"
+                        tvKernelStatus.setTextColor(Color.WHITE)
                     } else {
-                        tvRootStatus.text = "Root: Denied"; tvRootStatus.setTextColor(Color.RED)
-                        tvKernelStatus.text = "Kernel Engine: Restricted"; tvKernelStatus.setTextColor(Color.GRAY)
+                        tvRootStatus.text = "ROOT: DENIED"
+                        tvRootStatus.setTextColor(Color.parseColor("#D71921"))
+                        tvKernelStatus.text = "RESTRICTED"
+                        tvKernelStatus.setTextColor(Color.parseColor("#888888"))
                     }
                     ModeControlTileService.updateTile(this@MainActivity)
                     CooldownTileService.updateTile(this@MainActivity)
                 }
             } catch (e: Exception) {
                 runOnUiThread { 
-                    if (!isFinishing && !isDestroyed) tvRootStatus.text = "Root: Error" 
+                    if (!isFinishing && !isDestroyed) {
+                        tvRootStatus.text = "ROOT: ERROR"
+                        tvRootStatus.setTextColor(Color.parseColor("#D71921"))
+                    }
                 }
             }
         }
@@ -377,12 +406,46 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) { 0 }
     }
 
+    private fun readBigCoreFreqKhz(): Int {
+        return try {
+            val f = java.io.File("/sys/devices/system/cpu/cpufreq/policy6/scaling_cur_freq")
+            if (f.exists() && f.canRead()) {
+                f.readText().trim().toIntOrNull() ?: 0
+            } else {
+                val res = ShellUtils.fastCmdResult("cat /sys/devices/system/cpu/cpufreq/policy6/scaling_cur_freq 2>/dev/null").trim()
+                res.toIntOrNull() ?: 0
+            }
+        } catch (e: Exception) { 0 }
+    }
+
+    private fun readSocTempCelsius(): Int {
+        return try {
+            val f = java.io.File("/sys/class/thermal/thermal_zone0/temp")
+            val raw = if (f.exists() && f.canRead()) f.readText().trim() else ShellUtils.fastCmdResult("cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null").trim()
+            val milli = raw.toIntOrNull() ?: 0
+            if (milli > 1000) milli / 1000 else milli
+        } catch (e: Exception) { 0 }
+    }
+
+    private fun readBatteryCurrentMa(): Int {
+        return try {
+            val f = java.io.File("/sys/class/power_supply/battery/current_now")
+            val raw = if (f.exists() && f.canRead()) f.readText().trim() else ShellUtils.fastCmdResult("cat /sys/class/power_supply/battery/current_now 2>/dev/null").trim()
+            val uA = raw.toIntOrNull() ?: 0
+            // In Android/Linux kernel, current_now in uA: negative or positive depending on charging/discharging
+            uA / 1000
+        } catch (e: Exception) { 0 }
+    }
+
     private fun updateLiveStats() {
         kotlin.concurrent.thread {
             val batteryInfo = BatteryManager.getBatteryStats()
             val freeGb = readKernelMemAvailableGb()
             val cpuUsage = readKernelCpuUsage()
-            val currentFreqKhz = readLittleCoreFreqKhz()
+            val littleFreqKhz = readLittleCoreFreqKhz()
+            val bigFreqKhz = readBigCoreFreqKhz()
+            val socTemp = readSocTempCelsius()
+            val currentMa = readBatteryCurrentMa()
 
             val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
             if (prefs.getString("selected_mode", "rbBalance") == "rbAutomatic" && !prefs.contains("active_per_app_mode")) {
@@ -397,18 +460,58 @@ class MainActivity : AppCompatActivity() {
 
             runOnUiThread {
                 if (isFinishing) return@runOnUiThread
-                tvLiveTemp.text = batteryInfo.temp
                 tvLiveWatts.text = batteryInfo.wattage
                 tvLiveVolt.text = batteryInfo.voltage
-                tvLiveHealth.text = batteryInfo.health
                 tvLiveCycles.text = if (batteryInfo.cycles.isNotBlank() && batteryInfo.cycles != "0") "${batteryInfo.cycles} cyc" else "Good"
-                tvLiveWear.text = batteryInfo.wear
                 tvLiveRam.text = freeGb
+
+                // --- 1. Dual-Cluster CPU Bars Update ---
+                val littleMhz = littleFreqKhz / 1000
+                pbLittleCluster.progress = littleMhz.coerceIn(0, 2000)
+                tvLiveLittleFreq.text = if (littleMhz > 0) {
+                    if (littleMhz <= 950) "$littleMhz MHz (FLOOR)" else "$littleMhz MHz"
+                } else "0000 MHz"
+                tvLiveLittleFreq.setTextColor(if (littleMhz > 1800) Color.parseColor("#D71921") else Color.WHITE)
+
+                val bigMhz = bigFreqKhz / 1000
+                pbBigCluster.progress = bigMhz.coerceIn(0, 2800)
+                tvLiveBigFreq.text = if (bigMhz > 0) {
+                    val ghz = String.format(java.util.Locale.US, "%.2f GHz", bigFreqKhz / 1000000.0)
+                    if (bigMhz >= 2600) "$ghz (TURBO)" else if (bigMhz <= 1200) "$ghz (BASE)" else ghz
+                } else "OFFLINE"
+                tvLiveBigFreq.setTextColor(if (bigMhz >= 2400) Color.parseColor("#D71921") else Color.WHITE)
+
+                // --- 2. Dual Temperature Gauges (Nothing Monochrome + Red Overheat) ---
+                if (socTemp > 0) {
+                    tvLiveSocTemp.text = "${socTemp}°C"
+                    tvLiveSocTemp.setTextColor(if (socTemp >= 50) Color.parseColor("#D71921") else Color.WHITE)
+                } else {
+                    tvLiveSocTemp.text = "--°C"
+                }
+
+                val battTempStr = batteryInfo.temp.replace("°C", "").trim()
+                val battTempInt = battTempStr.toIntOrNull() ?: 0
+                tvLiveBattTemp.text = batteryInfo.temp
+                tvLiveBattTemp.setTextColor(if (battTempInt >= 43) Color.parseColor("#D71921") else Color.WHITE)
+
+                // --- 3. Live Current Drain in mA (Nothing OS Red/White) ---
+                if (currentMa != 0) {
+                    val isCharging = currentMa > 0
+                    val absMa = kotlin.math.abs(currentMa)
+                    if (isCharging) {
+                        tvLiveCurrentMa.text = "+$absMa mA"
+                        tvLiveCurrentMa.setTextColor(Color.WHITE) // Clean White on Charge
+                    } else {
+                        tvLiveCurrentMa.text = "-$absMa mA"
+                        tvLiveCurrentMa.setTextColor(if (absMa > 1100) Color.parseColor("#D71921") else Color.WHITE)
+                    }
+                } else {
+                    tvLiveCurrentMa.text = "-- mA"
+                }
                 
-                val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
                 val activeCap = prefs.getInt("active_cpu_cap", 100)
-                tvLiveCpuCap.text = if (activeCap < 100) "${activeCap}%" else "Uncapped"
-                tvLiveCpuCap.setTextColor(if (activeCap < 80) Color.RED else if (activeCap < 100) Color.YELLOW else Color.GREEN)
+                tvLiveCpuCap.text = if (activeCap < 100) "${activeCap}%" else "100%"
+                tvLiveCpuCap.setTextColor(if (activeCap < 80) Color.parseColor("#D71921") else Color.WHITE)
 
                 val manualStage = prefs.getInt("manual_stage_override", 0)
 
@@ -423,31 +526,31 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 // Self-healing: If Little Core frequency has returned to 650MHz or lower, video call boost has ended
-                if (TweakManager.isVideoCallBoostActive && currentFreqKhz in 1..650000) {
+                if (TweakManager.isVideoCallBoostActive && littleFreqKhz in 1..650000) {
                     TweakManager.isVideoCallBoostActive = false
                 }
 
                 val stageHtml = when {
-                    TweakManager.isVideoCallBoostActive -> getS1Html(currentFreqKhz)
+                    TweakManager.isVideoCallBoostActive -> getS1Html(littleFreqKhz)
                     manualStage == 13 -> "<font color='#00E5FF'>S</font><font color='#00E5FF'>1</font>"
                     manualStage == 12 -> "<font color='#00E5FF'>S</font><font color='#00E5FF'>1</font>"
                     manualStage == 11 -> "<font color='#00E5FF'>S</font><font color='#00E5FF'>1</font>"
-                    manualStage == 10 -> getS1Html(currentFreqKhz)
-                    manualStage == 1 -> getS1Html(currentFreqKhz)
+                    manualStage == 10 -> getS1Html(littleFreqKhz)
+                    manualStage == 1 -> getS1Html(littleFreqKhz)
                     manualStage == 2 -> "<font color='#69F0AE'>S2</font>"
                     manualStage == 3 -> "<font color='#FFD700'>S3</font>"
                     manualStage == 4 -> "<font color='#FF5252'>S4</font>"
                     else -> when {
-                        cpuUsage < 35 -> getS1Html(currentFreqKhz)
+                        cpuUsage < 35 -> getS1Html(littleFreqKhz)
                         cpuUsage < 70 -> "<font color='#69F0AE'>S2</font>"
                         cpuUsage < 90 -> "<font color='#FFD700'>S3</font>"
                         else -> "<font color='#FF5252'>S4</font>"
                     }
                 }
 
-                val freqLabel = if (currentFreqKhz > 0) {
-                    if (currentFreqKhz >= 1000000) String.format("%.1fG", currentFreqKhz / 1000000.0)
-                    else "${currentFreqKhz / 1000}M"
+                val freqLabel = if (littleFreqKhz > 0) {
+                    if (littleFreqKhz >= 1000000) String.format("%.1fG", littleFreqKhz / 1000000.0)
+                    else "${littleFreqKhz / 1000}M"
                 } else ""
                 val freqSuffix = if (freqLabel.isNotBlank()) " • $freqLabel" else ""
 
@@ -467,15 +570,15 @@ class MainActivity : AppCompatActivity() {
 
         val statusText = if (manualStage != 0) {
             when (manualStage) {
-                13 -> "Test Lab: S1 (480M Floor)"
-                12 -> "Test Lab: S1 (550M Deep)"
-                11 -> "Test Lab: S1 (650M Ultra)"
-                10 -> "Test Lab: S1 (850M Ext)"
-                1 -> "Test Lab: S1 (950M Bal)"
-                2 -> "Test Lab: Stage 2 (Fluid)"
-                3 -> "Test Lab: Stage 3 (Compute)"
-                4 -> "Test Lab: Stage 4 (Turbo)"
-                else -> "Test Lab: Stage Lock"
+                13 -> "TEST LAB // S1 (480M FLOOR)"
+                12 -> "TEST LAB // S1 (550M DEEP)"
+                11 -> "TEST LAB // S1 (650M ULTRA)"
+                10 -> "TEST LAB // S1 (850M EXT)"
+                1 -> "TEST LAB // S1 (950M BAL)"
+                2 -> "TEST LAB // STAGE 2 (FLUID)"
+                3 -> "TEST LAB // STAGE 3 (COMPUTE)"
+                4 -> "TEST LAB // STAGE 4 (TURBO)"
+                else -> "TEST LAB // STAGE LOCK"
             }
         } else if (!activePerAppMode.isNullOrBlank()) {
             val appLabel = activePerAppPkg?.let { pkgs ->
@@ -484,28 +587,21 @@ class MainActivity : AppCompatActivity() {
                     val appInfo = packageManager.getApplicationInfo(first, 0)
                     packageManager.getApplicationLabel(appInfo).toString()
                 } catch (e: Exception) { first }
-            } ?: "Recents"
-            "Per-App: $activePerAppMode ($appLabel)"
+            } ?: "RECENTS"
+            "PER-APP // $activePerAppMode (${appLabel.uppercase()})"
         } else when (savedMode) {
-            "rbPowerSaver" -> "Manual: Power Saver"
-            "rbBalance" -> "Manual: Balanced"
-            "rbPerformance" -> "Manual: Performance"
-            "rbStreaming" -> "Manual: Streaming (Media Eco)"
-            "rbAutomatic" -> activeAiLabel ?: "Automatic (AI)"
-            else -> "Unknown"
+            "rbPowerSaver" -> "MANUAL // POWER SAVER"
+            "rbBalance" -> "MANUAL // BALANCED EAS"
+            "rbPerformance" -> "MANUAL // TURBO PERFORMANCE"
+            "rbStreaming" -> "MANUAL // STREAMING ECO"
+            "rbAutomatic" -> (activeAiLabel ?: "AUTOMATIC (AI)").uppercase()
+            else -> "STANDBY"
         }
-        tvStatus.text = "Mode: $statusText"
+        tvStatus.text = statusText
         
-        // Dynamic Status Color
-        if (manualStage != 0) {
-            tvStatus.setTextColor(Color.parseColor("#FFD700")) // Gold for Test Lab Override
-        } else if (!activePerAppMode.isNullOrBlank()) {
-            tvStatus.setTextColor(Color.parseColor("#00E5FF")) // Bright Cyan for Per-App!
-        } else if (savedMode == "rbAutomatic") {
-            tvStatus.setTextColor(Color.parseColor("#00C853")) // Bright Green for AI
-        } else {
-            tvStatus.setTextColor(Color.WHITE)
-        }
+        // Nothing OS Dynamic Status Accent (Signature Red Glyph):
+        tvStatus.setTextColor(Color.WHITE)
+        ivStatusIcon.setColorFilter(Color.parseColor("#D71921"))
         
         // Ensure service is running and recents hierarchy is evaluated
         val serviceIntent = Intent(this, AutoTweakService::class.java).apply {

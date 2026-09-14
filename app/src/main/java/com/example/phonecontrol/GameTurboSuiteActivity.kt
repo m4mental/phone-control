@@ -40,12 +40,15 @@ class GameTurboSuiteActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("game_turbo_prefs", MODE_PRIVATE)
         val switchMaster = findViewById<SwitchMaterial>(R.id.switchGameTurboMaster)
         val switchTouch = findViewById<SwitchMaterial>(R.id.switchTouchSampling)
+        val switchAuto120Hz = findViewById<SwitchMaterial>(R.id.switchGameTurboAuto120Hz)
+        val switchAutoHud = findViewById<SwitchMaterial>(R.id.switchGameTurboAutoHud)
+        val switchDnd = findViewById<SwitchMaterial>(R.id.switchGameTurboDnd)
         val btnAddGame = findViewById<MaterialButton>(R.id.btnAddGame)
 
         switchMaster.isChecked = prefs.getBoolean("game_turbo_enabled", false)
         switchMaster.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean("game_turbo_enabled", isChecked).apply()
-            Toast.makeText(this, if (isChecked) "Auto Game Turbo Active" else "Game Turbo Disabled", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, if (isChecked) "Auto Game Turbo Beast Engine Active" else "Game Turbo Disabled", Toast.LENGTH_SHORT).show()
         }
 
         switchTouch.isChecked = prefs.getBoolean("game_turbo_touch_sampling", false)
@@ -53,6 +56,24 @@ class GameTurboSuiteActivity : AppCompatActivity() {
             prefs.edit().putBoolean("game_turbo_touch_sampling", isChecked).apply()
             thread { GameTurboManager.applyTouchSampling(this, isChecked) }
             Toast.makeText(this, if (isChecked) "High Touch Polling Enabled" else "Standard Touch Polling", Toast.LENGTH_SHORT).show()
+        }
+
+        switchAuto120Hz.isChecked = prefs.getBoolean("game_turbo_auto_120hz", true)
+        switchAuto120Hz.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean("game_turbo_auto_120hz", isChecked).apply()
+            Toast.makeText(this, if (isChecked) "Auto 120Hz on Game Launch Enabled" else "Auto 120Hz Disabled", Toast.LENGTH_SHORT).show()
+        }
+
+        switchAutoHud.isChecked = prefs.getBoolean("game_turbo_auto_hud", false)
+        switchAutoHud.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean("game_turbo_auto_hud", isChecked).apply()
+            Toast.makeText(this, if (isChecked) "Auto Floating HUD Enabled" else "Auto Floating HUD Disabled", Toast.LENGTH_SHORT).show()
+        }
+
+        switchDnd.isChecked = prefs.getBoolean("game_turbo_dnd", false)
+        switchDnd.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean("game_turbo_dnd", isChecked).apply()
+            Toast.makeText(this, if (isChecked) "Gaming DND Enabled" else "Gaming DND Disabled", Toast.LENGTH_SHORT).show()
         }
 
         btnAddGame.setOnClickListener {

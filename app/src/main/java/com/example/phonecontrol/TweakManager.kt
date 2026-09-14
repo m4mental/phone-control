@@ -21,15 +21,18 @@ object TweakManager {
                 applyCpuTuning("power")
                 applyIoOptimization("power")
                 applyAsymmetricCpuFreqTuning("power")
+                applyAutoRamMode("power")
             }
             "Streaming", "Stream" -> {
                 applyStreaming()
+                applyAutoRamMode("streaming")
             }
             "Balance", "Balanced", "Bal" -> {
                 applyBalance()
                 applyCpuTuning("balance")
                 applyIoOptimization("balance")
                 applyAsymmetricCpuFreqTuning("balance")
+                applyAutoRamMode("balance")
             }
             "Performance", "Perf" -> {
                 applyPerformance()
@@ -37,6 +40,7 @@ object TweakManager {
                 applyIoOptimization("perf")
                 applyInputBoost(true)
                 applyAsymmetricCpuFreqTuning("perf")
+                applyAutoRamMode("perf")
             }
             // AI Engine Granular Profiles (Tuned for Fluid 120Hz & High Battery Efficiency)
             "AI_Sleeping" -> {
@@ -1164,7 +1168,72 @@ object TweakManager {
         setLocationMode(mode)
     }
 
-    fun applyRamSettings(zramKey: String, profileKey: String) {
+    fun applyAutoRamMode(mode: String) {
+        when (mode) {
+            "power", "Power Saver", "Saver" -> {
+                ShellUtils.fastCmd("sysctl -w vm.swappiness=60 2>/dev/null")
+                ShellUtils.fastCmd("sysctl -w vm.vfs_cache_pressure=100 2>/dev/null")
+                ShellUtils.fastCmd("sysctl -w vm.dirty_ratio=20 2>/dev/null")
+                applyLmkTuning("rbProfileBalance")
+            }
+            "streaming", "Streaming", "Stream" -> {
+                ShellUtils.fastCmd("sysctl -w vm.swappiness=80 2>/dev/null")
+                ShellUtils.fastCmd("sysctl -w vm.vfs_cache_pressure=80 2>/dev/null")
+                ShellUtils.fastCmd("sysctl -w vm.dirty_ratio=20 2>/dev/null")
+                applyLmkTuning("rbProfileBalance")
+            }
+            "perf", "Performance", "Perf", "Game Turbo" -> {
+                compactZram()
+                ShellUtils.fastCmd("sysctl -w vm.swappiness=30 2>/dev/null")
+                ShellUtils.fastCmd("sysctl -w vm.vfs_cache_pressure=150 2>/dev/null")
+                ShellUtils.fastCmd("sysctl -w vm.dirty_ratio=10 2>/dev/null")
+                applyLmkTuning("rbProfilePerformance")
+            }
+            "multitasking" -> {
+                compactZram()
+                ShellUtils.fastCmd("sysctl -w vm.swappiness=160 2>/dev/null")
+                ShellUtils.fastCmd("sysctl -w vm.vfs_cache_pressure=50 2>/dev/null")
+                ShellUtils.fastCmd("sysctl -w vm.dirty_ratio=40 2>/dev/null")
+                applyLmkTuning("rbProfileMultitasking")
+            }
+            else -> { // Balance / Daily
+                ShellUtils.fastCmd("sysctl -w vm.swappiness=100 2>/dev/null")
+                ShellUtils.fastCmd("sysctl -w vm.vfs_cache_pressure=100 2>/dev/null")
+                ShellUtils.fastCmd("sysctl -w vm.dirty_ratio=20 2>/dev/null")
+                applyLmkTuning("rbProfileBalance")
+            }
+        }
+        Log.d("TweakManager", "🧠 Auto Dynamic RAM Profile Applied for: $mode")
+    }
+
+    fun compactZram(): Long {
+        val parseMemUsed: () -> Long = {
+            val stat = ShellUtils.runAsRoot("cat /sys/block/zram0/mm_stat 2>/dev/null").output.trim()
+            val tokens = stat.split("\\s+".toRegex())
+            tokens.getOrNull(2)?.toLongOrNull() ?: 0L
+        }
+        val beforeBytes = parseMemUsed()
+        ShellUtils.fastCmd("echo 1 > /sys/block/zram0/compact 2>/dev/null")
+        val afterBytes = parseMemUsed()
+        val freed = if (beforeBytes > afterBytes) beforeBytes - afterBytes else 0L
+        Log.d("TweakManager", "🧹 ZRAM Compaction: Before=${beforeBytes / 1024}KB, After=${afterBytes / 1024}KB, Reclaimed=${freed / 1024}KB")
+        return freed
+    }
+
+    fun applyZramAlgorithm(algorithm: String): Boolean {
+        val target = when (algorithm.lowercase()) {
+            "zstd" -> "zstd"
+            "lzo-rle" -> "lzo-rle"
+            "lzo" -> "lzo"
+            else -> "lz4"
+        }
+        ShellUtils.fastCmd("echo $target > /sys/block/zram0/comp_algorithm 2>/dev/null")
+        val active = ShellUtils.runAsRoot("cat /sys/block/zram0/comp_algorithm 2>/dev/null").output.trim()
+        Log.d("TweakManager", "⚡ ZRAM Comp Algorithm set to: $target, Kernel active: $active")
+        return active.contains("[$target]")
+    }
+
+    fun applyRamSettings(zramKey: String, profileKey: String, algorithm: String = "lz4") {
         val size = when (zramKey) {
             "rbZramOff" -> "0"
             "rbZram2G" -> "2147483648"
@@ -1173,7 +1242,10 @@ object TweakManager {
             else -> "4294967296"
         }
 
-        // Apply Kernel VM Profiles via centralized method
+        // 1. Apply ZRAM Compression Engine (LZ4 vs ZSTD)
+        applyZramAlgorithm(algorithm)
+
+        // 2. Apply Kernel VM Profiles via centralized method
         applyLmkTuning(profileKey)
         
         when (profileKey) {
@@ -1188,21 +1260,29 @@ object TweakManager {
                 ShellUtils.fastCmd("sysctl -w vm.dirty_ratio=40")
             }
             "rbProfilePerformance" -> {
-                ShellUtils.fastCmd("sysctl -w vm.swappiness=60")
+                ShellUtils.fastCmd("sysctl -w vm.swappiness=30")
                 ShellUtils.fastCmd("sysctl -w vm.vfs_cache_pressure=150")
                 ShellUtils.fastCmd("sysctl -w vm.dirty_ratio=10")
             }
         }
 
-        // 2. Apply ZRAM Resize only if different
-        val currentSize = ShellUtils.runAsRoot("cat /sys/block/zram0/disksize").output.trim()
-        if (currentSize != size) {
-            ShellUtils.runAsRoot("swapoff /dev/block/zram0")
-            if (size != "0") {
-                ShellUtils.runAsRoot("echo 1 > /sys/block/zram0/reset")
-                ShellUtils.runAsRoot("echo $size > /sys/block/zram0/disksize")
-                ShellUtils.runAsRoot("mkswap /dev/block/zram0")
-                ShellUtils.runAsRoot("swapon /dev/block/zram0")
+        // 3. Compact ZRAM memory blocks to defragment and free unused memory
+        compactZram()
+
+        // 4. Apply ZRAM Resize with safety guard against active swap freeze
+        val currentSize = ShellUtils.runAsRoot("cat /sys/block/zram0/disksize 2>/dev/null").output.trim()
+        if (currentSize.isNotBlank() && currentSize != size) {
+            val usedBytes = ShellUtils.runAsRoot("cat /sys/block/zram0/mem_used_total 2>/dev/null").output.trim().toLongOrNull() ?: 0L
+            if (usedBytes < 300 * 1024 * 1024) {
+                ShellUtils.runAsRoot("swapoff /dev/block/zram0")
+                if (size != "0") {
+                    ShellUtils.runAsRoot("echo 1 > /sys/block/zram0/reset")
+                    ShellUtils.runAsRoot("echo $size > /sys/block/zram0/disksize")
+                    ShellUtils.runAsRoot("mkswap /dev/block/zram0")
+                    ShellUtils.runAsRoot("swapon /dev/block/zram0")
+                }
+            } else {
+                Log.w("TweakManager", "⚠️ ZRAM has ${usedBytes / 1024 / 1024}MB active swap in use. Skipping live swapoff to avoid system freeze.")
             }
         }
     }

@@ -731,46 +731,50 @@ class AutoTweakService : Service() {
 
         // Check if current foreground app itself has an explicit profile (user actively inside it)
         val isEligibleFg = foregroundPkg.isNotBlank() && foregroundPkg != packageName && !foregroundPkg.contains("launcher", ignoreCase = true) && foregroundPkg != "com.android.systemui"
+        val isGameInForeground = isEligibleFg && games.contains(foregroundPkg)
+        val isGameTurboMaster = turboPrefs.getBoolean("game_turbo_enabled", false)
+
         val fgConfig = if (isEligibleFg) {
-            val directCfg = PerAppManager.getConfig(this, foregroundPkg)
             val isGame = games.contains(foregroundPkg)
-            if (directCfg != null) {
-                if (isGame && directCfg.mode == "Auto" && turboPrefs.getBoolean("auto_perf_enabled", true)) {
-                    directCfg.copy(mode = "Performance")
-                } else {
-                    directCfg
-                }
-            } else if (isGame) {
+            if (isGame && isGameTurboMaster) {
                 PerAppManager.AppConfig(
-                    mode = if (turboPrefs.getBoolean("auto_perf_enabled", true)) "Performance" else "Auto",
-                    fps = "Auto Switch",
+                    mode = "Game Turbo",
+                    fps = if (turboPrefs.getBoolean("game_turbo_auto_120hz", true)) "120Hz" else "Auto Switch",
                     thermal = if (turboPrefs.getBoolean("auto_thermal_enabled", false)) "Disabled" else "Default",
                     touch = "On",
                     bypassCharging = false,
                     autoDnd = false
                 )
-            } else null
+            } else {
+                val directCfg = PerAppManager.getConfig(this, foregroundPkg)
+                if (directCfg != null) {
+                    if (isGame && directCfg.mode == "Auto" && turboPrefs.getBoolean("auto_perf_enabled", true)) {
+                        directCfg.copy(mode = "Performance")
+                    } else {
+                        directCfg
+                    }
+                } else if (isGame) {
+                    PerAppManager.AppConfig(
+                        mode = if (turboPrefs.getBoolean("auto_perf_enabled", true)) "Performance" else "Auto",
+                        fps = "Auto Switch",
+                        thermal = if (turboPrefs.getBoolean("auto_thermal_enabled", false)) "Disabled" else "Default",
+                        touch = "On",
+                        bypassCharging = false,
+                        autoDnd = false
+                    )
+                } else null
+            }
         } else null
 
         val activeConfigs = mutableListOf<PerAppManager.AppConfig>()
         val activeRulePackages = mutableListOf<String>()
 
         for (pkg in recentPkgs) {
-            val cfg = PerAppManager.getConfig(this, pkg)
             val isGame = games.contains(pkg)
-
-            if (cfg != null) {
-                val effectiveCfg = if (isGame && cfg.mode == "Auto" && turboPrefs.getBoolean("auto_perf_enabled", true)) {
-                    cfg.copy(mode = "Performance")
-                } else {
-                    cfg
-                }
-                activeConfigs.add(effectiveCfg)
-                activeRulePackages.add(pkg)
-            } else if (isGame) {
+            if (pkg == foregroundPkg && isGame && isGameTurboMaster) {
                 val gameConfig = PerAppManager.AppConfig(
-                    mode = if (turboPrefs.getBoolean("auto_perf_enabled", true)) "Performance" else "Auto",
-                    fps = "Auto Switch",
+                    mode = "Game Turbo",
+                    fps = if (turboPrefs.getBoolean("game_turbo_auto_120hz", true)) "120Hz" else "Auto Switch",
                     thermal = if (turboPrefs.getBoolean("auto_thermal_enabled", false)) "Disabled" else "Default",
                     touch = "On",
                     bypassCharging = false,
@@ -778,6 +782,28 @@ class AutoTweakService : Service() {
                 )
                 activeConfigs.add(gameConfig)
                 activeRulePackages.add(pkg)
+            } else {
+                val cfg = PerAppManager.getConfig(this, pkg)
+                if (cfg != null) {
+                    val effectiveCfg = if (isGame && cfg.mode == "Auto" && turboPrefs.getBoolean("auto_perf_enabled", true)) {
+                        cfg.copy(mode = "Performance")
+                    } else {
+                        cfg
+                    }
+                    activeConfigs.add(effectiveCfg)
+                    activeRulePackages.add(pkg)
+                } else if (isGame) {
+                    val gameConfig = PerAppManager.AppConfig(
+                        mode = if (turboPrefs.getBoolean("auto_perf_enabled", true)) "Performance" else "Auto",
+                        fps = "Auto Switch",
+                        thermal = if (turboPrefs.getBoolean("auto_thermal_enabled", false)) "Disabled" else "Default",
+                        touch = "On",
+                        bypassCharging = false,
+                        autoDnd = false
+                    )
+                    activeConfigs.add(gameConfig)
+                    activeRulePackages.add(pkg)
+                }
             }
         }
 
@@ -796,16 +822,23 @@ class AutoTweakService : Service() {
                 Log.d("AutoTweak", "⚡ Per-App Hierarchy Applied: Mode=${mergedConfig.mode}, FPS=${mergedConfig.fps}, Thermal=${mergedConfig.thermal}, Touch=${mergedConfig.touch}, Bypass=${mergedConfig.bypassCharging}, DND=${mergedConfig.autoDnd}. Active Configured Apps in Recents: $activeRulePackages")
                 lastAiMode = ""
                 
-                if (mergedConfig.mode == "Custom") {
-                    TweakManager.applyCustomAppProfile(
-                        mergedConfig.customLittleMin,
-                        mergedConfig.customLittleMax,
-                        mergedConfig.customBigMin,
-                        mergedConfig.customBigMax,
-                        mergedConfig.customGovernor
-                    )
-                } else if (mergedConfig.mode != "Auto") {
-                    TweakManager.applyGlobalMode(mergedConfig.mode)
+                if (mergedConfig.mode == "Game Turbo") {
+                    GameTurboManager.applyGameTurbo(this, true)
+                } else {
+                    if (GameTurboManager.isGameTurboActive) {
+                        GameTurboManager.applyGameTurbo(this, false)
+                    }
+                    if (mergedConfig.mode == "Custom") {
+                        TweakManager.applyCustomAppProfile(
+                            mergedConfig.customLittleMin,
+                            mergedConfig.customLittleMax,
+                            mergedConfig.customBigMin,
+                            mergedConfig.customBigMax,
+                            mergedConfig.customGovernor
+                        )
+                    } else if (mergedConfig.mode != "Auto") {
+                        TweakManager.applyGlobalMode(mergedConfig.mode)
+                    }
                 }
                 if (mergedConfig.fps != "Auto Switch") {
                     TweakManager.setRefreshRate(mergedConfig.fps)
@@ -876,9 +909,12 @@ class AutoTweakService : Service() {
             }
         } else {
             // NO configured apps in Recents or Foreground -> REVERT TO GLOBAL BASELINE!
-            val wasPerApp = isPerAppActive || isGameTurboActive || activePerAppMergedConfig != null
+            val wasPerApp = isPerAppActive || isGameTurboActive || activePerAppMergedConfig != null || GameTurboManager.isGameTurboActive
             if (wasPerApp) {
                 Log.d("AutoTweak", "⚡ All configured apps closed & removed from Recents -> Instant Revert to Global Mode")
+                if (GameTurboManager.isGameTurboActive) {
+                    GameTurboManager.applyGameTurbo(this, false)
+                }
                 activePerAppMergedConfig = null
                 isPerAppActive = false
                 isGameTurboActive = false

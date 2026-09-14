@@ -66,6 +66,13 @@ class StorageActivity : AppCompatActivity() {
             }
         }
 
+        val swAutoCleanGhost = findViewById<SwitchMaterial>(R.id.switchAutoCleanGhost)
+        swAutoCleanGhost.isChecked = prefs.getBoolean("auto_clean_ghost_residue", true)
+        swAutoCleanGhost.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean("auto_clean_ghost_residue", isChecked).apply()
+            AppToast.show(this, if (isChecked) "Auto Ghost Clean on Uninstall Enabled" else "Auto Ghost Clean Disabled")
+        }
+
         val btnCleanOrphaned = findViewById<Button>(R.id.btnCleanOrphanedResidue)
         btnCleanOrphaned.setOnClickListener {
             tvLog.text = "🔍 Scanning for uninstalled app residue in /sdcard/Android/obb and /sdcard/Android/data..."
@@ -75,26 +82,42 @@ class StorageActivity : AppCompatActivity() {
                     runOnUiThread { tvLog.append("\n$progress") }
                 }
 
-                if (scanResult.items.isEmpty()) {
-                    runOnUiThread {
-                        btnCleanOrphaned.isEnabled = true
+                runOnUiThread {
+                    btnCleanOrphaned.isEnabled = true
+                    if (scanResult.items.isEmpty()) {
                         tvLog.append("\n\n✅ Storage Clean! No ghost residue from uninstalled apps found.")
                         AppToast.show(this, "No ghost residue found!")
-                    }
-                } else {
-                    runOnUiThread {
+                    } else {
                         tvLog.append("\n\n⚠️ Found ${scanResult.items.size} ghost folder(s) taking ${scanResult.totalReadable}!")
-                        tvLog.append("\n🧹 Starting deep cleanup...")
-                    }
+                        val itemLabels = scanResult.items.map { "${it.packageName} (${it.sizeReadable})" }.toTypedArray()
+                        val checkedItems = BooleanArray(scanResult.items.size) { true }
 
-                    val freed = StorageManager.cleanOrphanedResidue(scanResult.items) { progress ->
-                        runOnUiThread { tvLog.append("\n$progress") }
-                    }
-
-                    runOnUiThread {
-                        btnCleanOrphaned.isEnabled = true
-                        tvLog.append("\n\n🎉 Successfully deleted ${scanResult.items.size} ghost folders! Recovered ${StorageManager.formatSize(freed)} of storage.")
-                        AppToast.show(this, "Cleaned ${StorageManager.formatSize(freed)} of ghost data!")
+                        androidx.appcompat.app.AlertDialog.Builder(this)
+                            .setTitle("Found ${scanResult.items.size} Ghost Folders (${scanResult.totalReadable})")
+                            .setMultiChoiceItems(itemLabels, checkedItems) { _, which, isChecked ->
+                                checkedItems[which] = isChecked
+                            }
+                            .setPositiveButton("Clean Selected") { _, _ ->
+                                val selectedItems = scanResult.items.filterIndexed { index, _ -> checkedItems[index] }
+                                if (selectedItems.isEmpty()) {
+                                    tvLog.append("\nOperation cancelled: No folders selected.")
+                                    return@setPositiveButton
+                                }
+                                btnCleanOrphaned.isEnabled = false
+                                tvLog.append("\n🧹 Deleting ${selectedItems.size} selected ghost folder(s)...")
+                                thread {
+                                    val freed = StorageManager.cleanOrphanedResidue(selectedItems) { progress ->
+                                        runOnUiThread { tvLog.append("\n$progress") }
+                                    }
+                                    runOnUiThread {
+                                        btnCleanOrphaned.isEnabled = true
+                                        tvLog.append("\n\n🎉 Successfully deleted ${selectedItems.size} ghost folders! Recovered ${StorageManager.formatSize(freed)} of storage.")
+                                        AppToast.show(this, "Cleaned ${StorageManager.formatSize(freed)} of ghost data!")
+                                    }
+                                }
+                            }
+                            .setNegativeButton("Cancel", null)
+                            .show()
                     }
                 }
             }
