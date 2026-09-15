@@ -2,12 +2,17 @@ package com.example.phonecontrol
 
 import android.content.Context
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 
 object TweakManager {
 
     @Volatile var currentMode: String = "Balance"
     @Volatile var isPostBootTurboActive: Boolean = false
+
+    private val wakeupBoostHandler = Handler(Looper.getMainLooper())
+    private var wakeupBoostRunnable: Runnable? = null
 
     /**
      * Centralized function to apply all tweaks for a given mode.
@@ -912,9 +917,14 @@ object TweakManager {
     }
 
     /**
-     * Dedicated Screen-Off Zero-Drain Sleep Mode (480MHz Floor)
+     * Dedicated Screen-Off Zero-Drain Sleep Mode (Strict 480MHz Hardware Minimum, GPU Sleep)
      */
     fun applyScreenOffSleep() {
+        wakeupBoostRunnable?.let {
+            wakeupBoostHandler.removeCallbacks(it)
+            wakeupBoostRunnable = null
+        }
+
         val script = """
             for c in 0 1 2 3 4 5; do
                 echo 480000 > /sys/devices/system/cpu/cpu${'$'}c/cpufreq/scaling_min_freq 2>/dev/null
@@ -931,6 +941,7 @@ object TweakManager {
             echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_min_freq 2>/dev/null
             echo 400000 > /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq 2>/dev/null
             echo powersave > /sys/devices/system/cpu/cpufreq/policy6/scaling_governor 2>/dev/null
+            echo 0 > /sys/module/ged/parameters/boost_gpu_enable 2>/dev/null
         """.trimIndent()
         ShellUtils.fastCmd(script)
     }
@@ -1038,19 +1049,35 @@ object TweakManager {
     }
 
     /**
-     * Dedicated Temporary Wakeup Boost on Screen-On / Unlock (2-3 seconds)
+     * Dedicated Temporary Wakeup Boost on Screen-On / Unlock (3.5 Seconds MediaTek GED & Schedutil Ramp)
+     * Auto-resets back to normal schedutil GPU behavior after 3.5 seconds.
      */
     fun triggerTemporaryWakeupBoost() {
+        wakeupBoostRunnable?.let { wakeupBoostHandler.removeCallbacks(it) }
+
         val batch = listOf(
             "for i in 0 1 2 3 4 5 6 7; do echo 1 > /sys/devices/system/cpu/cpu\$i/online 2>/dev/null; done",
-            "for i in 0 1 2 3 4 5 6 7; do echo schedutil > /sys/devices/system/cpu/cpufreq/policy\$i/scaling_governor 2>/dev/null; done",
-            "echo 0 > /sys/kernel/gpu/gpu_max_clock 2>/dev/null",
-            "echo simple_ondemand > /sys/class/kgsl/kgsl-3d0/devfreq/governor 2>/dev/null",
-            "echo 1 > /sys/module/cpu_boost/parameters/input_boost_enabled 2>/dev/null",
-            "echo 0:950000 6:0 > /sys/module/cpu_boost/parameters/input_boost_freq 2>/dev/null",
-            "echo 100 > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null"
+            "echo 1 > /sys/module/ged/parameters/boost_gpu_enable 2>/dev/null",
+            "echo 1 > /sys/module/ged/parameters/ged_boost_enable 2>/dev/null",
+            "echo 1 > /sys/module/ged/parameters/ged_smart_boost 2>/dev/null",
+            "echo 0 > /sys/devices/system/cpu/cpufreq/policy0/schedutil/rate_limit_us 2>/dev/null",
+            "settings put global window_animation_scale 0.5 2>/dev/null",
+            "settings put global transition_animation_scale 0.5 2>/dev/null",
+            "settings put global animator_duration_scale 0.5 2>/dev/null"
         )
         ShellUtils.fastBatchCmd(batch)
+
+        // Schedule auto-reset after 3.5 seconds
+        val resetRunnable = Runnable {
+            val resetBatch = listOf(
+                "echo 0 > /sys/module/ged/parameters/boost_gpu_enable 2>/dev/null",
+                "echo 1000 > /sys/devices/system/cpu/cpufreq/policy0/schedutil/rate_limit_us 2>/dev/null"
+            )
+            ShellUtils.fastBatchCmd(resetBatch)
+            Log.d("TweakManager", "⚡ Wakeup GPU Boost finished (3.5s) -> Reset to normal schedutil GPU")
+        }
+        wakeupBoostRunnable = resetRunnable
+        wakeupBoostHandler.postDelayed(resetRunnable, 3500L)
     }
 
     /**

@@ -246,11 +246,10 @@ class AutoTweakService : Service() {
             val pendingAction = intent.action ?: return
             tweakExecutor.execute {
                 val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
-                if (!prefs.getBoolean("automation_enabled", false)) return@execute
 
                 when (pendingAction) {
                     Intent.ACTION_SCREEN_OFF -> onScreenOff(prefs)
-                    Intent.ACTION_SCREEN_ON -> onScreenOn(prefs)
+                    Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT -> onScreenOn(prefs)
                 }
             }
         }
@@ -305,6 +304,7 @@ class AutoTweakService : Service() {
         val screenFilter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_USER_PRESENT)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(screenReceiver, screenFilter, RECEIVER_NOT_EXPORTED)
@@ -1414,6 +1414,7 @@ class AutoTweakService : Service() {
 
         // 9. Zero-Drain Deep Sleep Profile (480MHz Hardware Minimum Floor)
         // Strictly applies to ALL modes (Manual Stages, Manual Profiles & AI Engine)
+        lastAiMode = "AI_Sleeping"
         TweakManager.applyScreenOffSleep()
     }
 
@@ -1461,17 +1462,21 @@ class AutoTweakService : Service() {
         Log.d("AutoTweak", "Screen ON Event - Instant 0ms Async Wakeup")
         ShellUtils.fastCmd("echo 'on' > /data/local/tmp/pc_screen")
 
+        // 1. Instant 0ms Atomic Wakeup Boost (Unpark cores, 3.5s MediaTek GED GPU boost, schedutil ramp)
+        TweakManager.triggerTemporaryWakeupBoost()
+
+        // 2. Force reset lastAiMode so active screen-on mode is 100% guaranteed to apply immediately
+        lastAiMode = ""
+
         val manualStage = prefs.getInt("manual_stage_override", 0)
         if (manualStage != 0) {
             // Strictly re-enforce user's Test Lab Stage lock without overwriting governors
             TweakManager.manualStageOverride = manualStage
             TweakManager.applyRawStageScript(manualStage)
         } else {
-            // 1. Instant 2ms Atomic Wakeup Boost for normal modes
-            TweakManager.triggerTemporaryWakeupBoost()
             TweakManager.setClusterParking(false, deep = true)
 
-            // 2. Restore Operation Mode
+            // 3. Restore Operation Mode immediately (Clears 480MHz and applies active mode)
             val savedMode = prefs.getString("selected_mode", "rbBalance")
             when (savedMode) {
                 "rbPowerSaver" -> TweakManager.applyGlobalMode("Power Saver")
