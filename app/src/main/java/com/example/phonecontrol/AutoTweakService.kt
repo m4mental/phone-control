@@ -399,6 +399,8 @@ class AutoTweakService : Service() {
             AppEventService.enableViaRoot(packageName)
             ShellUtils.fastCmd("dumpsys deviceidle whitelist +$packageName; am set-standby-bucket $packageName active 2>/dev/null")
             ThermalManager.checkAndRecoverCooldown(this)
+            FreezerManager.cleanLegacySuspendedApps(this@AutoTweakService)
+            FreezerManager.pruneUninstalledPackages(this@AutoTweakService)
 
             // Auto-initialize Studio Equalizer DSP in background on service startup
             if (PowerampPresetManager.isMasterEnabled(this@AutoTweakService)) {

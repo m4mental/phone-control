@@ -201,6 +201,7 @@ class AppFreezerListActivity : AppCompatActivity() {
     }
 
     private fun refreshList() {
+        FreezerManager.pruneUninstalledPackages(this)
         val frozenApps = FreezerManager.getFrozenApps(this)
 
         if (frozenApps.isEmpty()) {
@@ -225,24 +226,22 @@ class AppFreezerListActivity : AppCompatActivity() {
         thread {
             val activeSet = FreezerManager.getActivePackages(frozenApps)
             val customWidgetSet = FreezerManager.getCustomWidgetApps(this)
-            val freshItems = frozenApps.map { pkg ->
-                val cachedInfo = appInfoCache[pkg]
-                val name = cachedInfo?.first ?: try {
-                    val appInfo = pm.getApplicationInfo(pkg, PackageManager.MATCH_UNINSTALLED_PACKAGES)
-                    pm.getApplicationLabel(appInfo).toString()
-                } catch (ignored: Exception) { "Unknown App" }
+            val freshItems = frozenApps.mapNotNull { pkg ->
+                try {
+                    val appInfo = pm.getApplicationInfo(pkg, 0)
+                    val cachedInfo = appInfoCache[pkg]
+                    val name = cachedInfo?.first ?: pm.getApplicationLabel(appInfo).toString()
+                    val icon = cachedInfo?.second ?: try { pm.getApplicationIcon(appInfo) } catch (e: Exception) { null }
 
-                val icon = cachedInfo?.second ?: try {
-                    val appInfo = pm.getApplicationInfo(pkg, PackageManager.MATCH_UNINSTALLED_PACKAGES)
-                    pm.getApplicationIcon(appInfo)
-                } catch (ignored: Exception) { null }
+                    appInfoCache[pkg] = Pair(name, icon)
 
-                appInfoCache[pkg] = Pair(name, icon)
-
-                val isSpecial = FreezerManager.isSpecialFreeze(this, pkg)
-                val isActive = activeSet.contains(pkg)
-                val isCustomWidget = customWidgetSet.contains(pkg)
-                FrozenDisplayItem(pkg, name, icon, isSpecial, isActive, isCustomWidget)
+                    val isSpecial = FreezerManager.isSpecialFreeze(this, pkg)
+                    val isActive = activeSet.contains(pkg)
+                    val isCustomWidget = customWidgetSet.contains(pkg)
+                    FrozenDisplayItem(pkg, name, icon, isSpecial, isActive, isCustomWidget)
+                } catch (e: Exception) {
+                    null
+                }
             }.sortedBy { it.name.lowercase() }
 
             cachedDisplayItems = freshItems
@@ -556,7 +555,7 @@ class AppFreezerListActivity : AppCompatActivity() {
         thread {
             val freshItems = allFrozen.mapNotNull { pkg ->
                 try {
-                    val appInfo = pm.getApplicationInfo(pkg, PackageManager.MATCH_UNINSTALLED_PACKAGES)
+                    val appInfo = pm.getApplicationInfo(pkg, 0)
                     val label = pm.getApplicationLabel(appInfo).toString()
                     val icon = try { pm.getApplicationIcon(appInfo) } catch (e: Exception) { null }
                     appInfoCache[pkg] = Pair(label, icon)
@@ -583,8 +582,8 @@ class AppFreezerListActivity : AppCompatActivity() {
         val cached = cachedInstalledApps
         if (!cached.isNullOrEmpty()) return cached
 
-        val list = pm.getInstalledApplications(PackageManager.MATCH_UNINSTALLED_PACKAGES)
-            .filter { it.flags and ApplicationInfo.FLAG_SYSTEM == 0 && it.packageName != packageName }
+        val list = pm.getInstalledApplications(0)
+            .filter { (it.flags and ApplicationInfo.FLAG_SYSTEM == 0) && it.packageName != packageName && it.enabled }
             .map {
                 val label = pm.getApplicationLabel(it).toString()
                 if (!appInfoCache.containsKey(it.packageName)) {
@@ -761,8 +760,9 @@ class AppFreezerListActivity : AppCompatActivity() {
                 ivIcon.setImageResource(android.R.drawable.sym_def_app_icon)
             }
 
-            tvName.text = item.name
+            tvName.text = if (item.name.isNotBlank() && item.name != "Unknown App") item.name else item.pkg
             tvPkg.text = item.pkg
+            tvPkg.visibility = View.VISIBLE
 
             val widgetTag = if (item.isCustomWidget) " • 📱 Widget" else ""
 

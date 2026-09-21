@@ -49,23 +49,32 @@ class AppEventService : AccessibilityService() {
         val pkgName = event.packageName?.toString() ?: ""
         val clsName = event.className?.toString() ?: ""
 
-        // 1. Instant Click on Suspended / Disabled Special Freeze Apps
+        // 1. Instant Launcher Click Detection: Pre-unfreeze app on click before window transition starts
         if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             val desc = event.contentDescription?.toString() ?: ""
             val text = event.text?.joinToString(" ") ?: ""
             val combined = if (desc.isNotBlank()) desc else text
-            if (combined.contains("Disabled ", ignoreCase = true)) {
-                val label = combined.substringAfter("Disabled ").trim()
-                val specialApps = FreezerManager.getSpecialFreezeApps(this)
-                val targetPkg = specialApps.firstOrNull { pkg ->
+            val cleanLabel = if (combined.contains("Disabled ", ignoreCase = true)) {
+                combined.substringAfter("Disabled ").trim()
+            } else {
+                combined.trim()
+            }
+
+            if (cleanLabel.isNotBlank()) {
+                val allFrozen = FreezerManager.getSpecialFreezeApps(this) + FreezerManager.getFrozenApps(this)
+                val targetPkg = allFrozen.firstOrNull { pkg ->
                     try {
                         val appInfo = packageManager.getApplicationInfo(pkg, 0)
-                        packageManager.getApplicationLabel(appInfo).toString().equals(label, ignoreCase = true)
+                        packageManager.getApplicationLabel(appInfo).toString().equals(cleanLabel, ignoreCase = true)
                     } catch (e: Exception) { false }
                 }
                 if (targetPkg != null) {
-                    FreezerManager.launchApp(this, targetPkg)
-                    return
+                    FreezerManager.registerAppOpen(targetPkg)
+                    FreezerManager.unfreezeApp(targetPkg)
+                    if (combined.contains("Disabled ", ignoreCase = true)) {
+                        FreezerManager.launchApp(this, targetPkg)
+                        return
+                    }
                 }
             }
         }
@@ -87,13 +96,27 @@ class AppEventService : AccessibilityService() {
 
         if (pkgName.isBlank()) return
         
-        // Auto-dismiss and launch when user taps a suspended app
+        // Auto-launch when user taps a legacy suspended app without pressing BACK
         if (clsName.contains("SuspendedAppActivity", ignoreCase = true)) {
             val specialApps = FreezerManager.getSpecialFreezeApps(this)
             val lastPkg = FreezerManager.lastLaunchedPackage
-            if (lastPkg != null && specialApps.contains(lastPkg)) {
-                performGlobalAction(GLOBAL_ACTION_BACK)
-                FreezerManager.launchApp(this, lastPkg)
+            val targetPkg = if (lastPkg != null && specialApps.contains(lastPkg)) {
+                lastPkg
+            } else {
+                val text = event.text?.joinToString(" ") ?: ""
+                val desc = event.contentDescription?.toString() ?: ""
+                val combined = "$text $desc"
+                specialApps.firstOrNull { pkg ->
+                    try {
+                        val appInfo = packageManager.getApplicationInfo(pkg, 0)
+                        val label = packageManager.getApplicationLabel(appInfo).toString()
+                        combined.contains(label, ignoreCase = true)
+                    } catch (e: Exception) { false }
+                }
+            }
+            if (targetPkg != null) {
+                FreezerManager.unfreezeApp(targetPkg)
+                FreezerManager.launchApp(this, targetPkg)
             }
             return
         }

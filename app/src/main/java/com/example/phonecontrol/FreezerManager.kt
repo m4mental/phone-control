@@ -58,16 +58,20 @@ object FreezerManager {
         
         if (isSpecialFreeze(context, packageName)) {
             val specialScript = """
-                for p in $(pidof "$packageName" 2>/dev/null); do
-                    adj=$(cat /proc/${'$'}p/oom_score_adj 2>/dev/null)
+                pids=${'$'}(pidof "$packageName" 2>/dev/null)
+                if [ -z "${'$'}pids" ]; then
+                    exit 0
+                fi
+                for p in ${'$'}pids; do
+                    adj=${'$'}(cat /proc/${'$'}p/oom_score_adj 2>/dev/null)
                     if [ -n "${'$'}adj" ] && [ "${'$'}adj" -le 200 ]; then
                         exit 0
                     fi
                 done
-                am force-stop "$packageName" 2>/dev/null
-                pm suspend "$packageName" 2>/dev/null
-                am freeze "$packageName" 2>/dev/null
                 am set-standby-bucket "$packageName" restricted 2>/dev/null
+                cmd appops set "$packageName" RUN_IN_BACKGROUND ignore 2>/dev/null
+                cmd appops set "$packageName" RUN_ANY_IN_BACKGROUND ignore 2>/dev/null
+                am force-stop "$packageName" 2>/dev/null
             """.trimIndent()
             ShellUtils.fastCmd(specialScript)
             return
@@ -75,15 +79,19 @@ object FreezerManager {
 
         // Standard Freeze: Clean Linux cgroup suspend with active process immunity (adj <= 200 cannot be frozen)
         val script = """
-            for p in $(pidof "$packageName" 2>/dev/null); do
-                adj=$(cat /proc/${'$'}p/oom_score_adj 2>/dev/null)
+            pids=${'$'}(pidof "$packageName" 2>/dev/null)
+            if [ -z "${'$'}pids" ]; then
+                exit 0
+            fi
+            for p in ${'$'}pids; do
+                adj=${'$'}(cat /proc/${'$'}p/oom_score_adj 2>/dev/null)
                 if [ -n "${'$'}adj" ] && [ "${'$'}adj" -le 200 ]; then
                     exit 0
                 fi
             done
             am freeze "$packageName" 2>/dev/null
             am set-standby-bucket "$packageName" restricted 2>/dev/null
-            for p in $(pidof "$packageName" 2>/dev/null); do
+            for p in ${'$'}pids; do
                 echo 900 > /proc/${'$'}p/oom_score_adj 2>/dev/null
             done
         """.trimIndent()
@@ -105,8 +113,12 @@ object FreezerManager {
 
         val script = """
             for pkg in $pkgList; do
+                pids=${'$'}(pidof "${'$'}pkg" 2>/dev/null)
+                if [ -z "${'$'}pids" ]; then
+                    continue
+                fi
                 is_safe=0
-                for p in ${'$'}(pidof "${'$'}pkg" 2>/dev/null); do
+                for p in ${'$'}pids; do
                     adj=${'$'}(cat /proc/${'$'}p/oom_score_adj 2>/dev/null)
                     if [ -n "${'$'}adj" ] && [ "${'$'}adj" -le 200 ]; then
                         is_safe=1
@@ -116,7 +128,7 @@ object FreezerManager {
                 if [ "${'$'}is_safe" -eq 0 ]; then
                     am freeze "${'$'}pkg" 2>/dev/null
                     am set-standby-bucket "${'$'}pkg" restricted 2>/dev/null
-                    for p in ${'$'}(pidof "${'$'}pkg" 2>/dev/null); do
+                    for p in ${'$'}pids; do
                         echo 900 > /proc/${'$'}p/oom_score_adj 2>/dev/null
                     done
                 fi
@@ -176,7 +188,7 @@ object FreezerManager {
 
         // 1. Apps tracked in activeSessionApps that have been dismissed from Recents and left foreground
         for (pkg in activeSessionApps) {
-            val isRecentlyLaunched = (pkg == lastLaunchedPackage && (System.currentTimeMillis() - lastLaunchTime < 30000))
+            val isRecentlyLaunched = (pkg == lastLaunchedPackage && (System.currentTimeMillis() - lastLaunchTime < 15000))
             if (!currentRecents.contains(pkg) && pkg != currentForeground && !isRecentlyLaunched && !isAppCurrentlyVisible(pkg)) {
                 toFreeze.add(pkg)
             }
@@ -186,17 +198,8 @@ object FreezerManager {
         // but has active running background processes (e.g. after background wakeup/broadcast)
         val runningConfigured = getRunningConfiguredApps(allConfigured)
         for (pkg in runningConfigured) {
-            val isRecentlyLaunched = (pkg == lastLaunchedPackage && (System.currentTimeMillis() - lastLaunchTime < 30000))
+            val isRecentlyLaunched = (pkg == lastLaunchedPackage && (System.currentTimeMillis() - lastLaunchTime < 15000))
             if (pkg != currentForeground && !currentRecents.contains(pkg) && !isRecentlyLaunched && !isAppCurrentlyVisible(pkg) && !activeSessionApps.contains(pkg)) {
-                toFreeze.add(pkg)
-            }
-        }
-
-        // 3. Special Freeze apps: suspend only if not in foreground, not in recents,
-        // and NOT recently launched, NOT in active session, and NOT currently visible
-        for (pkg in specialApps) {
-            val isRecentlyLaunched = (pkg == lastLaunchedPackage && (System.currentTimeMillis() - lastLaunchTime < 30000))
-            if (pkg != currentForeground && !currentRecents.contains(pkg) && !isRecentlyLaunched && !activeSessionApps.contains(pkg) && !isAppCurrentlyVisible(pkg)) {
                 toFreeze.add(pkg)
             }
         }
@@ -205,7 +208,7 @@ object FreezerManager {
 
         for (pkg in toFreeze) {
             // Absolute safety check: Never touch recently launched apps or currently visible apps
-            if (pkg == lastLaunchedPackage && (System.currentTimeMillis() - lastLaunchTime < 30000)) {
+            if (pkg == lastLaunchedPackage && (System.currentTimeMillis() - lastLaunchTime < 15000)) {
                 continue
             }
             if (isAppCurrentlyVisible(pkg)) {
@@ -220,6 +223,76 @@ object FreezerManager {
                 android.util.Log.d("FreezerManager", "❄️ Recents Dismissed / Background Idle -> Freeze for $pkg")
                 freezeApp(context, pkg)
             }
+        }
+    }
+
+    /**
+     * One-time background sweep to clean up any legacy pm suspend state from previous builds.
+     * Restores package visibility on launcher and eliminates SuspendedAppActivity dialogs.
+     */
+    fun cleanLegacySuspendedApps(context: Context) {
+        val allConfigured = getSpecialFreezeApps(context) + getFrozenApps(context)
+        if (allConfigured.isEmpty()) return
+        val pkgList = allConfigured.joinToString(" ")
+        freezerExecutor.execute {
+            ShellUtils.fastCmd("for p in $pkgList; do pm unsuspend ${'$'}p 2>/dev/null; done")
+        }
+    }
+
+    /**
+     * Removes packages that have been uninstalled or no longer exist on the system
+     * from frozen_apps, special_freeze_apps, and custom_widget_apps.
+     * Prevents "Unknown App" ghost entries and uninstalled package clutter.
+     */
+    fun pruneUninstalledPackages(context: Context) {
+        val pm = context.packageManager
+        val prefs = context.getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE)
+
+        val frozen = prefs.getStringSet("frozen_apps", emptySet()) ?: emptySet()
+        val special = prefs.getStringSet("special_freeze_apps", emptySet()) ?: emptySet()
+        val customWidget = prefs.getStringSet("custom_widget_apps", emptySet()) ?: emptySet()
+
+        val isInstalled = { pkg: String ->
+            try {
+                pm.getApplicationInfo(pkg, 0)
+                true
+            } catch (e: Exception) {
+                false
+            }
+        }
+
+        val cleanFrozen = frozen.filter(isInstalled).toSet()
+        val cleanSpecial = special.filter(isInstalled).toSet()
+        val cleanCustomWidget = customWidget.filter(isInstalled).toSet()
+
+        val editor = prefs.edit()
+        var changed = false
+
+        if (cleanFrozen.size != frozen.size) {
+            editor.putStringSet("frozen_apps", cleanFrozen)
+            changed = true
+        }
+        if (cleanSpecial.size != special.size) {
+            editor.putStringSet("special_freeze_apps", cleanSpecial)
+            changed = true
+        }
+        if (cleanCustomWidget.size != customWidget.size) {
+            editor.putStringSet("custom_widget_apps", cleanCustomWidget)
+            changed = true
+        }
+
+        for (key in prefs.all.keys) {
+            if (key.startsWith("special_") && key != "special_freeze_apps") {
+                val pkg = key.removePrefix("special_")
+                if (!isInstalled(pkg)) {
+                    editor.remove(key)
+                    changed = true
+                }
+            }
+        }
+
+        if (changed) {
+            editor.apply()
         }
     }
 
@@ -241,9 +314,11 @@ object FreezerManager {
     fun unfreezeApp(packageName: String) {
         if (packageName.isBlank()) return
         val script = """
-            pm enable "$packageName" 2>/dev/null
-            pm unsuspend "$packageName" 2>/dev/null
             am unfreeze "$packageName" 2>/dev/null
+            pm unsuspend "$packageName" 2>/dev/null
+            pm enable "$packageName" 2>/dev/null
+            cmd appops set "$packageName" RUN_IN_BACKGROUND allow 2>/dev/null
+            cmd appops set "$packageName" RUN_ANY_IN_BACKGROUND allow 2>/dev/null
             am set-standby-bucket "$packageName" active 2>/dev/null
             for p in $(pidof "$packageName"); do
                 echo 0 > /proc/${'$'}p/oom_score_adj 2>/dev/null
@@ -260,9 +335,11 @@ object FreezerManager {
         val pkgList = packages.joinToString(" ")
         val script = """
             for pkg in $pkgList; do
-                pm enable "${'$'}pkg" 2>/dev/null
-                pm unsuspend "${'$'}pkg" 2>/dev/null
                 am unfreeze "${'$'}pkg" 2>/dev/null
+                pm unsuspend "${'$'}pkg" 2>/dev/null
+                pm enable "${'$'}pkg" 2>/dev/null
+                cmd appops set "${'$'}pkg" RUN_IN_BACKGROUND allow 2>/dev/null
+                cmd appops set "${'$'}pkg" RUN_ANY_IN_BACKGROUND allow 2>/dev/null
                 am set-standby-bucket "${'$'}pkg" active 2>/dev/null
                 for p in ${'$'}(pidof "${'$'}pkg"); do
                     echo 0 > /proc/${'$'}p/oom_score_adj 2>/dev/null
