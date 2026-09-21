@@ -23,12 +23,23 @@
 ---
 
 ## ✨ What's New & Recent Fixes
-* **🌐 Independent Developer & Wireless ADB Engine + Quick Settings Tile:**
-  * Root-level persistent TCP/IP debugging on fixed **Port 5555** (`service.adb.tcp.port 5555`).
-  * **Completely Decoupled:** Dedicated card in Master Settings that functions independently from System Tools Hub and Master presets.
-  * **Reboot Persistence:** Automatically re-applies port 5555 on device boot via `BootReceiver`.
-  * **Dedicated Quick Settings (QS) Tile (`WirelessAdbTileService`):** 1-tap wireless debugging toggle in the notification shade, live IP subtitle (`<IP>:5555`), and automatic clipboard copy of the `adb connect` command.
-  * **Hotspot-Aware IP Detection:** Prioritizes mobile hotspot interfaces (`ap0`, `softap0`, `swlan0`) over Wi-Fi (`wlan0`) for instant tethered computer debugging.
+* **🎛️ Universal Quick Settings (QS) Tile Long-Press Router & Feature Dialogs:**
+  * **Completely Decoupled Preferences:** Resolved root cause where long-pressing any QS tile erroneously launched the Equalizer Presets dialog. Each tile now routes to its own dedicated dialog or direct feature page.
+  * **⚡ Mode Control Chooser Dialog (`ModeControlTileService`):** Long-press opens an independent Mode Chooser dialog (AI Dynamic, Balanced, Streaming, Power Saver, Performance) with live checkmarks, 1-tap switching, and direct navigation to `ModeControlActivity`.
+  * **🛡️ Private DNS Chooser Dialog (`PrivateDnsTileService`):** Long-press opens an independent DNS Chooser dialog (AdGuard, Cloudflare 1.1.1.1, Google DNS, Off) with live active state indicators and direct navigation to `NetworkActivity`.
+  * **📊 Performance HUD Quick Dialog (`HudTileService`):** Long-press opens a Perf HUD dialog with live on-screen status, 1-tap toggle switch, and direct navigation to `PerAppActivity`.
+  * **❄️ Quick Freeze Direct Launch (`QuickFreezeTileService`):** Long-press directly opens `AppFreezerListActivity` without intermediate menus.
+  * **🌐 Wireless ADB Direct Launch (`WirelessAdbTileService`):** Long-press directly opens Master Settings (`SettingsActivity`) with auto-scroll focus on the Developer & Wireless ADB card.
+  * **❄️ Emergency Cooldown Direct Launch (`CooldownTileService`):** Long-press directly opens `ThrottlingActivity`.
+  * **🎵 Studio Equalizer & Night Mode:** Dedicated routing to Equalizer Presets and Movie & Night Mode tabs.
+* **❄️ App Freezer Launch Bounce Elimination & Ghost App Purge:**
+  * **Launch Bounce Fix:** Eliminated first-tap launch bounce caused by simultaneous background freeze evaluation during app startup.
+  * **Ghost App Purge:** Replaced `MATCH_UNINSTALLED_PACKAGES` queries and introduced dynamic `AppUninstallReceiver` so uninstalled apps are immediately and permanently removed from the Freezer database.
+* **⚡ Screen Unlock Frequency Floor & MediaTek GED GPU Wakeup Boost:**
+  * **Strict 480MHz Screen-Off Isolation:** Fixed rare 480MHz floor lock by strictly limiting low-frequency floors to deep screen-off state and immediately restoring the active operating mode profile on screen-on.
+  * **3.5s GED GPU Wakeup Boost:** Injected temporary 3.5s MediaTek GPU wakeup boost on screen unlock to ensure stutter-free biometric transitions.
+* **📱 Nothing OS AMOLED Dot-Matrix Dashboard & Master Settings Overhaul:**
+  * Complete AMOLED black interface with authentic Nothing OS dot-matrix typography, animated battery/CPU rings, and streamlined hub cards.
 * **🎧 Studio DSP Multi-Tab UI, AutoEQ Engine & Zero-Dropout Audio Shield:**
   * **Redesigned Multi-Tab Interface:** Sleek 4-tab bottom navigation (`Effects`, `Apps & Cinema`, `Spatial`, `EQ`) with smooth transitions.
   * **AutoEQ Headphone Database Integration (`AutoEqManager`):** Built-in parametric headphone frequency correction database with search and 1-tap profile application.
