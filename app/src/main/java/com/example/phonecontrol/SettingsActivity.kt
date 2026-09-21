@@ -256,6 +256,12 @@ class SettingsActivity : AppCompatActivity() {
             clipboard.setPrimaryClip(clip)
             Toast.makeText(this, "Copied: $cmd", Toast.LENGTH_SHORT).show()
         }
+
+        if (intent.getStringExtra("target_section") == "wireless_adb") {
+            cardWirelessAdb.post {
+                cardWirelessAdb.parent?.requestChildFocus(cardWirelessAdb, cardWirelessAdb)
+            }
+        }
     }
 
     private fun loadDiagnosticsAsync() {

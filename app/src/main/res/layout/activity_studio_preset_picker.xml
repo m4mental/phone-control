@@ -36,7 +36,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Studio Equalizer Quick Menu"
+                    android:text="Quick Settings Menu"
                     android:textColor="#F8FAFC"
                     android:textSize="16sp"
                     android:textStyle="bold" />
@@ -50,13 +50,14 @@
                     app:tint="#94A3B8" />
             </LinearLayout>
 
-            <!-- Mode Selector Tabs -->
+            <!-- Mode Selector Tabs (Only used for Studio Equalizer / Night Mode) -->
             <com.google.android.material.button.MaterialButtonToggleGroup
                 android:id="@+id/toggleGroupViewMode"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
                 android:layout_marginBottom="12dp"
+                android:visibility="gone"
                 app:selectionRequired="true"
                 app:singleSelection="true">
 
@@ -81,12 +82,646 @@
                     android:textSize="12sp" />
             </com.google.android.material.button.MaterialButtonToggleGroup>
 
-            <!-- SECTION 1: PRESET PICKER LIST -->
+            <!-- ============================================== -->
+            <!-- SECTION 1: MODE CONTROL CHOOSER DIALOG         -->
+            <!-- ============================================== -->
+            <LinearLayout
+                android:id="@+id/layoutSectionModeControl"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone"
+                android:layout_marginTop="8dp">
+
+                <TextView
+                    android:id="@+id/tvModeSubtitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Choose CPU/GPU operating profile:"
+                    android:textColor="#94A3B8"
+                    android:textSize="12sp"
+                    android:layout_marginBottom="10dp" />
+
+                <!-- AI Dynamic Mode -->
+                <LinearLayout
+                    android:id="@+id/itemModeAuto"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:background="@drawable/bg_preset_item_ripple"
+                    android:paddingVertical="9dp"
+                    android:paddingHorizontal="12dp"
+                    android:layout_marginBottom="4dp"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <TextView
+                        android:layout_width="28dp"
+                        android:layout_height="wrap_content"
+                        android:text="🤖"
+                        android:textSize="18sp"
+                        android:gravity="center"
+                        android:layout_marginEnd="10dp" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="AI Dynamic (Automatic)"
+                            android:textColor="#F1F5F9"
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Adaptive smart scaling based on live workload"
+                            android:textColor="#64748B"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+
+                    <ImageView
+                        android:id="@+id/ivCheckModeAuto"
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:src="@android:drawable/checkbox_on_background"
+                        app:tint="#00E5FF"
+                        android:visibility="gone" />
+                </LinearLayout>
+
+                <!-- Balanced Mode -->
+                <LinearLayout
+                    android:id="@+id/itemModeBalance"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:background="@drawable/bg_preset_item_ripple"
+                    android:paddingVertical="9dp"
+                    android:paddingHorizontal="12dp"
+                    android:layout_marginBottom="4dp"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <TextView
+                        android:layout_width="28dp"
+                        android:layout_height="wrap_content"
+                        android:text="⚡"
+                        android:textSize="18sp"
+                        android:gravity="center"
+                        android:layout_marginEnd="10dp" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Balanced Mode"
+                            android:textColor="#F1F5F9"
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Fluid 120Hz display, optimal thermals &amp; speed"
+                            android:textColor="#64748B"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+
+                    <ImageView
+                        android:id="@+id/ivCheckModeBalance"
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:src="@android:drawable/checkbox_on_background"
+                        app:tint="#00E5FF"
+                        android:visibility="gone" />
+                </LinearLayout>
+
+                <!-- Streaming Mode -->
+                <LinearLayout
+                    android:id="@+id/itemModeStreaming"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:background="@drawable/bg_preset_item_ripple"
+                    android:paddingVertical="9dp"
+                    android:paddingHorizontal="12dp"
+                    android:layout_marginBottom="4dp"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <TextView
+                        android:layout_width="28dp"
+                        android:layout_height="wrap_content"
+                        android:text="🎬"
+                        android:textSize="18sp"
+                        android:gravity="center"
+                        android:layout_marginEnd="10dp" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Streaming Mode"
+                            android:textColor="#F1F5F9"
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="950-1200MHz Media Eco, cool battery playback"
+                            android:textColor="#64748B"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+
+                    <ImageView
+                        android:id="@+id/ivCheckModeStreaming"
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:src="@android:drawable/checkbox_on_background"
+                        app:tint="#00E5FF"
+                        android:visibility="gone" />
+                </LinearLayout>
+
+                <!-- Power Saver Mode -->
+                <LinearLayout
+                    android:id="@+id/itemModePowerSaver"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:background="@drawable/bg_preset_item_ripple"
+                    android:paddingVertical="9dp"
+                    android:paddingHorizontal="12dp"
+                    android:layout_marginBottom="4dp"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <TextView
+                        android:layout_width="28dp"
+                        android:layout_height="wrap_content"
+                        android:text="🔋"
+                        android:textSize="18sp"
+                        android:gravity="center"
+                        android:layout_marginEnd="10dp" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Power Saver Mode"
+                            android:textColor="#F1F5F9"
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="650MHz Eco floor, maximum battery life"
+                            android:textColor="#64748B"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+
+                    <ImageView
+                        android:id="@+id/ivCheckModePowerSaver"
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:src="@android:drawable/checkbox_on_background"
+                        app:tint="#00E5FF"
+                        android:visibility="gone" />
+                </LinearLayout>
+
+                <!-- Performance Mode -->
+                <LinearLayout
+                    android:id="@+id/itemModePerformance"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:background="@drawable/bg_preset_item_ripple"
+                    android:paddingVertical="9dp"
+                    android:paddingHorizontal="12dp"
+                    android:layout_marginBottom="12dp"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <TextView
+                        android:layout_width="28dp"
+                        android:layout_height="wrap_content"
+                        android:text="🚀"
+                        android:textSize="18sp"
+                        android:gravity="center"
+                        android:layout_marginEnd="10dp" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Performance Mode"
+                            android:textColor="#F1F5F9"
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Turbo 2.8GHz, unthrottled maximum compute"
+                            android:textColor="#64748B"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+
+                    <ImageView
+                        android:id="@+id/ivCheckModePerformance"
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:src="@android:drawable/checkbox_on_background"
+                        app:tint="#00E5FF"
+                        android:visibility="gone" />
+                </LinearLayout>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnOpenModeSettings"
+                    style="@style/Widget.Material3.Button.TonalButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Open Full Mode Settings"
+                    android:textColor="#38BDF8"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <!-- ============================================== -->
+            <!-- SECTION 2: PRIVATE DNS CHOOSER DIALOG          -->
+            <!-- ============================================== -->
+            <LinearLayout
+                android:id="@+id/layoutSectionPrivateDns"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone"
+                android:layout_marginTop="8dp">
+
+                <TextView
+                    android:id="@+id/tvDnsSubtitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Choose encrypted Private DNS profile:"
+                    android:textColor="#94A3B8"
+                    android:textSize="12sp"
+                    android:layout_marginBottom="10dp" />
+
+                <!-- AdGuard DNS -->
+                <LinearLayout
+                    android:id="@+id/itemDnsAdguard"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:background="@drawable/bg_preset_item_ripple"
+                    android:paddingVertical="9dp"
+                    android:paddingHorizontal="12dp"
+                    android:layout_marginBottom="4dp"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <TextView
+                        android:layout_width="28dp"
+                        android:layout_height="wrap_content"
+                        android:text="🛡️"
+                        android:textSize="18sp"
+                        android:gravity="center"
+                        android:layout_marginEnd="10dp" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="AdGuard DNS"
+                            android:textColor="#F1F5F9"
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="System-wide ad &amp; tracker blocker"
+                            android:textColor="#64748B"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+
+                    <ImageView
+                        android:id="@+id/ivCheckDnsAdguard"
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:src="@android:drawable/checkbox_on_background"
+                        app:tint="#00E5FF"
+                        android:visibility="gone" />
+                </LinearLayout>
+
+                <!-- Cloudflare DNS -->
+                <LinearLayout
+                    android:id="@+id/itemDnsCloudflare"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:background="@drawable/bg_preset_item_ripple"
+                    android:paddingVertical="9dp"
+                    android:paddingHorizontal="12dp"
+                    android:layout_marginBottom="4dp"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <TextView
+                        android:layout_width="28dp"
+                        android:layout_height="wrap_content"
+                        android:text="⚡"
+                        android:textSize="18sp"
+                        android:gravity="center"
+                        android:layout_marginEnd="10dp" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Cloudflare 1.1.1.1"
+                            android:textColor="#F1F5F9"
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Ultra-fast resolution &amp; low gaming ping"
+                            android:textColor="#64748B"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+
+                    <ImageView
+                        android:id="@+id/ivCheckDnsCloudflare"
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:src="@android:drawable/checkbox_on_background"
+                        app:tint="#00E5FF"
+                        android:visibility="gone" />
+                </LinearLayout>
+
+                <!-- Google DNS -->
+                <LinearLayout
+                    android:id="@+id/itemDnsGoogle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:background="@drawable/bg_preset_item_ripple"
+                    android:paddingVertical="9dp"
+                    android:paddingHorizontal="12dp"
+                    android:layout_marginBottom="4dp"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <TextView
+                        android:layout_width="28dp"
+                        android:layout_height="wrap_content"
+                        android:text="🌐"
+                        android:textSize="18sp"
+                        android:gravity="center"
+                        android:layout_marginEnd="10dp" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Google Public DNS"
+                            android:textColor="#F1F5F9"
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Reliable global Anycast CDN resolution"
+                            android:textColor="#64748B"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+
+                    <ImageView
+                        android:id="@+id/ivCheckDnsGoogle"
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:src="@android:drawable/checkbox_on_background"
+                        app:tint="#00E5FF"
+                        android:visibility="gone" />
+                </LinearLayout>
+
+                <!-- DNS Off -->
+                <LinearLayout
+                    android:id="@+id/itemDnsOff"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:background="@drawable/bg_preset_item_ripple"
+                    android:paddingVertical="9dp"
+                    android:paddingHorizontal="12dp"
+                    android:layout_marginBottom="12dp"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <TextView
+                        android:layout_width="28dp"
+                        android:layout_height="wrap_content"
+                        android:text="⭕"
+                        android:textSize="18sp"
+                        android:gravity="center"
+                        android:layout_marginEnd="10dp" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Off (ISP Default)"
+                            android:textColor="#F1F5F9"
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Standard carrier / Wi-Fi network DNS"
+                            android:textColor="#64748B"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+
+                    <ImageView
+                        android:id="@+id/ivCheckDnsOff"
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:src="@android:drawable/checkbox_on_background"
+                        app:tint="#00E5FF"
+                        android:visibility="gone" />
+                </LinearLayout>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnOpenNetworkSettings"
+                    style="@style/Widget.Material3.Button.TonalButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Open Full Network Settings"
+                    android:textColor="#38BDF8"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <!-- ============================================== -->
+            <!-- SECTION 3: PERFORMANCE HUD QUICK DIALOG        -->
+            <!-- ============================================== -->
+            <LinearLayout
+                android:id="@+id/layoutSectionPerfHud"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone"
+                android:layout_marginTop="8dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Floating Real-Time Performance Monitor"
+                    android:textColor="#94A3B8"
+                    android:textSize="12sp"
+                    android:layout_marginBottom="12dp" />
+
+                <!-- HUD Status Card -->
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    app:cardBackgroundColor="#1E293B"
+                    app:cardCornerRadius="16dp"
+                    app:cardElevation="0dp"
+                    app:strokeColor="#334155"
+                    app:strokeWidth="1dp"
+                    android:layout_marginBottom="12dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:padding="16dp">
+
+                        <TextView
+                            android:layout_width="32dp"
+                            android:layout_height="wrap_content"
+                            android:text="📊"
+                            android:textSize="20sp"
+                            android:gravity="center"
+                            android:layout_marginEnd="10dp" />
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/tvPerfHudStatusTitle"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Floating Performance HUD"
+                                android:textColor="#F1F5F9"
+                                android:textSize="14sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:id="@+id/tvPerfHudStatusDesc"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Status: Inactive (Hidden)"
+                                android:textColor="#94A3B8"
+                                android:textSize="12sp" />
+                        </LinearLayout>
+
+                        <com.google.android.material.materialswitch.MaterialSwitch
+                            android:id="@+id/switchPerfHudToggle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Displays active mode, core frequencies (MHz), and real-time thermals on top of any game or app."
+                    android:textColor="#64748B"
+                    android:textSize="11sp"
+                    android:layout_marginBottom="14dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnOpenPerAppSettings"
+                    style="@style/Widget.Material3.Button.TonalButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Configure Per-App Profiles &amp; HUD"
+                    android:textColor="#38BDF8"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <!-- ============================================== -->
+            <!-- SECTION 4: STUDIO PRESET PICKER LIST           -->
+            <!-- ============================================== -->
             <LinearLayout
                 android:id="@+id/layoutSectionPresets"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical">
+                android:orientation="vertical"
+                android:visibility="gone">
 
                 <TextView
                     android:id="@+id/tvActivePresetStatus"
@@ -105,7 +740,9 @@
                     android:scrollbars="vertical" />
             </LinearLayout>
 
-            <!-- SECTION 2: MOVIE & NIGHT MODE -->
+            <!-- ============================================== -->
+            <!-- SECTION 5: MOVIE & NIGHT MODE                  -->
+            <!-- ============================================== -->
             <LinearLayout
                 android:id="@+id/layoutSectionNightMode"
                 android:layout_width="match_parent"
@@ -242,12 +879,14 @@
                 </LinearLayout>
             </LinearLayout>
 
-            <!-- Action Buttons Footer -->
+            <!-- Action Buttons Footer for Equalizer -->
             <LinearLayout
+                android:id="@+id/layoutFooterEqualizer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                android:layout_marginTop="16dp">
+                android:layout_marginTop="16dp"
+                android:visibility="gone">
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnOpenFullEqualizer"
