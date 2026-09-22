@@ -171,14 +171,11 @@ class SettingsActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
         for (holder in categoryHolders) {
             val isMasterOn = prefs.getBoolean(holder.category.masterKey, true)
-            holder.swMaster.setOnCheckedChangeListener(null)
-            holder.swMaster.isChecked = isMasterOn
-            for (item in holder.subItems) {
-                val isSubOn = prefs.getBoolean(item.sub.prefKey, item.sub.defaultEnabled)
-                item.sw.setOnCheckedChangeListener(null)
-                item.sw.isChecked = isSubOn
-                item.sw.isEnabled = isMasterOn
-                item.view.alpha = if (isMasterOn) 1.0f else 0.45f
+            if (holder.swMaster.isChecked != isMasterOn) {
+                holder.swMaster.isChecked = isMasterOn
+            }
+            if (holder.subItems.isNotEmpty()) {
+                renderSubFeatures(holder, isMasterOn)
             }
             updateCategoryBadge(holder)
         }
@@ -287,8 +284,7 @@ class SettingsActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
         val editor = prefs.edit()
 
-        when (preset) {
-            "Gaming" -> {
+        when (preset) {            "Gaming" -> {
                 editor.putBoolean("master_gaming_hub_enabled", true)
                 editor.putBoolean("game_turbo_enabled", true)
                 editor.putBoolean("per_app_enabled", true)
@@ -298,6 +294,7 @@ class SettingsActivity : AppCompatActivity() {
                 editor.putBoolean("adaptive_thermal_enabled", true)
                 editor.putBoolean("master_security_hub_enabled", true)
                 editor.putBoolean("network_priority_enabled", true)
+                editor.putBoolean("update_shield_enabled", true)
             }
             "Battery" -> {
                 editor.putBoolean("master_battery_hub_enabled", true)
@@ -309,6 +306,7 @@ class SettingsActivity : AppCompatActivity() {
                 editor.putBoolean("sensor_firewall_enabled", true)
                 editor.putBoolean("master_performance_hub_enabled", true)
                 editor.putBoolean("adaptive_thermal_enabled", true)
+                editor.putBoolean("update_shield_enabled", true)
             }
             "Balance" -> {
                 editor.putBoolean("master_battery_hub_enabled", true)
@@ -329,6 +327,7 @@ class SettingsActivity : AppCompatActivity() {
                 editor.putBoolean("bloatware_enabled", true)
                 editor.putBoolean("app_extractor_enabled", true)
                 editor.putBoolean("adb_enabled", true)
+                editor.putBoolean("update_shield_enabled", true)
             }
         }
         editor.commit()
@@ -440,9 +439,10 @@ class SettingsActivity : AppCompatActivity() {
                 masterKey = "master_tools_hub_enabled",
                 accentColor = "#FF5252",
                 iconRes = R.drawable.ic_hub_tools,
-                description = "Package Installer, App Freezer, Bloatware remover & Extractor",
+                description = "Package Installer, App Freezer, Update Shield & Extractor",
                 subFeatures = listOf(
                     SubFeature("Universal Package Installer", "default_installer_enabled", "Intercept .apk & .apks with pre-install tracker scan, split APK support & silent root install.", false, R.drawable.ic_sub_installer),
+                    SubFeature("Play Store Update Shield", "update_shield_enabled", "Detach apps from Play Store to block background auto-updates and 'Update All' sweeps.", true, R.drawable.ic_sub_shield),
                     SubFeature("App Freezer & Hibernation", "freezer_enabled", "Freeze unused applications with a single tap to reclaim 100% background RAM.", false, R.drawable.ic_sub_freezer),
                     SubFeature("Bloatware Remover", "bloatware_enabled", "Force-disable carrier-preinstalled bloatware and unnecessary background telemetry.", false, R.drawable.ic_sub_bloatware),
                     SubFeature("Installed App Extractor", "app_extractor_enabled", "Extract single APKs or split app bundles (.apks) to storage/share with 1-tap.", true, R.drawable.ic_sub_extractor),
@@ -619,6 +619,32 @@ class SettingsActivity : AppCompatActivity() {
                 }
             }
 
+            subView.setOnLongClickListener {
+                when (sub.prefKey) {
+                    "update_shield_enabled" -> {
+                        startActivity(Intent(this@SettingsActivity, UpdateShieldActivity::class.java))
+                        true
+                    }
+                    "freezer_enabled" -> {
+                        startActivity(Intent(this@SettingsActivity, AppFreezerListActivity::class.java))
+                        true
+                    }
+                    "bloatware_enabled" -> {
+                        startActivity(Intent(this@SettingsActivity, BloatwareActivity::class.java))
+                        true
+                    }
+                    "app_extractor_enabled" -> {
+                        startActivity(Intent(this@SettingsActivity, AppExtractorActivity::class.java))
+                        true
+                    }
+                    "adb_enabled" -> {
+                        startActivity(Intent(this@SettingsActivity, AdbShellActivity::class.java))
+                        true
+                    }
+                    else -> false
+                }
+            }
+
             swSub.setOnCheckedChangeListener { _, isChecked ->
                 prefs.edit().putBoolean(sub.prefKey, isChecked).commit()
                 if (sub.prefKey == "default_installer_enabled") {
@@ -636,6 +662,10 @@ class SettingsActivity : AppCompatActivity() {
                             Toast.LENGTH_SHORT
                         ).show()
                     }
+                } else if (sub.prefKey == "update_shield_enabled") {
+                    UpdateShieldManager.setMasterEnabled(this@SettingsActivity, isChecked)
+                    val msg = if (isChecked) "🛡️ Play Store Update Shield active" else "Play Store Update Shield paused"
+                    Toast.makeText(this@SettingsActivity, msg, Toast.LENGTH_SHORT).show()
                 } else if (!isChecked) {
                     revertSpecificFeature(sub.prefKey)
                 }
@@ -810,6 +840,9 @@ class SettingsActivity : AppCompatActivity() {
                 }
                 "default_installer_enabled" -> {
                     PackageInstallerManager.setDefaultInstallerEnabled(this@SettingsActivity, false)
+                }
+                "update_shield_enabled" -> {
+                    UpdateShieldManager.setMasterEnabled(this, false)
                 }
                 "wireless_adb_enabled" -> {
                     WirelessAdbManager.disable(this)

@@ -207,6 +207,11 @@
             android:theme="@style/Theme.PhoneControl" />
 
         <activity
+            android:name=".UpdateShieldActivity"
+            android:exported="true"
+            android:theme="@style/Theme.PhoneControl" />
+
+        <activity
             android:name=".VaultActivity"
             android:exported="false"
             android:theme="@style/Theme.PhoneControl" />

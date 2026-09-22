@@ -15,7 +15,8 @@ object BackupManager {
         "game_turbo_prefs",
         "super_doze_prefs",
         "tower_prefs",
-        "per_app_prefs"
+        "per_app_prefs",
+        "update_shield_prefs"
     )
     
     private const val ROOT_DIR = "/sdcard/PHONE_CONTROL"

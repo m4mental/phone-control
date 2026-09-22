@@ -34,6 +34,11 @@ class FreezerActivity : AppCompatActivity() {
             startActivity(Intent(this, VaultActivity::class.java))
         }
 
+        // Card: Play Store Update Shield
+        findViewById<View>(R.id.cardUpdateShield).setOnClickListener {
+            startActivity(Intent(this, UpdateShieldActivity::class.java))
+        }
+
         // Card 4: Root Shell Terminal
         findViewById<View>(R.id.cardTerminal).setOnClickListener {
             startActivity(Intent(this, AdbShellActivity::class.java))
@@ -56,6 +61,8 @@ class FreezerActivity : AppCompatActivity() {
             if (masterToolsEnabled && prefs.getBoolean("bloatware_enabled", true)) View.VISIBLE else View.GONE
         findViewById<View>(R.id.cardAppExtractor).visibility =
             if (masterToolsEnabled && prefs.getBoolean("app_extractor_enabled", true)) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.cardUpdateShield).visibility =
+            if (masterToolsEnabled && prefs.getBoolean("update_shield_enabled", true)) View.VISIBLE else View.GONE
         findViewById<View>(R.id.cardVault).visibility =
             if (masterToolsEnabled && prefs.getBoolean("vault_enabled", false)) View.VISIBLE else View.GONE
         findViewById<View>(R.id.cardTerminal).visibility =

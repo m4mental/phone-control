@@ -29,6 +29,7 @@ class AppInspectorActivity : AppCompatActivity() {
     private val userAppsCache = mutableListOf<AdbAppItem>()
     private val systemAppsCache = mutableListOf<AdbAppItem>()
     private val disabledAppsCache = mutableListOf<AdbAppItem>()
+    private val shieldedAppsCache = mutableListOf<AdbAppItem>()
     private var adapter: ArrayAdapter<AdbAppItem>? = null
     private lateinit var pm: PackageManager
 
@@ -60,6 +61,7 @@ class AppInspectorActivity : AppCompatActivity() {
                         "DISABLED" -> tvTag.setTextColor(android.graphics.Color.parseColor("#FF9100"))
                         "FROZEN", "FROZEN (SPECIAL)" -> tvTag.setTextColor(android.graphics.Color.parseColor("#00E5FF"))
                         "SUSPENDED" -> tvTag.setTextColor(android.graphics.Color.parseColor("#E040FB"))
+                        "SHIELDED" -> tvTag.setTextColor(android.graphics.Color.parseColor("#00E5FF"))
                         else -> tvTag.setTextColor(android.graphics.Color.parseColor("#888888"))
                     }
                 } else {
@@ -116,6 +118,7 @@ class AppInspectorActivity : AppCompatActivity() {
                     PackageManager.MATCH_DISABLED_UNTIL_USED_COMPONENTS
             val apps = pm.getInstalledApplications(flags)
             val freezerApps = FreezerManager.getFrozenApps(this)
+            val shieldedApps = UpdateShieldManager.getShieldedPackages(this)
 
             // Query root disabled / hidden list to catch all hidden or disabled packages
             val rootDisabledList = ShellUtils.fastCmdResult("pm list packages -d -u 2>/dev/null").lines()
@@ -126,6 +129,7 @@ class AppInspectorActivity : AppCompatActivity() {
             val tempUser = mutableListOf<AdbAppItem>()
             val tempSys = mutableListOf<AdbAppItem>()
             val tempDisabled = mutableListOf<AdbAppItem>()
+            val tempShielded = mutableListOf<AdbAppItem>()
 
             for (app in apps) {
                 val isSystem = (app.flags and ApplicationInfo.FLAG_SYSTEM) != 0
@@ -145,12 +149,14 @@ class AppInspectorActivity : AppCompatActivity() {
                 val isRootDisabled = rootDisabledList.contains(pkg)
                 val isDisabled = !app.enabled || isRootDisabled
                 val isFrozen = freezerApps.contains(pkg)
+                val isShielded = shieldedApps.contains(pkg)
 
                 val tag = when {
                     isHidden -> "HIDDEN"
                     isDisabled -> "DISABLED"
                     isFrozen -> if (FreezerManager.isSpecialFreeze(this, pkg)) "FROZEN (SPECIAL)" else "FROZEN"
                     isSuspended -> "SUSPENDED"
+                    isShielded -> "SHIELDED"
                     (app.flags and ApplicationInfo.FLAG_STOPPED) != 0 -> "STOPPED"
                     else -> ""
                 }
@@ -159,11 +165,13 @@ class AppInspectorActivity : AppCompatActivity() {
                 val item = AdbAppItem(label, pkg, icon, tag, isInactive)
                 if (isSystem) tempSys.add(item) else tempUser.add(item)
                 if (isInactive) tempDisabled.add(item)
+                if (isShielded) tempShielded.add(item)
             }
 
             tempUser.sortBy { it.name.lowercase() }
             tempSys.sortBy { it.name.lowercase() }
             tempDisabled.sortBy { it.name.lowercase() }
+            tempShielded.sortBy { it.name.lowercase() }
 
             runOnUiThread {
                 userAppsCache.clear()
@@ -172,6 +180,8 @@ class AppInspectorActivity : AppCompatActivity() {
                 systemAppsCache.addAll(tempSys)
                 disabledAppsCache.clear()
                 disabledAppsCache.addAll(tempDisabled)
+                shieldedAppsCache.clear()
+                shieldedAppsCache.addAll(tempShielded)
                 progressBar.visibility = View.GONE
                 filterList(tabLayout.selectedTabPosition, etSearch.text.toString().trim().lowercase())
             }
@@ -182,6 +192,7 @@ class AppInspectorActivity : AppCompatActivity() {
         val source = when (tabPosition) {
             1 -> systemAppsCache
             2 -> disabledAppsCache
+            3 -> shieldedAppsCache
             else -> userAppsCache
         }
         val filtered = if (query.isEmpty()) {
@@ -198,7 +209,9 @@ class AppInspectorActivity : AppCompatActivity() {
 
     private fun showAppOptions(item: AdbAppItem) {
         val toggleAction = if (item.isDisabledOrFrozen) "✅ Enable & Unhide App" else "🛑 Disable & Hide App"
-        val options = arrayOf("Select for Terminal", toggleAction, "⚡ Force Stop App", "📋 Copy Package Name")
+        val isShielded = UpdateShieldManager.isShielded(this, item.packageName)
+        val shieldAction = if (isShielded) "🔄 Re-attach to Play Store (Allow Updates)" else "🛡️ Detach from Play Store (Shield)"
+        val options = arrayOf("Select for Terminal", toggleAction, shieldAction, "⚡ Force Stop App", "📋 Copy Package Name")
 
         AlertDialog.Builder(this)
             .setTitle(item.name)
@@ -215,6 +228,25 @@ class AppInspectorActivity : AppCompatActivity() {
                     }
                     2 -> {
                         thread {
+                            val currentlyShielded = UpdateShieldManager.isShielded(this, item.packageName)
+                            val success = UpdateShieldManager.setShielded(this, item.packageName, !currentlyShielded)
+                            runOnUiThread {
+                                if (success) {
+                                    val msg = if (!currentlyShielded) {
+                                        "🛡️ Shielded ${item.name} (Play Store updates blocked)"
+                                    } else {
+                                        "🔄 Re-attached ${item.name} to Play Store"
+                                    }
+                                    Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                                    loadAppsInBackground()
+                                } else {
+                                    Toast.makeText(this, "Failed to apply shield (root required)", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    }
+                    3 -> {
+                        thread {
                             ShellUtils.runAsRoot("am force-stop ${item.packageName}")
                             runOnUiThread {
                                 Toast.makeText(this, "Force Stopped ${item.name}", Toast.LENGTH_SHORT).show()
@@ -222,7 +254,7 @@ class AppInspectorActivity : AppCompatActivity() {
                             }
                         }
                     }
-                    3 -> {
+                    4 -> {
                         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         val clip = ClipData.newPlainText("Package Name", item.packageName)
                         clipboard.setPrimaryClip(clip)

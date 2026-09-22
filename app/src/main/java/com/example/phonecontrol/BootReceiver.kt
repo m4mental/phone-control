@@ -122,6 +122,11 @@ class BootReceiver : BroadcastReceiver() {
                     WirelessAdbManager.applyBootPersistence(context)
                 }
 
+                // Re-enforce Play Store Update Shield if enabled in Master Settings
+                if (UpdateShieldManager.isMasterEnabled(context)) {
+                    UpdateShieldManager.enforceAllShields(context)
+                }
+
                 val serviceIntent = Intent(context, AutoTweakService::class.java).apply {
                     putExtra("delayed_start", true)
                 }

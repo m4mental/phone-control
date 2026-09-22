@@ -401,6 +401,7 @@ class AutoTweakService : Service() {
             ThermalManager.checkAndRecoverCooldown(this)
             FreezerManager.cleanLegacySuspendedApps(this@AutoTweakService)
             FreezerManager.pruneUninstalledPackages(this@AutoTweakService)
+            UpdateShieldManager.enforceAllShields(this@AutoTweakService)
 
             // Auto-initialize Studio Equalizer DSP in background on service startup
             if (PowerampPresetManager.isMasterEnabled(this@AutoTweakService)) {

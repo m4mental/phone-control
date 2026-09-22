@@ -27,6 +27,7 @@
         <com.google.android.material.tabs.TabItem android:text="User Apps" />
         <com.google.android.material.tabs.TabItem android:text="System Apps" />
         <com.google.android.material.tabs.TabItem android:text="Disabled / Hidden" />
+        <com.google.android.material.tabs.TabItem android:text="🛡️ Shielded" />
     </com.google.android.material.tabs.TabLayout>
 
     <EditText

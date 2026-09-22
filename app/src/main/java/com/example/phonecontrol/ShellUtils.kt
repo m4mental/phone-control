@@ -163,11 +163,43 @@ object ShellUtils {
         fastCmd(joined)
     }
 
+    /**
+     * Executes command directly with su -mm (Mount Master / Global Namespace)
+     * Bypasses mount namespace isolation for access to other app packages (/data/data).
+     */
+    fun runAsRootMm(command: String, timeoutMs: Long = 5000): ShellResult {
+        return try {
+            val p = Runtime.getRuntime().exec(arrayOf("su", "-mm", "-c", command))
+            val output = StringBuilder()
+            val r = BufferedReader(InputStreamReader(p.inputStream))
+            val er = BufferedReader(InputStreamReader(p.errorStream))
+            var l: String?
+            while (r.readLine().also { l = it } != null) { output.append(l).append("\n") }
+            while (er.readLine().also { l = it } != null) { output.append(l).append("\n") }
+            val exited = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                p.waitFor(timeoutMs, TimeUnit.MILLISECONDS)
+            } else {
+                p.waitFor()
+                true
+            }
+            val code = if (exited) p.exitValue() else -1
+            ShellResult(code, output.toString().trim())
+        } catch (e: Exception) {
+            runAsRoot(command, timeoutMs)
+        }
+    }
+
     @Synchronized
     private fun ensureShell() {
         if (persistentProcess == null || !isProcessAlive(persistentProcess)) {
             closePersistentShell()
-            persistentProcess = Runtime.getRuntime().exec("su")
+            persistentProcess = try {
+                val proc = Runtime.getRuntime().exec(arrayOf("su", "-mm"))
+                Thread.sleep(50)
+                if (isProcessAlive(proc)) proc else Runtime.getRuntime().exec("su")
+            } catch (e: Exception) {
+                Runtime.getRuntime().exec("su")
+            }
             os = DataOutputStream(persistentProcess!!.outputStream)
             reader = BufferedReader(InputStreamReader(persistentProcess!!.inputStream))
         }
