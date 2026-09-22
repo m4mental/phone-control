@@ -440,8 +440,9 @@ class SettingsActivity : AppCompatActivity() {
                 masterKey = "master_tools_hub_enabled",
                 accentColor = "#FF5252",
                 iconRes = R.drawable.ic_hub_tools,
-                description = "App Freezer, Bloatware remover, APK Extractor & Terminal",
+                description = "Package Installer, App Freezer, Bloatware remover & Extractor",
                 subFeatures = listOf(
+                    SubFeature("Universal Package Installer", "default_installer_enabled", "Intercept .apk & .apks with pre-install tracker scan, split APK support & silent root install.", false, R.drawable.ic_sub_installer),
                     SubFeature("App Freezer & Hibernation", "freezer_enabled", "Freeze unused applications with a single tap to reclaim 100% background RAM.", false, R.drawable.ic_sub_freezer),
                     SubFeature("Bloatware Remover", "bloatware_enabled", "Force-disable carrier-preinstalled bloatware and unnecessary background telemetry.", false, R.drawable.ic_sub_bloatware),
                     SubFeature("Installed App Extractor", "app_extractor_enabled", "Extract single APKs or split app bundles (.apks) to storage/share with 1-tap.", true, R.drawable.ic_sub_extractor),
@@ -620,7 +621,22 @@ class SettingsActivity : AppCompatActivity() {
 
             swSub.setOnCheckedChangeListener { _, isChecked ->
                 prefs.edit().putBoolean(sub.prefKey, isChecked).commit()
-                if (!isChecked) {
+                if (sub.prefKey == "default_installer_enabled") {
+                    PackageInstallerManager.setDefaultInstallerEnabled(this@SettingsActivity, isChecked)
+                    if (isChecked) {
+                        Toast.makeText(
+                            this@SettingsActivity,
+                            "Universal Package Installer enabled! Tap any APK to install.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    } else {
+                        Toast.makeText(
+                            this@SettingsActivity,
+                            "Universal Package Installer disabled. Default system installer restored.",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                } else if (!isChecked) {
                     revertSpecificFeature(sub.prefKey)
                 }
                 updateCategoryBadge(holder)
@@ -791,6 +807,9 @@ class SettingsActivity : AppCompatActivity() {
                 }
                 "app_extractor_enabled" -> {
                     // Feature state toggled off; card in System Tools hub dynamically hides
+                }
+                "default_installer_enabled" -> {
+                    PackageInstallerManager.setDefaultInstallerEnabled(this@SettingsActivity, false)
                 }
                 "wireless_adb_enabled" -> {
                     WirelessAdbManager.disable(this)

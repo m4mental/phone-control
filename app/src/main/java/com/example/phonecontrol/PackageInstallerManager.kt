@@ -1,5 +1,6 @@
 package com.example.phonecontrol
 
+import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
@@ -967,4 +968,50 @@ object PackageInstallerManager {
             failureExplanation = diag.explanation
         )
     }
+
+    /**
+     * Checks whether Phone Control is configured as the active universal package installer.
+     */
+    fun isDefaultInstallerEnabled(context: Context): Boolean {
+        val prefs = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
+        return prefs.getBoolean("default_installer_enabled", false)
+    }
+
+    /**
+     * Enables or disables Phone Control's PackageInstallActivity component.
+     * When enabled, clears Google/AOSP package installer defaults so Phone Control is presented in the chooser.
+     */
+    fun setDefaultInstallerEnabled(context: Context, enabled: Boolean) {
+        val prefs = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
+        prefs.edit().putBoolean("default_installer_enabled", enabled).commit()
+
+        try {
+            val componentName = ComponentName(context, PackageInstallActivity::class.java)
+            val newState = if (enabled) {
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+            } else {
+                PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+            }
+            context.packageManager.setComponentEnabledSetting(
+                componentName,
+                newState,
+                PackageManager.DONT_KILL_APP
+            )
+            Log.d("PackageInstallerManager", "PackageInstallActivity component state set to: $newState")
+
+            if (enabled) {
+                // Clear stock installer & browser default preferences via root/shell so Android prompts with Phone Control
+                kotlin.concurrent.thread {
+                    ShellUtils.runAsRoot(
+                        "cmd package clear-package-preferred-activities com.google.android.packageinstaller; " +
+                        "cmd package clear-package-preferred-activities com.android.packageinstaller; " +
+                        "cmd package clear-package-preferred-activities com.android.chrome"
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("PackageInstallerManager", "Failed to update installer component state", e)
+        }
+    }
 }
+

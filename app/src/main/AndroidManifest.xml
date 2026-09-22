@@ -134,6 +134,7 @@
         <activity
             android:name=".PackageInstallActivity"
             android:exported="true"
+            android:label="Phone Control Package Installer"
             android:theme="@style/Theme.PhoneControl.Transparent"
             android:excludeFromRecents="true"
             android:launchMode="singleTop">

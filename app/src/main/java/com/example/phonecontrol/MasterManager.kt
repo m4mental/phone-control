@@ -179,9 +179,12 @@ object MasterManager {
         editor.putBoolean("freezer_enabled", false)
         editor.putBoolean("bloatware_enabled", false)
         editor.putBoolean("app_extractor_enabled", false)
+        editor.putBoolean("default_installer_enabled", false)
         editor.putBoolean("wireless_adb_enabled", false)
         editor.putBoolean("vault_enabled", false)
         editor.putBoolean("adb_enabled", false)
+
+        PackageInstallerManager.setDefaultInstallerEnabled(context, false)
 
         editor.putString("selected_mode", "rbBalance")
         editor.commit()

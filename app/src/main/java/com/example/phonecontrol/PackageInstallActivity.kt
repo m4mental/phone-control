@@ -51,6 +51,20 @@ class PackageInstallActivity : AppCompatActivity() {
         showInitialInspectionSheet(uri, currentFileName)
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val uri = intent.data
+            ?: @Suppress("DEPRECATION") intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+            ?: intent.clipData?.getItemAt(0)?.uri ?: return
+        currentUri = uri
+        currentFileName = resolveFileName(uri)
+        try {
+            installSheetDialog?.dismiss()
+        } catch (e: Exception) {}
+        showInitialInspectionSheet(uri, currentFileName)
+    }
+
     private fun resolveFileName(uri: Uri): String {
         var name = "package.apk"
         try {
