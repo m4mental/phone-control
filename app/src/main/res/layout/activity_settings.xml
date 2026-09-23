@@ -565,10 +565,21 @@
                     </LinearLayout>
 
                     <Button
+                        android:id="@+id/btnCheckUpdates"
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:layout_marginTop="14dp"
+                        android:text="⚡ Check for Updates"
+                        android:textColor="#000000"
+                        android:textStyle="bold"
+                        app:backgroundTint="#00E676"
+                        app:cornerRadius="12dp" />
+
+                    <Button
                         android:id="@+id/btnAboutGitHub"
                         android:layout_width="match_parent"
                         android:layout_height="46dp"
-                        android:layout_marginTop="14dp"
+                        android:layout_marginTop="10dp"
                         android:text="🌐 GitHub Releases &amp; Source"
                         android:textColor="#00E5FF"
                         app:backgroundTint="#002533"

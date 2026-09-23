@@ -21,6 +21,11 @@ import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.switchmaterial.SwitchMaterial
+import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
 import kotlin.concurrent.thread
 
 class SettingsActivity : AppCompatActivity() {
@@ -175,6 +180,7 @@ class SettingsActivity : AppCompatActivity() {
         val tvArch = findViewById<TextView>(R.id.tvAboutArch) ?: return
         val tvRoot = findViewById<TextView>(R.id.tvAboutRootStatus) ?: return
         val btnGitHub = findViewById<Button>(R.id.btnAboutGitHub) ?: return
+        val btnCheckUpdates = findViewById<Button>(R.id.btnCheckUpdates)
 
         val pkgInfo = try {
             packageManager.getPackageInfo(packageName, 0)
@@ -200,12 +206,244 @@ class SettingsActivity : AppCompatActivity() {
             tvRoot.setTextColor(Color.parseColor("#FF5252"))
         }
 
+        btnCheckUpdates?.setOnClickListener {
+            checkForAppUpdates(btnCheckUpdates)
+        }
+
         btnGitHub.setOnClickListener {
             try {
                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/m4mental/phone-control/releases"))
                 startActivity(intent)
             } catch (e: Exception) {
                 Toast.makeText(this, "Could not open browser", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun checkForAppUpdates(btnCheck: Button) {
+        btnCheck.isEnabled = false
+        btnCheck.text = "🔍 Checking GitHub Releases..."
+
+        thread {
+            try {
+                val url = URL("https://api.github.com/repos/m4mental/phone-control/releases/latest")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.connectTimeout = 10000
+                conn.readTimeout = 10000
+                conn.setRequestProperty("User-Agent", "PhoneControl-Android")
+                conn.setRequestProperty("Accept", "application/vnd.github.v3+json")
+
+                if (conn.responseCode != 200) {
+                    runOnUiThread {
+                        btnCheck.isEnabled = true
+                        btnCheck.text = "⚡ Check for Updates"
+                        Toast.makeText(this@SettingsActivity, "GitHub API returned status ${conn.responseCode}", Toast.LENGTH_SHORT).show()
+                    }
+                    return@thread
+                }
+
+                val responseBody = conn.inputStream.bufferedReader().use { it.readText() }
+                val json = JSONObject(responseBody)
+                val tagName = json.optString("tag_name", "")
+                val releaseName = json.optString("name", tagName)
+                val changelog = json.optString("body", "No changelog provided.")
+                val assets = json.optJSONArray("assets")
+
+                var apkDownloadUrl: String? = null
+                var apkFileName = "phonecontrol-update.apk"
+                var apkSizeBytes = 0L
+
+                if (assets != null) {
+                    for (i in 0 until assets.length()) {
+                        val asset = assets.getJSONObject(i)
+                        val aName = asset.optString("name", "")
+                        if (aName.endsWith(".apk", ignoreCase = true)) {
+                            apkDownloadUrl = asset.optString("browser_download_url")
+                            apkFileName = aName
+                            apkSizeBytes = asset.optLong("size", 0L)
+                            break
+                        }
+                    }
+                }
+
+                val currentVersion = packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0.0"
+                val cleanRemoteTag = tagName.removePrefix("v").trim()
+                val cleanCurrent = currentVersion.removePrefix("v").trim()
+
+                runOnUiThread {
+                    btnCheck.isEnabled = true
+                    btnCheck.text = "⚡ Check for Updates"
+
+                    if (apkDownloadUrl.isNullOrBlank()) {
+                        Toast.makeText(this@SettingsActivity, "Latest release ($tagName) has no APK asset attached.", Toast.LENGTH_LONG).show()
+                        return@runOnUiThread
+                    }
+
+                    showUpdateAvailableDialog(
+                        tagName = tagName,
+                        releaseName = releaseName,
+                        changelog = changelog,
+                        downloadUrl = apkDownloadUrl,
+                        fileName = apkFileName,
+                        fileSizeBytes = apkSizeBytes,
+                        isNewer = cleanRemoteTag != cleanCurrent
+                    )
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    btnCheck.isEnabled = true
+                    btnCheck.text = "⚡ Check for Updates"
+                    Toast.makeText(this@SettingsActivity, "Check failed: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    private fun showUpdateAvailableDialog(
+        tagName: String,
+        releaseName: String,
+        changelog: String,
+        downloadUrl: String,
+        fileName: String,
+        fileSizeBytes: Long,
+        isNewer: Boolean
+    ) {
+        val sizeFormatted = if (fileSizeBytes > 0) String.format(java.util.Locale.US, "%.1f MB", fileSizeBytes / (1024.0 * 1024.0)) else "Unknown Size"
+        val dialogView = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 36, 48, 20)
+            setBackgroundColor(Color.parseColor("#15151A"))
+        }
+
+        val tvTitle = TextView(this).apply {
+            text = if (isNewer) "🚀 New Update: $tagName" else "ℹ️ Current Version: $tagName"
+            setTextColor(if (isNewer) Color.parseColor("#00E676") else Color.parseColor("#00E5FF"))
+            textSize = 18f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+        }
+        dialogView.addView(tvTitle)
+
+        val tvMeta = TextView(this).apply {
+            text = "Package: $fileName • Size: $sizeFormatted"
+            setTextColor(Color.parseColor("#AAAAAA"))
+            textSize = 12f
+            setPadding(0, 8, 0, 16)
+        }
+        dialogView.addView(tvMeta)
+
+        val scroll = android.widget.ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 400)
+        }
+        val tvLog = TextView(this).apply {
+            text = changelog
+            setTextColor(Color.parseColor("#DDDDDD"))
+            textSize = 13f
+        }
+        scroll.addView(tvLog)
+        dialogView.addView(scroll)
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .setPositiveButton("⚡ Download & Root Install", null)
+            .setNegativeButton("Cancel") { d, _ -> d.dismiss() }
+            .create()
+
+        dialog.show()
+
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            dialog.dismiss()
+            startDownloadAndInstallUpdate(downloadUrl, fileName)
+        }
+    }
+
+    private fun startDownloadAndInstallUpdate(downloadUrl: String, fileName: String) {
+        @Suppress("DEPRECATION")
+        val progressDialog = ProgressDialog(this).apply {
+            setTitle("📥 Downloading Update")
+            setMessage("Connecting to GitHub...")
+            setProgressStyle(ProgressDialog.STYLE_HORIZONTAL)
+            max = 100
+            setCancelable(false)
+            show()
+        }
+
+        thread {
+            val destination = File(cacheDir, fileName)
+            try {
+                val url = URL(downloadUrl)
+                val conn = url.openConnection() as HttpURLConnection
+                conn.connectTimeout = 15000
+                conn.readTimeout = 30000
+                conn.setRequestProperty("User-Agent", "PhoneControl-Android")
+
+                val totalLength = conn.contentLength.toLong()
+                conn.inputStream.use { input ->
+                    FileOutputStream(destination).use { output ->
+                        val buffer = ByteArray(8192)
+                        var read: Int
+                        var totalRead = 0L
+                        while (input.read(buffer).also { read = it } != -1) {
+                            output.write(buffer, 0, read)
+                            totalRead += read
+                            if (totalLength > 0) {
+                                val progress = (totalRead * 100 / totalLength).toInt()
+                                runOnUiThread {
+                                    progressDialog.progress = progress
+                                    progressDialog.setMessage("Downloaded ${totalRead / (1024 * 1024)}MB of ${totalLength / (1024 * 1024)}MB...")
+                                }
+                            }
+                        }
+                    }
+                }
+
+                runOnUiThread {
+                    progressDialog.setTitle("⚡ Root Installing Update")
+                    progressDialog.setMessage("Invoking Universal Root Package Installer...")
+                    progressDialog.progress = 90
+                }
+
+                val installResult = PackageInstallerManager.installPackage(
+                    context = this@SettingsActivity,
+                    uri = Uri.fromFile(destination),
+                    fileName = fileName,
+                    forceReinstall = false,
+                    autoBackup = true
+                ) { progressText, progressPercent ->
+                    runOnUiThread {
+                        progressDialog.setMessage(progressText)
+                        progressDialog.progress = progressPercent
+                    }
+                }
+
+                runOnUiThread {
+                    progressDialog.dismiss()
+                    if (installResult.success) {
+                        AlertDialog.Builder(this@SettingsActivity)
+                            .setTitle("✅ Update Successful")
+                            .setMessage("Phone Control has been updated to the latest build!\nRestarting app...")
+                            .setPositiveButton("Restart Now") { _, _ ->
+                                val restartIntent = packageManager.getLaunchIntentForPackage(packageName)
+                                if (restartIntent != null) {
+                                    restartIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    startActivity(restartIntent)
+                                    Runtime.getRuntime().exit(0)
+                                }
+                            }
+                            .setCancelable(false)
+                            .show()
+                    } else {
+                        AlertDialog.Builder(this@SettingsActivity)
+                            .setTitle("❌ Update Installation Failed")
+                            .setMessage("${installResult.message}\n\n${installResult.rawOutput}")
+                            .setPositiveButton("OK", null)
+                            .show()
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    progressDialog.dismiss()
+                    Toast.makeText(this@SettingsActivity, "Download failed: ${e.message}", Toast.LENGTH_LONG).show()
+                }
             }
         }
     }

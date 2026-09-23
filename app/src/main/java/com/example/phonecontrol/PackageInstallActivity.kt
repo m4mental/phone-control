@@ -12,8 +12,12 @@ import android.widget.CheckBox
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
+import android.content.res.ColorStateList
+import android.widget.ProgressBar
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.chip.Chip
+import com.google.android.material.chip.ChipGroup
 import kotlin.concurrent.thread
 
 /**
@@ -152,13 +156,26 @@ class PackageInstallActivity : AppCompatActivity() {
         dialog.show()
 
         thread {
+            val lower = fileName.lowercase()
+            val rootModule = if (lower.endsWith(".zip")) {
+                PackageInstallerManager.inspectRootModule(this, uri)
+            } else null
+
+            if (rootModule != null) {
+                runOnUiThread {
+                    if (!isFinishing && !isDestroyed && dialog.isShowing) {
+                        bindRootModuleData(dialogView, rootModule, uri, fileName)
+                    }
+                }
+                return@thread
+            }
+
             val inspection = PackageInstallerManager.inspectApk(this, uri, fileName)
             runOnUiThread {
                 if (!isFinishing && !isDestroyed && dialog.isShowing) {
                     if (inspection != null) {
                         bindInspectionData(dialogView, inspection, uri, fileName)
                     } else {
-                        val lower = fileName.lowercase()
                         val isSingleApk = lower.endsWith(".apk")
                         if (isSingleApk) {
                             tvInstallType.text = "⚡ Package detected (Direct Root Install ready)"
@@ -185,6 +202,87 @@ class PackageInstallActivity : AppCompatActivity() {
         }
     }
 
+    private fun bindRootModuleData(
+        dialogView: View,
+        module: PackageInstallerManager.RootModuleInfo,
+        uri: Uri,
+        fileName: String
+    ) {
+        val banner = dialogView.findViewById<View>(R.id.layoutRootModuleBanner)
+        val tvName = dialogView.findViewById<TextView>(R.id.tvRootModuleName)
+        val tvDesc = dialogView.findViewById<TextView>(R.id.tvRootModuleDesc)
+        val tvMeta = dialogView.findViewById<TextView>(R.id.tvRootModuleMeta)
+        val tvAppName = dialogView.findViewById<TextView>(R.id.tvInspectAppName)
+        val tvPkg = dialogView.findViewById<TextView>(R.id.tvInspectPkgName)
+        val tvInstallType = dialogView.findViewById<TextView>(R.id.tvInspectInstallType)
+        val btnInstall = dialogView.findViewById<Button>(R.id.btnInspectInstall)
+        val ivIcon = dialogView.findViewById<ImageView>(R.id.ivInspectIcon)
+
+        banner.visibility = View.VISIBLE
+        tvName.text = module.name
+        tvDesc.text = module.description
+        tvMeta.text = "Author: ${module.author} • Version: ${module.version} (${module.versionCode})"
+
+        tvAppName.text = module.name
+        tvPkg.text = "Module ID: ${module.id}"
+        ivIcon.setImageResource(android.R.drawable.ic_menu_preferences)
+
+        tvInstallType.text = "⚡ Magisk / KernelSU / APatch Root Module Ready to Flash"
+        tvInstallType.setTextColor(Color.parseColor("#FFD54F"))
+
+        btnInstall.visibility = View.VISIBLE
+        btnInstall.isEnabled = true
+        btnInstall.text = "⚡ Flash Root Module"
+        btnInstall.setOnClickListener {
+            executeRootModuleFlashing(dialogView, uri, fileName, module)
+        }
+    }
+
+    private fun executeRootModuleFlashing(
+        dialogView: View,
+        uri: Uri,
+        fileName: String,
+        module: PackageInstallerManager.RootModuleInfo
+    ) {
+        val layoutProgress = dialogView.findViewById<View>(R.id.layoutInstallProgress)
+        val pbProgress = dialogView.findViewById<ProgressBar>(R.id.pbInstallProgress)
+        val tvProgressText = dialogView.findViewById<TextView>(R.id.tvInstallProgressText)
+        val tvProgressPercent = dialogView.findViewById<TextView>(R.id.tvInstallProgressPercent)
+        val btnInstall = dialogView.findViewById<Button>(R.id.btnInspectInstall)
+        val btnCancel = dialogView.findViewById<Button>(R.id.btnInspectCancel)
+
+        layoutProgress?.visibility = View.VISIBLE
+        btnInstall.isEnabled = false
+        btnCancel.isEnabled = false
+
+        thread {
+            val result = PackageInstallerManager.flashRootModule(this, uri, fileName) { status, pct ->
+                runOnUiThread {
+                    pbProgress?.progress = pct
+                    tvProgressPercent?.text = "$pct%"
+                    tvProgressText?.text = status
+                }
+            }
+
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                installSheetDialog?.setOnDismissListener(null)
+                installSheetDialog?.dismiss()
+                installSheetDialog = null
+
+                if (result.success) {
+                    showPostInstallDialog(module.name, null, fileName)
+                } else {
+                    androidx.appcompat.app.AlertDialog.Builder(this)
+                        .setTitle("Root Module Flash Failed")
+                        .setMessage(result.message)
+                        .setPositiveButton("OK") { _, _ -> finish() }
+                        .show()
+                }
+            }
+        }
+    }
+
     private fun bindInspectionData(
         dialogView: View,
         inspection: PackageInstallerManager.ApkInspection,
@@ -197,6 +295,7 @@ class PackageInstallActivity : AppCompatActivity() {
         val tvSharedUid = dialogView.findViewById<TextView>(R.id.tvInspectSharedUid)
         val layoutSplits = dialogView.findViewById<View>(R.id.layoutInspectSplits)
         val tvSplits = dialogView.findViewById<TextView>(R.id.tvInspectSplits)
+        val cgSplits = dialogView.findViewById<ChipGroup>(R.id.cgInspectSplits)
         val tvInstallType = dialogView.findViewById<TextView>(R.id.tvInspectInstallType)
         val tvInstalledVer = dialogView.findViewById<TextView>(R.id.tvInspectInstalledVersion)
         val tvIncomingVer = dialogView.findViewById<TextView>(R.id.tvInspectIncomingVersion)
@@ -223,10 +322,34 @@ class PackageInstallActivity : AppCompatActivity() {
             tvSharedUid.visibility = View.GONE
         }
 
-        // Splits / Sub-Packages
+        // Splits / Sub-Packages Chip Selector
+        val selectedSplits = mutableSetOf<String>()
+        selectedSplits.addAll(inspection.splitNames)
+
         if (inspection.splitNames.isNotEmpty()) {
             layoutSplits.visibility = View.VISIBLE
-            tvSplits.text = inspection.splitNames.joinToString(", ")
+            tvSplits.text = "${inspection.splitNames.size} module splits detected (Tap chips to include/exclude):"
+            cgSplits?.removeAllViews()
+            for (split in inspection.splitNames) {
+                val chip = Chip(this).apply {
+                    text = split
+                    isCheckable = true
+                    isChecked = true
+                    chipStrokeWidth = 2f
+                    setChipStrokeColor(ColorStateList.valueOf(Color.parseColor("#00E5FF")))
+                    setTextColor(Color.WHITE)
+                    setOnCheckedChangeListener { _, isChecked ->
+                        if (isChecked) {
+                            selectedSplits.add(split)
+                            setChipStrokeColor(ColorStateList.valueOf(Color.parseColor("#00E5FF")))
+                        } else {
+                            selectedSplits.remove(split)
+                            setChipStrokeColor(ColorStateList.valueOf(Color.parseColor("#555555")))
+                        }
+                    }
+                }
+                cgSplits?.addView(chip)
+            }
         } else {
             layoutSplits.visibility = View.GONE
         }
@@ -285,7 +408,7 @@ class PackageInstallActivity : AppCompatActivity() {
         btnInstall.setOnClickListener {
             btnInstall.isEnabled = false
             btnInstall.text = "⚡ Installing with Root..."
-            executeInstallation(dialogView, uri, fileName, inspection, forceReinstall = false)
+            executeInstallation(dialogView, uri, fileName, inspection, forceReinstall = false, selectedSplits = selectedSplits)
         }
     }
 
@@ -294,18 +417,38 @@ class PackageInstallActivity : AppCompatActivity() {
         uri: Uri,
         fileName: String,
         inspection: PackageInstallerManager.ApkInspection,
-        forceReinstall: Boolean
+        forceReinstall: Boolean,
+        selectedSplits: Set<String>? = null
     ) {
         val tvInstallType = dialogView.findViewById<TextView>(R.id.tvInspectInstallType)
         val btnInstall = dialogView.findViewById<Button>(R.id.btnInspectInstall)
+        val btnCancel = dialogView.findViewById<Button>(R.id.btnInspectCancel)
+        val layoutProgress = dialogView.findViewById<View>(R.id.layoutInstallProgress)
+        val pbProgress = dialogView.findViewById<ProgressBar>(R.id.pbInstallProgress)
+        val tvProgressText = dialogView.findViewById<TextView>(R.id.tvInstallProgressText)
+        val tvProgressPercent = dialogView.findViewById<TextView>(R.id.tvInstallProgressPercent)
+
+        layoutProgress?.visibility = View.VISIBLE
+        btnInstall.isEnabled = false
+        btnCancel.isEnabled = false
 
         val statusMsg = if (forceReinstall) "⚡ Auto-backing up previous app data & force reinstalling..." else "⚡ Executing root install..."
         tvInstallType.text = statusMsg
         tvInstallType.setTextColor(Color.parseColor("#FFD54F"))
 
         thread {
-            val result = PackageInstallerManager.installPackage(this, uri, fileName, forceReinstall) { progressText ->
+            val result = PackageInstallerManager.installPackage(
+                context = this,
+                uri = uri,
+                fileName = fileName,
+                forceReinstall = forceReinstall,
+                autoBackup = true,
+                selectedSplits = selectedSplits
+            ) { progressText, progressPercent ->
                 runOnUiThread {
+                    pbProgress?.progress = progressPercent
+                    tvProgressPercent?.text = "$progressPercent%"
+                    tvProgressText?.text = progressText
                     tvInstallType.text = progressText
                 }
             }

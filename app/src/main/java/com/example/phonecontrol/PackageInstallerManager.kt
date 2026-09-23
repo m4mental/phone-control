@@ -50,6 +50,16 @@ object PackageInstallerManager {
         val isSameVersion: Boolean
     )
 
+    data class RootModuleInfo(
+        val id: String,
+        val name: String,
+        val version: String,
+        val versionCode: Long,
+        val author: String,
+        val description: String,
+        val isRootModule: Boolean = true
+    )
+
     fun createFallbackInspection(fileName: String): ApkInspection {
         val cleanName = fileName.substringBeforeLast(".")
         return ApkInspection(
@@ -237,6 +247,50 @@ object PackageInstallerManager {
                 try { java.io.FileInputStream(File(uri.path!!)) } catch (ex: Exception) { null }
             } else null
         }
+    }
+
+    /**
+     * Inspects a zip archive to determine if it is a Magisk / KernelSU / APatch root module.
+     * Checks for module.prop and parses id, name, version, versionCode, author, and description.
+     */
+    fun inspectRootModule(context: Context, uri: Uri): RootModuleInfo? {
+        try {
+            openPackageStream(context, uri)?.use { stream ->
+                ZipInputStream(stream).use { zis ->
+                    var entry = zis.nextEntry
+                    while (entry != null) {
+                        val name = entry.name.lowercase()
+                        if (!entry.isDirectory && (name == "module.prop" || name.endsWith("/module.prop"))) {
+                            val reader = zis.bufferedReader(Charsets.UTF_8)
+                            val props = mutableMapOf<String, String>()
+                            reader.forEachLine { line ->
+                                val trimmed = line.trim()
+                                if (!trimmed.startsWith("#") && trimmed.contains("=")) {
+                                    val key = trimmed.substringBefore("=").trim()
+                                    val value = trimmed.substringAfter("=").trim()
+                                    props[key] = value
+                                }
+                            }
+                            if (props.containsKey("id") || props.containsKey("name")) {
+                                return RootModuleInfo(
+                                    id = props["id"] ?: "unknown_module",
+                                    name = props["name"] ?: (props["id"] ?: "Root Module"),
+                                    version = props["version"] ?: "1.0",
+                                    versionCode = props["versionCode"]?.toLongOrNull() ?: 1L,
+                                    author = props["author"] ?: "Unknown Author",
+                                    description = props["description"] ?: "Magisk / KernelSU / APatch root module"
+                                )
+                            }
+                        }
+                        zis.closeEntry()
+                        entry = zis.nextEntry
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("PackageInstaller", "inspectRootModule failed: ${e.message}")
+        }
+        return null
     }
 
     /**
@@ -625,10 +679,66 @@ object PackageInstallerManager {
     }
 
     /**
-     * Universal Root Force Package & Bundle Installer.
-     * Supports: .apk, .apks, .apkm, .xapk, .aab, and split .zip bundles.
-     * When forceReinstall = true, automatically backs up previous app data before pm uninstall.
+     * Flashes a root module archive (.zip) directly via Magisk / KernelSU / APatch CLI.
      */
+    fun flashRootModule(
+        context: Context,
+        uri: Uri,
+        fileName: String,
+        onProgress: (String, Int) -> Unit
+    ): InstallResult {
+        val stagingZip = File("/data/local/tmp/root_module_${System.currentTimeMillis()}.zip")
+        val tempInput = File(context.cacheDir, "temp_module_input.zip")
+        try {
+            onProgress("📥 Reading root module archive: $fileName...", 15)
+            openPackageStream(context, uri)?.use { input ->
+                FileOutputStream(tempInput).use { output ->
+                    input.copyTo(output)
+                }
+            } ?: return InstallResult(false, "Could not open module file stream", "")
+
+            onProgress("📦 Staging root module in /data/local/tmp...", 40)
+            ShellUtils.runAsRoot("cp '${tempInput.absolutePath}' '${stagingZip.absolutePath}' && chmod 666 '${stagingZip.absolutePath}'", 30000)
+            tempInput.delete()
+
+            onProgress("⚡ Flashing root module via Magisk / KernelSU / APatch...", 65)
+            val flashScript = """
+                if command -v magisk >/dev/null 2>&1; then
+                    magisk --install-module '${stagingZip.absolutePath}'
+                elif [ -f /data/adb/ksu/bin/ksud ]; then
+                    /data/adb/ksu/bin/ksud module install '${stagingZip.absolutePath}'
+                elif [ -f /data/adb/ap/bin/apd ]; then
+                    /data/adb/ap/bin/apd module install '${stagingZip.absolutePath}'
+                elif command -v ksud >/dev/null 2>&1; then
+                    ksud module install '${stagingZip.absolutePath}'
+                else
+                    magisk --install-module '${stagingZip.absolutePath}' 2>&1 || ksud module install '${stagingZip.absolutePath}'
+                fi
+            """.trimIndent()
+
+            val result = ShellUtils.runAsRoot(flashScript, 120000)
+            val isSuccess = result.exitCode == 0 && (
+                result.output.contains("success", ignoreCase = true) ||
+                result.output.contains("done", ignoreCase = true) ||
+                result.output.contains("installed", ignoreCase = true) ||
+                !result.output.contains("failure", ignoreCase = true)
+            )
+
+            onProgress(if (isSuccess) "✅ Flashed successfully! Reboot required to activate." else "❌ Module flashing failed.", 100)
+
+            return InstallResult(
+                success = isSuccess,
+                message = if (isSuccess) "Root module successfully flashed! Please reboot your device to activate." else "Failed to flash root module:\n${result.output}",
+                rawOutput = result.output
+            )
+        } catch (e: Exception) {
+            return InstallResult(false, "Flashing exception: ${e.message}", e.stackTraceToString())
+        } finally {
+            ShellUtils.runAsRoot("rm -f '${stagingZip.absolutePath}'", 10000)
+            if (tempInput.exists()) tempInput.delete()
+        }
+    }
+
     fun installPackage(
         context: Context,
         uri: Uri,
@@ -636,6 +746,26 @@ object PackageInstallerManager {
         forceReinstall: Boolean = false,
         autoBackup: Boolean = true,
         onProgress: (String) -> Unit
+    ): InstallResult {
+        return installPackage(context, uri, fileName, forceReinstall, autoBackup, null) { text, _ ->
+            onProgress(text)
+        }
+    }
+
+    /**
+     * Universal Root Force Package & Bundle Installer.
+     * Supports: .apk, .apks, .apkm, .xapk, .aab, and split .zip bundles.
+     * When forceReinstall = true, automatically backs up previous app data before pm uninstall.
+     * Allows selecting specific splits to save device storage.
+     */
+    fun installPackage(
+        context: Context,
+        uri: Uri,
+        fileName: String,
+        forceReinstall: Boolean = false,
+        autoBackup: Boolean = true,
+        selectedSplits: Set<String>? = null,
+        onProgress: (String, Int) -> Unit
     ): InstallResult {
         val stagingDir = File("/data/local/tmp/pc_install_staging")
         ShellUtils.runAsRoot("rm -rf ${stagingDir.absolutePath} && mkdir -p ${stagingDir.absolutePath} && chmod 777 ${stagingDir.absolutePath}", 10000)
@@ -645,7 +775,7 @@ object PackageInstallerManager {
         var autoBackupPath: String? = null
 
         try {
-            onProgress("📥 Reading package stream: $fileName...")
+            onProgress("📥 Reading package stream: $fileName...", 10)
             openPackageStream(context, uri)?.use { input ->
                 FileOutputStream(tempInput).use { output ->
                     input.copyTo(output)
@@ -653,7 +783,7 @@ object PackageInstallerManager {
             } ?: return InstallResult(false, "Could not open file stream", "")
 
             val stagedInput = File(stagingDir, "package_payload")
-            onProgress("📦 Staging package in root partition...")
+            onProgress("📦 Staging package in root partition...", 25)
             ShellUtils.runAsRoot("cp '${tempInput.absolutePath}' '${stagedInput.absolutePath}' && chmod 777 '${stagedInput.absolutePath}'", 30000)
 
             // Extract package name and version info for conflict auto-recovery
@@ -692,7 +822,7 @@ object PackageInstallerManager {
 
             // 1. Single APK Direct Install
             if (lowerName.endsWith(".apk")) {
-                onProgress("⚡ Executing root force install (APK)...")
+                onProgress("⚡ Executing root force install (APK)...", 60)
                 val cmd = "pm install -r -d --bypass-low-target-sdk-block '${stagedInput.absolutePath}'"
                 var result = ShellUtils.runAsRoot(cmd, 60000)
 
@@ -705,20 +835,20 @@ object PackageInstallerManager {
                         val reason = if (isSigConflict && isDowngrade) "signature conflict & downgrade" else if (isDowngrade) "downgrade" else "signature conflict"
                         
                         if (autoBackup) {
-                            onProgress("🛡️ Auto-backing up app data before clean reinstall...")
+                            onProgress("🛡️ Auto-backing up app data before clean reinstall...", 70)
                             autoBackupPath = backupAppData(detectedPkg)
                             if (autoBackupPath != null) {
-                                onProgress("✅ App data safely backed up: $autoBackupPath")
+                                onProgress("✅ App data safely backed up: $autoBackupPath", 75)
                             } else {
-                                onProgress("ℹ️ No previous app data folder found to back up.")
+                                onProgress("ℹ️ No previous app data folder found to back up.", 75)
                             }
                         } else {
-                            onProgress("⚡ Skipping backup (Clean install requested)...")
+                            onProgress("⚡ Skipping backup (Clean install requested)...", 75)
                         }
 
-                        onProgress("⚠️ Auto-uninstalling previous build ($detectedPkg) for $reason...")
+                        onProgress("⚠️ Auto-uninstalling previous build ($detectedPkg) for $reason...", 80)
                         ShellUtils.runAsRoot("pm uninstall $detectedPkg", 30000)
-                        onProgress("🔄 Cleanly re-installing requested package...")
+                        onProgress("🔄 Cleanly re-installing requested package...", 85)
                         result = ShellUtils.runAsRoot(cmd, 60000)
                     } else {
                         val diag = diagnoseStoppage(result.output, incomingCode, currentCode)
@@ -736,11 +866,12 @@ object PackageInstallerManager {
                     }
                 }
 
+                onProgress("✅ Installation finished!", 100)
                 return handleInstallOutput(result, stagedInput.absolutePath, isSplit = false, installedPackage = detectedPkg, backupPath = autoBackupPath, incomingCode = incomingCode, installedCode = currentCode)
             }
 
             // 2. Split APKs / Bundles (.apks, .apkm, .xapk, .aab, .zip)
-            onProgress("📦 Extracting bundle components (.apks / .xapk / .aab)...")
+            onProgress("📦 Extracting bundle components (.apks / .xapk / .aab)...", 30)
             val extractDir = File(stagingDir, "extracted")
             val localExtractDir = File(context.cacheDir, "bundle_extract_${System.currentTimeMillis()}")
             localExtractDir.mkdirs()
@@ -771,8 +902,23 @@ object PackageInstallerManager {
                     return InstallResult(false, "No APK files found inside the package bundle.", "")
                 }
 
+                // If split selection is provided, remove unselected splits to save storage
+                if (selectedSplits != null && selectedSplits.isNotEmpty()) {
+                    for (apk in localApks) {
+                        val nameNoExt = apk.nameWithoutExtension
+                        val isBase = apk.name.equals("base.apk", ignoreCase = true) ||
+                                     (!apk.name.contains("config", ignoreCase = true) && !apk.name.contains("split", ignoreCase = true))
+                        val isSelected = isBase || selectedSplits.contains(nameNoExt) || selectedSplits.any { nameNoExt.contains(it, ignoreCase = true) }
+                        if (!isSelected) {
+                            apk.delete()
+                        }
+                    }
+                }
+
+                val remainingApks = localExtractDir.listFiles { _, name -> name.endsWith(".apk", ignoreCase = true) } ?: emptyArray()
+
                 // Parse package name and version code directly from extracted local APKs
-                for (apk in localApks) {
+                for (apk in remainingApks) {
                     try {
                         val pi = context.packageManager.getPackageArchiveInfo(apk.absolutePath, 0)
                         if (!pi?.packageName.isNullOrBlank()) {
@@ -794,7 +940,7 @@ object PackageInstallerManager {
                 }
 
                 ShellUtils.runAsRoot("rm -rf '${extractDir.absolutePath}' && mkdir -p '${extractDir.absolutePath}'", 10000)
-                onProgress("📦 Staging bundle in root partition...")
+                onProgress("📦 Staging bundle in root partition...", 45)
                 ShellUtils.runAsRoot("cp -r '${localExtractDir.absolutePath}/.' '${extractDir.absolutePath}/' && chmod -R 777 '${extractDir.absolutePath}'", 30000)
             } finally {
                 localExtractDir.deleteRecursively()
@@ -809,7 +955,7 @@ object PackageInstallerManager {
 
             // If only 1 APK inside the bundle
             if (apkFiles.size == 1) {
-                onProgress("⚡ Installing single APK from bundle...")
+                onProgress("⚡ Installing single APK from bundle...", 70)
                 val cmd = "pm install -r -d --bypass-low-target-sdk-block '${apkFiles[0]}'"
                 var result = ShellUtils.runAsRoot(cmd, 60000)
 
@@ -826,18 +972,18 @@ object PackageInstallerManager {
                         val reason = if (isSigConflict && isDowngrade) "signature conflict & downgrade" else if (isDowngrade) "downgrade" else "signature conflict"
                         
                         if (autoBackup) {
-                            onProgress("🛡️ Auto-backing up app data before clean reinstall...")
+                            onProgress("🛡️ Auto-backing up app data before clean reinstall...", 75)
                             autoBackupPath = backupAppData(singlePkg)
                             if (autoBackupPath != null) {
-                                onProgress("✅ App data safely backed up: $autoBackupPath")
+                                onProgress("✅ App data safely backed up: $autoBackupPath", 80)
                             }
                         } else {
-                            onProgress("⚡ Skipping backup (Clean install requested)...")
+                            onProgress("⚡ Skipping backup (Clean install requested)...", 80)
                         }
 
-                        onProgress("⚠️ Auto-uninstalling previous build ($singlePkg) for $reason...")
+                        onProgress("⚠️ Auto-uninstalling previous build ($singlePkg) for $reason...", 85)
                         ShellUtils.runAsRoot("pm uninstall $singlePkg", 30000)
-                        onProgress("🔄 Cleanly re-installing package...")
+                        onProgress("🔄 Cleanly re-installing package...", 90)
                         result = ShellUtils.runAsRoot(cmd, 60000)
                     } else {
                         val diag = diagnoseStoppage(result.output, bundleIncomingCode, currentCode)
@@ -859,11 +1005,12 @@ object PackageInstallerManager {
                 if (result.output.contains("Success", ignoreCase = true)) {
                     setupObbFiles(extractDir, finalSinglePkg, onProgress)
                 }
+                onProgress("✅ Installation finished!", 100)
                 return handleInstallOutput(result, apkFiles[0], isSplit = false, installedPackage = finalSinglePkg, backupPath = autoBackupPath, incomingCode = bundleIncomingCode, installedCode = currentCode)
             }
 
             // Multiple Split APKs -> Use pm install-create session API
-            onProgress("🔄 Creating Android package install session for ${apkFiles.size} splits...")
+            onProgress("🔄 Creating Android package install session for ${apkFiles.size} splits...", 55)
             val createSessionResult = ShellUtils.runAsRoot("pm install-create -r -d --bypass-low-target-sdk-block --user 0", 20000)
             val sessionOutput = createSessionResult.output.trim()
 
@@ -875,14 +1022,15 @@ object PackageInstallerManager {
                 return InstallResult(false, "Failed to create install session: $sessionOutput", sessionOutput)
             }
 
-            onProgress("📤 Streaming ${apkFiles.size} split APKs into session [$sessionId]...")
+            onProgress("📤 Streaming ${apkFiles.size} split APKs into session [$sessionId]...", 60)
             for ((index, apkPath) in apkFiles.withIndex()) {
                 val splitFile = File(apkPath)
                 val splitName = "split_${index}_" + splitFile.name.replace(Regex("[^a-zA-Z0-9._-]"), "_")
                 val sizeResult = ShellUtils.runAsRoot("stat -c%s '$apkPath' 2>/dev/null || wc -c < '$apkPath'", 10000).output.trim()
                 val size = sizeResult.toLongOrNull() ?: splitFile.length()
 
-                onProgress("Writing split ${index + 1}/${apkFiles.size}: ${splitFile.name} (${size / 1024} KB)...")
+                val streamProgress = 60 + ((index + 1) * 30 / apkFiles.size)
+                onProgress("Writing split ${index + 1}/${apkFiles.size}: ${splitFile.name} (${size / 1024} KB)...", streamProgress)
                 val writeCmd = "pm install-write -S $size $sessionId '$splitName' '$apkPath'"
                 val writeResult = ShellUtils.runAsRoot(writeCmd, 60000)
 
@@ -892,7 +1040,7 @@ object PackageInstallerManager {
                 }
             }
 
-            onProgress("✅ Committing split session [$sessionId]...")
+            onProgress("✅ Committing split session [$sessionId]...", 92)
             var commitResult = ShellUtils.runAsRoot("pm install-commit $sessionId", 60000)
 
             val splitPkg = bundlePkg ?: detectedPkg
@@ -906,18 +1054,18 @@ object PackageInstallerManager {
                     val reason = if (isSplitSigConflict && isSplitDowngrade) "signature conflict & downgrade" else if (isSplitDowngrade) "downgrade" else "signature conflict"
                     
                     if (autoBackup) {
-                        onProgress("🛡️ Auto-backing up app data before clean reinstall...")
+                        onProgress("🛡️ Auto-backing up app data before clean reinstall...", 93)
                         autoBackupPath = backupAppData(splitPkg)
                         if (autoBackupPath != null) {
-                            onProgress("✅ App data safely backed up: $autoBackupPath")
+                            onProgress("✅ App data safely backed up: $autoBackupPath", 94)
                         }
                     } else {
-                        onProgress("⚡ Skipping backup (Clean install requested)...")
+                        onProgress("⚡ Skipping backup (Clean install requested)...", 94)
                     }
 
-                    onProgress("⚠️ Auto-uninstalling previous build ($splitPkg) for $reason...")
+                    onProgress("⚠️ Auto-uninstalling previous build ($splitPkg) for $reason...", 95)
                     ShellUtils.runAsRoot("pm uninstall $splitPkg", 30000)
-                    onProgress("🔄 Re-creating session for clean installation...")
+                    onProgress("🔄 Re-creating session for clean installation...", 96)
                     val retrySession = ShellUtils.runAsRoot("pm install-create -r -d --bypass-low-target-sdk-block --user 0", 20000).output.trim()
                     val retrySessionId = sessionRegex.find(retrySession)?.groupValues?.get(1)
                     if (retrySessionId != null) {
@@ -950,6 +1098,7 @@ object PackageInstallerManager {
                 setupObbFiles(extractDir, finalSplitPkg, onProgress)
             }
 
+            onProgress("✅ Installation finished!", 100)
             return handleInstallOutput(commitResult, "", isSplit = true, installedPackage = finalSplitPkg, backupPath = autoBackupPath, incomingCode = bundleIncomingCode, installedCode = currentCode)
         } catch (e: Exception) {
             Log.e("PackageInstaller", "Install failed", e)
@@ -962,7 +1111,7 @@ object PackageInstallerManager {
     /**
      * Automatically deploys extracted game OBB data files to /sdcard/Android/obb/<pkg>/ with proper permissions.
      */
-    private fun setupObbFiles(extractDir: File, targetPkg: String?, onProgress: (String) -> Unit) {
+    private fun setupObbFiles(extractDir: File, targetPkg: String?, onProgress: (String, Int) -> Unit) {
         try {
             val obbFilesOutput = ShellUtils.runAsRoot("find '${extractDir.absolutePath}' -type f -name '*.obb'", 15000).output
             val obbFiles = obbFilesOutput.split("\n").map { it.trim() }.filter { it.isNotBlank() }
@@ -977,16 +1126,16 @@ object PackageInstallerManager {
             }
 
             if (pkg.isNotBlank()) {
-                onProgress("🎮 Setting up ${obbFiles.size} game OBB file(s) for $pkg...")
+                onProgress("🎮 Setting up ${obbFiles.size} game OBB file(s) for $pkg...", 96)
                 val targetObbDir = "/sdcard/Android/obb/$pkg"
                 ShellUtils.runAsRoot("mkdir -p '$targetObbDir'", 10000)
                 for (obb in obbFiles) {
                     val obbName = File(obb).name
-                    onProgress("📦 Copying $obbName to /sdcard/Android/obb/$pkg/...")
+                    onProgress("📦 Copying $obbName to /sdcard/Android/obb/$pkg/...", 98)
                     ShellUtils.runAsRoot("cp '$obb' '$targetObbDir/' && chmod 666 '$targetObbDir/$obbName'", 60000)
                 }
                 ShellUtils.runAsRoot("chown -R media_rw:media_rw '$targetObbDir' 2>/dev/null; chmod 775 '$targetObbDir'", 15000)
-                onProgress("✅ Game OBB setup complete!")
+                onProgress("✅ Game OBB setup complete!", 99)
             }
         } catch (e: Exception) {
             Log.w("PackageInstaller", "Error in setupObbFiles: ${e.message}")

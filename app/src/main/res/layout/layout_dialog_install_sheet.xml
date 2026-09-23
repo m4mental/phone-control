@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
@@ -56,6 +57,78 @@
                 android:layout_marginTop="2dp"
                 android:visibility="gone" />
         </LinearLayout>
+    </LinearLayout>
+
+    <!-- Magisk / KernelSU / APatch Root Module Banner -->
+    <LinearLayout
+        android:id="@+id/layoutRootModuleBanner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:background="#2E1C00"
+        android:padding="14dp"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="⚡ ROOT MODULE DETECTED"
+                android:textColor="#FFD54F"
+                android:textStyle="bold"
+                android:textSize="13sp" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <TextView
+                android:id="@+id/tvRootModuleType"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="MAGISK / KSU"
+                android:textColor="#FF9800"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:background="#422700"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="2dp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tvRootModuleName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Module Name"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:layout_marginTop="6dp" />
+
+        <TextView
+            android:id="@+id/tvRootModuleDesc"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Module description"
+            android:textColor="#DDDDDD"
+            android:textSize="12sp"
+            android:layout_marginTop="2dp" />
+
+        <TextView
+            android:id="@+id/tvRootModuleMeta"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Author: Developer • Version: 1.0"
+            android:textColor="#FFD54F"
+            android:textSize="11sp"
+            android:layout_marginTop="4dp" />
     </LinearLayout>
 
     <!-- Version Comparison Card: Installed vs Incoming Update -->
@@ -166,6 +239,20 @@
             android:text="base, config.arm64_v8a, config.xxhdpi"
             android:textColor="#CCCCCC"
             android:textSize="11sp" />
+
+        <!-- Horizontal Scrollable Split Chips -->
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:scrollbars="none">
+
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/cgInspectSplits"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                app:singleLine="true" />
+        </HorizontalScrollView>
     </LinearLayout>
 
     <!-- SDK Compatibility Row: Min SDK, Target SDK, Max SDK -->
@@ -370,6 +457,54 @@
             android:text="Checking permissions..."
             android:textColor="#DDDDDD"
             android:textSize="12sp" />
+    </LinearLayout>
+
+    <!-- Real-Time Installation Progress Bar & Status -->
+    <LinearLayout
+        android:id="@+id/layoutInstallProgress"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginTop="14dp"
+        android:background="#161822"
+        android:padding="12dp"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/tvInstallProgressText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="⚡ Staging &amp; extracting package..."
+                android:textColor="#00E5FF"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvInstallProgressPercent"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0%"
+                android:textColor="#00E676"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <ProgressBar
+            android:id="@+id/pbInstallProgress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="8dp"
+            android:layout_marginTop="8dp"
+            android:progress="0"
+            android:max="100"
+            android:progressTint="#00E5FF"
+            android:progressBackgroundTint="#333333" />
     </LinearLayout>
 
     <!-- Action Buttons -->

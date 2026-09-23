@@ -83,12 +83,30 @@ jobs:
           cp app-release.apk "${APK_NAME}"
         fi
 
-    - name: Extract Commit Notes
+    - name: Format Automated Changelog and Release Notes
       id: commit_notes
       run: |
+        BRANCH="${GITHUB_REF_NAME}"
+        TAG="${{ steps.channel.outputs.TAG }}"
+        APK="${{ steps.channel.outputs.APK_NAME }}"
+        COMMIT_MSG=$(git log -1 --pretty=format:"%B")
+        SHORT_SHA=$(git rev-parse --short HEAD)
+        DATE_STR=$(date -u +"%Y-%m-%d %H:%M UTC")
+
         echo "RELEASE_BODY<<EOF" >> $GITHUB_ENV
-        git log -1 --pretty=format:"%B" >> $GITHUB_ENV
+        echo "## 📱 Phone Control Release — ${TAG}" >> $GITHUB_ENV
         echo "" >> $GITHUB_ENV
+        echo "**Channel:** \`${BRANCH}\` • **Commit:** \`${SHORT_SHA}\` • **Date:** \`${DATE_STR}\`" >> $GITHUB_ENV
+        echo "" >> $GITHUB_ENV
+        echo "### 📝 Changes in this Build" >> $GITHUB_ENV
+        echo "${COMMIT_MSG}" >> $GITHUB_ENV
+        echo "" >> $GITHUB_ENV
+        echo "---" >> $GITHUB_ENV
+        echo "### 📦 Package & Security Details" >> $GITHUB_ENV
+        echo "- **APK Asset:** \`${APK}\`" >> $GITHUB_ENV
+        echo "- **Signing:** Unified Cryptographic Release Keystore (Zero Conflict)" >> $GITHUB_ENV
+        echo "- **R8 Minification:** Enabled (Dead Code & Resources Stripped)" >> $GITHUB_ENV
+        echo "- **Architecture:** Universal ARM64-v8a" >> $GITHUB_ENV
         echo "EOF" >> $GITHUB_ENV
 
     - name: Create or Update GitHub Release
