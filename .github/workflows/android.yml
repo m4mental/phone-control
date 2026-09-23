@@ -2,7 +2,7 @@ name: Android Release Build
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "main", "master", "dev", "alpha" ]
 
 permissions:
   contents: write
@@ -26,19 +26,61 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
+    - name: Decode Release Keystore
+      if: env.KEYSTORE_BASE64 != ''
+      run: |
+        mkdir -p keystore
+        echo "$KEYSTORE_BASE64" | base64 -d > keystore/phonecontrol-release.jks
+      env:
+        KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+
     - name: Build Release APK
       run: ./gradlew assembleRelease
+      env:
+        KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
-    - name: Get Version
-      id: get_version
-      run: echo "VERSION=v1.0.${{ github.run_number }}" >> $GITHUB_OUTPUT
-
-    - name: Rename Release APK with Version Tag
+    - name: Determine Version and Release Channel
+      id: channel
       run: |
-        VERSION="${{ steps.get_version.outputs.VERSION }}"
+        BRANCH="${GITHUB_REF_NAME}"
+        RUN_NUM="${{ github.run_number }}"
+        SHORT_SHA=$(git rev-parse --short HEAD)
+
+        if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "master" ]; then
+          TAG="v1.0.${RUN_NUM}"
+          TITLE="Official Release v1.0.${RUN_NUM}"
+          APK_NAME="PhoneControl-v1.0.${RUN_NUM}.apk"
+          IS_PRERELEASE="false"
+        elif [ "$BRANCH" = "dev" ]; then
+          TAG="beta-latest"
+          TITLE="Beta Channel (Build ${RUN_NUM})"
+          APK_NAME="PhoneControl-Beta.apk"
+          IS_PRERELEASE="true"
+        elif [ "$BRANCH" = "alpha" ]; then
+          TAG="alpha-latest"
+          TITLE="Alpha Rolling Build (${SHORT_SHA})"
+          APK_NAME="PhoneControl-Alpha.apk"
+          IS_PRERELEASE="true"
+        else
+          TAG="${BRANCH}-build-${RUN_NUM}"
+          TITLE="Build ${TAG}"
+          APK_NAME="PhoneControl-${BRANCH}.apk"
+          IS_PRERELEASE="true"
+        fi
+
+        echo "TAG=${TAG}" >> $GITHUB_OUTPUT
+        echo "TITLE=${TITLE}" >> $GITHUB_OUTPUT
+        echo "APK_NAME=${APK_NAME}" >> $GITHUB_OUTPUT
+        echo "IS_PRERELEASE=${IS_PRERELEASE}" >> $GITHUB_OUTPUT
+
+    - name: Rename Release APK with Channel Tag
+      run: |
+        APK_NAME="${{ steps.channel.outputs.APK_NAME }}"
         cd app/build/outputs/apk/release
         if [ -f "app-release.apk" ]; then
-          cp app-release.apk "PhoneControl-${VERSION}.apk"
+          cp app-release.apk "${APK_NAME}"
         fi
 
     - name: Extract Commit Notes
@@ -49,15 +91,15 @@ jobs:
         echo "" >> $GITHUB_ENV
         echo "EOF" >> $GITHUB_ENV
 
-    - name: Create GitHub Release
+    - name: Create or Update GitHub Release
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: ${{ steps.get_version.outputs.VERSION }}
-        name: Release ${{ steps.get_version.outputs.VERSION }}
+        tag_name: ${{ steps.channel.outputs.TAG }}
+        name: ${{ steps.channel.outputs.TITLE }}
         files: |
-          app/build/outputs/apk/release/PhoneControl-*.apk
+          app/build/outputs/apk/release/${{ steps.channel.outputs.APK_NAME }}
         body: ${{ env.RELEASE_BODY }}
         draft: false
-        prerelease: false
+        prerelease: ${{ steps.channel.outputs.IS_PRERELEASE == 'true' }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

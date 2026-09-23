@@ -3,6 +3,7 @@ package com.example.phonecontrol
 import android.app.ProgressDialog
 import android.content.Intent
 import android.graphics.Color
+import android.net.Uri
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -154,6 +155,7 @@ class SettingsActivity : AppCompatActivity() {
         })
 
         setupIndependentWirelessAdbCard()
+        setupAboutCard()
         refreshToggles()
     }
 
@@ -161,9 +163,50 @@ class SettingsActivity : AppCompatActivity() {
         super.onResume()
         if (categoryHolders.isEmpty()) {
             setupIndependentWirelessAdbCard()
+            setupAboutCard()
             refreshToggles()
         } else {
             syncToggleStates()
+        }
+    }
+
+    private fun setupAboutCard() {
+        val tvVersion = findViewById<TextView>(R.id.tvAboutVersion) ?: return
+        val tvArch = findViewById<TextView>(R.id.tvAboutArch) ?: return
+        val tvRoot = findViewById<TextView>(R.id.tvAboutRootStatus) ?: return
+        val btnGitHub = findViewById<Button>(R.id.btnAboutGitHub) ?: return
+
+        val pkgInfo = try {
+            packageManager.getPackageInfo(packageName, 0)
+        } catch (e: Exception) { null }
+
+        val verName = pkgInfo?.versionName ?: "v1.0.1"
+        val verCode = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            pkgInfo?.longVersionCode ?: 1L
+        } else {
+            @Suppress("DEPRECATION")
+            (pkgInfo?.versionCode ?: 1).toLong()
+        }
+
+        tvVersion.text = "v$verName (Build $verCode)"
+        tvArch.text = "Arch: ${android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"}"
+
+        val isRooted = ShellUtils.checkRootStandalone()
+        if (isRooted) {
+            tvRoot.text = "Root: Active"
+            tvRoot.setTextColor(Color.parseColor("#00E676"))
+        } else {
+            tvRoot.text = "Root: Non-Root"
+            tvRoot.setTextColor(Color.parseColor("#FF5252"))
+        }
+
+        btnGitHub.setOnClickListener {
+            try {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/m4mental/phone-control/releases"))
+                startActivity(intent)
+            } catch (e: Exception) {
+                Toast.makeText(this, "Could not open browser", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 

@@ -16,11 +16,35 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("release") {
+            val keystoreFile = rootProject.file("keystore/phonecontrol-release.jks")
+            val storePass = System.getenv("KEYSTORE_PASSWORD") ?: "PhoneControl2026Key"
+            val keyPass = System.getenv("KEY_PASSWORD") ?: "PhoneControl2026Key"
+            val alias = System.getenv("KEY_ALIAS") ?: "phonecontrol"
+
+            if (keystoreFile.exists()) {
+                storeFile = keystoreFile
+                storePassword = storePass
+                keyAlias = alias
+                keyPassword = keyPass
+            } else {
+                initWith(signingConfigs.getByName("debug"))
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+        debug {
+            val releaseKeystore = rootProject.file("keystore/phonecontrol-release.jks")
+            if (releaseKeystore.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
     compileOptions {
