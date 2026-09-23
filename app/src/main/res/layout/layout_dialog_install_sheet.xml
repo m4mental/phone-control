@@ -59,77 +59,7 @@
         </LinearLayout>
     </LinearLayout>
 
-    <!-- Magisk / KernelSU / APatch Root Module Banner -->
-    <LinearLayout
-        android:id="@+id/layoutRootModuleBanner"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="14dp"
-        android:background="#2E1C00"
-        android:padding="14dp"
-        android:orientation="vertical"
-        android:visibility="gone">
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="⚡ ROOT MODULE DETECTED"
-                android:textColor="#FFD54F"
-                android:textStyle="bold"
-                android:textSize="13sp" />
-
-            <View
-                android:layout_width="0dp"
-                android:layout_height="1dp"
-                android:layout_weight="1" />
-
-            <TextView
-                android:id="@+id/tvRootModuleType"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="MAGISK / KSU"
-                android:textColor="#FF9800"
-                android:textSize="10sp"
-                android:textStyle="bold"
-                android:background="#422700"
-                android:paddingHorizontal="6dp"
-                android:paddingVertical="2dp" />
-        </LinearLayout>
-
-        <TextView
-            android:id="@+id/tvRootModuleName"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Module Name"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:textStyle="bold"
-            android:layout_marginTop="6dp" />
-
-        <TextView
-            android:id="@+id/tvRootModuleDesc"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Module description"
-            android:textColor="#DDDDDD"
-            android:textSize="12sp"
-            android:layout_marginTop="2dp" />
-
-        <TextView
-            android:id="@+id/tvRootModuleMeta"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Author: Developer • Version: 1.0"
-            android:textColor="#FFD54F"
-            android:textSize="11sp"
-            android:layout_marginTop="4dp" />
-    </LinearLayout>
 
     <!-- Version Comparison Card: Installed vs Incoming Update -->
     <LinearLayout

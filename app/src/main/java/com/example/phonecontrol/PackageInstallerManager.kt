@@ -50,16 +50,6 @@ object PackageInstallerManager {
         val isSameVersion: Boolean
     )
 
-    data class RootModuleInfo(
-        val id: String,
-        val name: String,
-        val version: String,
-        val versionCode: Long,
-        val author: String,
-        val description: String,
-        val isRootModule: Boolean = true
-    )
-
     fun createFallbackInspection(fileName: String): ApkInspection {
         val cleanName = fileName.substringBeforeLast(".")
         return ApkInspection(
@@ -247,50 +237,6 @@ object PackageInstallerManager {
                 try { java.io.FileInputStream(File(uri.path!!)) } catch (ex: Exception) { null }
             } else null
         }
-    }
-
-    /**
-     * Inspects a zip archive to determine if it is a Magisk / KernelSU / APatch root module.
-     * Checks for module.prop and parses id, name, version, versionCode, author, and description.
-     */
-    fun inspectRootModule(context: Context, uri: Uri): RootModuleInfo? {
-        try {
-            openPackageStream(context, uri)?.use { stream ->
-                ZipInputStream(stream).use { zis ->
-                    var entry = zis.nextEntry
-                    while (entry != null) {
-                        val name = entry.name.lowercase()
-                        if (!entry.isDirectory && (name == "module.prop" || name.endsWith("/module.prop"))) {
-                            val reader = zis.bufferedReader(Charsets.UTF_8)
-                            val props = mutableMapOf<String, String>()
-                            reader.forEachLine { line ->
-                                val trimmed = line.trim()
-                                if (!trimmed.startsWith("#") && trimmed.contains("=")) {
-                                    val key = trimmed.substringBefore("=").trim()
-                                    val value = trimmed.substringAfter("=").trim()
-                                    props[key] = value
-                                }
-                            }
-                            if (props.containsKey("id") || props.containsKey("name")) {
-                                return RootModuleInfo(
-                                    id = props["id"] ?: "unknown_module",
-                                    name = props["name"] ?: (props["id"] ?: "Root Module"),
-                                    version = props["version"] ?: "1.0",
-                                    versionCode = props["versionCode"]?.toLongOrNull() ?: 1L,
-                                    author = props["author"] ?: "Unknown Author",
-                                    description = props["description"] ?: "Magisk / KernelSU / APatch root module"
-                                )
-                            }
-                        }
-                        zis.closeEntry()
-                        entry = zis.nextEntry
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.e("PackageInstaller", "inspectRootModule failed: ${e.message}")
-        }
-        return null
     }
 
     /**
@@ -676,67 +622,6 @@ object PackageInstallerManager {
             Log.e("PackageInstaller", "Restore app data failed for $packageName", e)
         }
         return false
-    }
-
-    /**
-     * Flashes a root module archive (.zip) directly via Magisk / KernelSU / APatch CLI.
-     */
-    fun flashRootModule(
-        context: Context,
-        uri: Uri,
-        fileName: String,
-        onProgress: (String, Int) -> Unit
-    ): InstallResult {
-        val stagingZip = File("/data/local/tmp/root_module_${System.currentTimeMillis()}.zip")
-        val tempInput = File(context.cacheDir, "temp_module_input.zip")
-        try {
-            onProgress("📥 Reading root module archive: $fileName...", 15)
-            openPackageStream(context, uri)?.use { input ->
-                FileOutputStream(tempInput).use { output ->
-                    input.copyTo(output)
-                }
-            } ?: return InstallResult(false, "Could not open module file stream", "")
-
-            onProgress("📦 Staging root module in /data/local/tmp...", 40)
-            ShellUtils.runAsRoot("cp '${tempInput.absolutePath}' '${stagingZip.absolutePath}' && chmod 666 '${stagingZip.absolutePath}'", 30000)
-            tempInput.delete()
-
-            onProgress("⚡ Flashing root module via Magisk / KernelSU / APatch...", 65)
-            val flashScript = """
-                if command -v magisk >/dev/null 2>&1; then
-                    magisk --install-module '${stagingZip.absolutePath}'
-                elif [ -f /data/adb/ksu/bin/ksud ]; then
-                    /data/adb/ksu/bin/ksud module install '${stagingZip.absolutePath}'
-                elif [ -f /data/adb/ap/bin/apd ]; then
-                    /data/adb/ap/bin/apd module install '${stagingZip.absolutePath}'
-                elif command -v ksud >/dev/null 2>&1; then
-                    ksud module install '${stagingZip.absolutePath}'
-                else
-                    magisk --install-module '${stagingZip.absolutePath}' 2>&1 || ksud module install '${stagingZip.absolutePath}'
-                fi
-            """.trimIndent()
-
-            val result = ShellUtils.runAsRoot(flashScript, 120000)
-            val isSuccess = result.exitCode == 0 && (
-                result.output.contains("success", ignoreCase = true) ||
-                result.output.contains("done", ignoreCase = true) ||
-                result.output.contains("installed", ignoreCase = true) ||
-                !result.output.contains("failure", ignoreCase = true)
-            )
-
-            onProgress(if (isSuccess) "✅ Flashed successfully! Reboot required to activate." else "❌ Module flashing failed.", 100)
-
-            return InstallResult(
-                success = isSuccess,
-                message = if (isSuccess) "Root module successfully flashed! Please reboot your device to activate." else "Failed to flash root module:\n${result.output}",
-                rawOutput = result.output
-            )
-        } catch (e: Exception) {
-            return InstallResult(false, "Flashing exception: ${e.message}", e.stackTraceToString())
-        } finally {
-            ShellUtils.runAsRoot("rm -f '${stagingZip.absolutePath}'", 10000)
-            if (tempInput.exists()) tempInput.delete()
-        }
     }
 
     fun installPackage(

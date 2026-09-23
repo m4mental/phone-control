@@ -10,10 +10,10 @@ import android.view.View
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.ImageView
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import android.content.res.ColorStateList
-import android.widget.ProgressBar
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.chip.Chip
@@ -157,19 +157,6 @@ class PackageInstallActivity : AppCompatActivity() {
 
         thread {
             val lower = fileName.lowercase()
-            val rootModule = if (lower.endsWith(".zip")) {
-                PackageInstallerManager.inspectRootModule(this, uri)
-            } else null
-
-            if (rootModule != null) {
-                runOnUiThread {
-                    if (!isFinishing && !isDestroyed && dialog.isShowing) {
-                        bindRootModuleData(dialogView, rootModule, uri, fileName)
-                    }
-                }
-                return@thread
-            }
-
             val inspection = PackageInstallerManager.inspectApk(this, uri, fileName)
             runOnUiThread {
                 if (!isFinishing && !isDestroyed && dialog.isShowing) {
@@ -197,87 +184,6 @@ class PackageInstallActivity : AppCompatActivity() {
                             Toast.makeText(this@PackageInstallActivity, "Not a valid APK or App Bundle", Toast.LENGTH_LONG).show()
                         }
                     }
-                }
-            }
-        }
-    }
-
-    private fun bindRootModuleData(
-        dialogView: View,
-        module: PackageInstallerManager.RootModuleInfo,
-        uri: Uri,
-        fileName: String
-    ) {
-        val banner = dialogView.findViewById<View>(R.id.layoutRootModuleBanner)
-        val tvName = dialogView.findViewById<TextView>(R.id.tvRootModuleName)
-        val tvDesc = dialogView.findViewById<TextView>(R.id.tvRootModuleDesc)
-        val tvMeta = dialogView.findViewById<TextView>(R.id.tvRootModuleMeta)
-        val tvAppName = dialogView.findViewById<TextView>(R.id.tvInspectAppName)
-        val tvPkg = dialogView.findViewById<TextView>(R.id.tvInspectPkgName)
-        val tvInstallType = dialogView.findViewById<TextView>(R.id.tvInspectInstallType)
-        val btnInstall = dialogView.findViewById<Button>(R.id.btnInspectInstall)
-        val ivIcon = dialogView.findViewById<ImageView>(R.id.ivInspectIcon)
-
-        banner.visibility = View.VISIBLE
-        tvName.text = module.name
-        tvDesc.text = module.description
-        tvMeta.text = "Author: ${module.author} • Version: ${module.version} (${module.versionCode})"
-
-        tvAppName.text = module.name
-        tvPkg.text = "Module ID: ${module.id}"
-        ivIcon.setImageResource(android.R.drawable.ic_menu_preferences)
-
-        tvInstallType.text = "⚡ Magisk / KernelSU / APatch Root Module Ready to Flash"
-        tvInstallType.setTextColor(Color.parseColor("#FFD54F"))
-
-        btnInstall.visibility = View.VISIBLE
-        btnInstall.isEnabled = true
-        btnInstall.text = "⚡ Flash Root Module"
-        btnInstall.setOnClickListener {
-            executeRootModuleFlashing(dialogView, uri, fileName, module)
-        }
-    }
-
-    private fun executeRootModuleFlashing(
-        dialogView: View,
-        uri: Uri,
-        fileName: String,
-        module: PackageInstallerManager.RootModuleInfo
-    ) {
-        val layoutProgress = dialogView.findViewById<View>(R.id.layoutInstallProgress)
-        val pbProgress = dialogView.findViewById<ProgressBar>(R.id.pbInstallProgress)
-        val tvProgressText = dialogView.findViewById<TextView>(R.id.tvInstallProgressText)
-        val tvProgressPercent = dialogView.findViewById<TextView>(R.id.tvInstallProgressPercent)
-        val btnInstall = dialogView.findViewById<Button>(R.id.btnInspectInstall)
-        val btnCancel = dialogView.findViewById<Button>(R.id.btnInspectCancel)
-
-        layoutProgress?.visibility = View.VISIBLE
-        btnInstall.isEnabled = false
-        btnCancel.isEnabled = false
-
-        thread {
-            val result = PackageInstallerManager.flashRootModule(this, uri, fileName) { status, pct ->
-                runOnUiThread {
-                    pbProgress?.progress = pct
-                    tvProgressPercent?.text = "$pct%"
-                    tvProgressText?.text = status
-                }
-            }
-
-            runOnUiThread {
-                if (isFinishing || isDestroyed) return@runOnUiThread
-                installSheetDialog?.setOnDismissListener(null)
-                installSheetDialog?.dismiss()
-                installSheetDialog = null
-
-                if (result.success) {
-                    showPostInstallDialog(module.name, null, fileName)
-                } else {
-                    androidx.appcompat.app.AlertDialog.Builder(this)
-                        .setTitle("Root Module Flash Failed")
-                        .setMessage(result.message)
-                        .setPositiveButton("OK") { _, _ -> finish() }
-                        .show()
                 }
             }
         }
