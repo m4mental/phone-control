@@ -70,6 +70,7 @@ class AutoTweakService : Service() {
     private var audioManager: AudioManager? = null
     private var equalizerFreezeHandler: Handler? = null
     private var equalizerFreezeRunnable: Runnable? = null
+    private var recentsFreezeRunnable: Runnable? = null
     private var audioPauseDebounceRunnable: Runnable? = null
     private var screenOffFreezeJob: Runnable? = null
     private val screenOffHandler = Handler(Looper.getMainLooper())
@@ -531,17 +532,16 @@ class AutoTweakService : Service() {
             return START_STICKY
         }
 
-        // 2. Instant Recents Task / Dismiss Event
+        // 2. Targeted Recents Task / Dismiss Event (Debounced to prevent false freeze during app launch)
         if (action == ACTION_RECENTS_CHANGED) {
             tweakExecutor.execute {
                 reevaluatePerAppHierarchy(lastForegroundApp)
             }
-            triggerFreezerDispatch(lastForegroundApp)
-
-            // Post-settlement check: Recents swipe animation takes 300-500ms in Nothing OS / Android
-            equalizerFreezeHandler?.postDelayed({
+            recentsFreezeRunnable?.let { equalizerFreezeHandler?.removeCallbacks(it) }
+            recentsFreezeRunnable = Runnable {
                 triggerFreezerDispatch(lastForegroundApp)
-            }, 600)
+            }
+            equalizerFreezeHandler?.postDelayed(recentsFreezeRunnable!!, 600)
             return START_STICKY
         }
 
@@ -644,6 +644,9 @@ class AutoTweakService : Service() {
     }
 
     private fun handleForegroundAppTransition(previousPkg: String, newPkg: String) {
+        // Cancel any pending recents freeze sweep when user transitions to a new app
+        recentsFreezeRunnable?.let { equalizerFreezeHandler?.removeCallbacks(it) }
+
         // Instant 200ms Window Animation Boost for butter-smooth 120fps app-switch transition (skip for Phone Control)
         if (newPkg != packageName) {
             TweakManager.triggerAppSwitchBoost()

@@ -12,6 +12,7 @@ object FreezerManager {
     val activeSessionApps = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     var lastLaunchedPackage: String? = null
     var lastLaunchTime: Long = 0
+    val launchTimestamps = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     private val freezerExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
 
@@ -24,10 +25,18 @@ object FreezerManager {
         if (packageName.isBlank()) return
         activeSessionApps.add(packageName)
         lastLaunchedPackage = packageName
-        lastLaunchTime = System.currentTimeMillis()
+        val now = System.currentTimeMillis()
+        lastLaunchTime = now
+        launchTimestamps[packageName] = now
         freezerExecutor.execute {
             unfreezeApp(packageName)
         }
+    }
+
+    fun isRecentlyLaunched(packageName: String, gracePeriodMs: Long = 20000L): Boolean {
+        if (packageName == lastLaunchedPackage && (System.currentTimeMillis() - lastLaunchTime < gracePeriodMs)) return true
+        val time = launchTimestamps[packageName] ?: return false
+        return (System.currentTimeMillis() - time < gracePeriodMs)
     }
 
     fun isAppActiveSession(packageName: String): Boolean {
@@ -36,12 +45,9 @@ object FreezerManager {
 
     fun removeActiveSession(packageName: String) {
         activeSessionApps.remove(packageName)
+        launchTimestamps.remove(packageName)
     }
 
-    /**
-     * Hibernates a single app immediately.
-     * Strictly protects active session apps.
-     */
     /**
      * Hibernates a single app immediately.
      * Strictly protects active session apps, visible apps, and apps with active foreground/perceptible adj.
@@ -51,9 +57,7 @@ object FreezerManager {
         
         // Absolute Guard: NEVER freeze an app that is in active user session or opened recently
         if (isAppActiveSession(packageName)) return
-        if (packageName == lastLaunchedPackage && (System.currentTimeMillis() - lastLaunchTime < 30000)) {
-            return
-        }
+        if (isRecentlyLaunched(packageName, 30000L)) return
         if (isAppCurrentlyVisible(packageName)) return
         
         if (isSpecialFreeze(context, packageName)) {
@@ -105,7 +109,7 @@ object FreezerManager {
         if (packages.isEmpty()) return
         val currentFocus = getCurrentlyFocusedWindowInfo()
         val pkgList = packages.filter { 
-            it != lastLaunchedPackage && 
+            !isRecentlyLaunched(it, 30000L) && 
             !isAppActiveSession(it) && 
             (currentFocus.isBlank() || !currentFocus.contains(it)) 
         }.joinToString(" ")
@@ -188,8 +192,8 @@ object FreezerManager {
 
         // 1. Apps tracked in activeSessionApps that have been dismissed from Recents and left foreground
         for (pkg in activeSessionApps) {
-            val isRecentlyLaunched = (pkg == lastLaunchedPackage && (System.currentTimeMillis() - lastLaunchTime < 15000))
-            if (!currentRecents.contains(pkg) && pkg != currentForeground && !isRecentlyLaunched && !isAppCurrentlyVisible(pkg)) {
+            if (isRecentlyLaunched(pkg, 20000L)) continue
+            if (!currentRecents.contains(pkg) && pkg != currentForeground && !isAppCurrentlyVisible(pkg)) {
                 toFreeze.add(pkg)
             }
         }
@@ -198,8 +202,8 @@ object FreezerManager {
         // but has active running background processes (e.g. after background wakeup/broadcast)
         val runningConfigured = getRunningConfiguredApps(allConfigured)
         for (pkg in runningConfigured) {
-            val isRecentlyLaunched = (pkg == lastLaunchedPackage && (System.currentTimeMillis() - lastLaunchTime < 15000))
-            if (pkg != currentForeground && !currentRecents.contains(pkg) && !isRecentlyLaunched && !isAppCurrentlyVisible(pkg) && !activeSessionApps.contains(pkg)) {
+            if (isRecentlyLaunched(pkg, 20000L)) continue
+            if (pkg != currentForeground && !currentRecents.contains(pkg) && !isAppCurrentlyVisible(pkg) && !activeSessionApps.contains(pkg)) {
                 toFreeze.add(pkg)
             }
         }
@@ -208,13 +212,14 @@ object FreezerManager {
 
         for (pkg in toFreeze) {
             // Absolute safety check: Never touch recently launched apps or currently visible apps
-            if (pkg == lastLaunchedPackage && (System.currentTimeMillis() - lastLaunchTime < 15000)) {
+            if (isRecentlyLaunched(pkg, 20000L)) {
                 continue
             }
             if (isAppCurrentlyVisible(pkg)) {
                 continue
             }
             activeSessionApps.remove(pkg)
+            launchTimestamps.remove(pkg)
             if (pkg == lastLaunchedPackage) {
                 lastLaunchedPackage = null
             }
@@ -316,7 +321,9 @@ object FreezerManager {
         val script = """
             am unfreeze "$packageName" 2>/dev/null
             pm unsuspend "$packageName" 2>/dev/null
-            pm enable "$packageName" 2>/dev/null
+            if pm list packages -d "$packageName" 2>/dev/null | grep -q "$packageName"; then
+                pm enable "$packageName" 2>/dev/null
+            fi
             cmd appops set "$packageName" RUN_IN_BACKGROUND allow 2>/dev/null
             cmd appops set "$packageName" RUN_ANY_IN_BACKGROUND allow 2>/dev/null
             am set-standby-bucket "$packageName" active 2>/dev/null
@@ -337,7 +344,9 @@ object FreezerManager {
             for pkg in $pkgList; do
                 am unfreeze "${'$'}pkg" 2>/dev/null
                 pm unsuspend "${'$'}pkg" 2>/dev/null
-                pm enable "${'$'}pkg" 2>/dev/null
+                if pm list packages -d "${'$'}pkg" 2>/dev/null | grep -q "${'$'}pkg"; then
+                    pm enable "${'$'}pkg" 2>/dev/null
+                fi
                 cmd appops set "${'$'}pkg" RUN_IN_BACKGROUND allow 2>/dev/null
                 cmd appops set "${'$'}pkg" RUN_ANY_IN_BACKGROUND allow 2>/dev/null
                 am set-standby-bucket "${'$'}pkg" active 2>/dev/null
@@ -475,7 +484,9 @@ object FreezerManager {
         // 2. Ultra-fast combined Root Execution: Unsuspend, Unfreeze & Launch in ONE single shot (<80ms)
         val launchScript = """
             pm unsuspend "$packageName" 2>/dev/null
-            pm enable "$packageName" 2>/dev/null
+            if pm list packages -d "$packageName" 2>/dev/null | grep -q "$packageName"; then
+                pm enable "$packageName" 2>/dev/null
+            fi
             am unfreeze "$packageName" 2>/dev/null
             am set-standby-bucket "$packageName" active 2>/dev/null
             comp=${'$'}(cmd package resolve-activity --brief "$packageName" 2>/dev/null | tail -n 1)
@@ -644,7 +655,9 @@ object FreezerManager {
     fun instantUnfreezeEqualizer(packageName: String) {
         if (packageName.isBlank()) return
         val script = """
-            pm enable "$packageName" 2>/dev/null
+            if pm list packages -d "$packageName" 2>/dev/null | grep -q "$packageName"; then
+                pm enable "$packageName" 2>/dev/null
+            fi
             am unfreeze "$packageName" 2>/dev/null
             am set-standby-bucket "$packageName" active 2>/dev/null
             for p in $(pidof "$packageName"); do

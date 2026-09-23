@@ -27,6 +27,29 @@ class AppEventService : AccessibilityService() {
     )
 
     private var lastRecentsCheckTime = 0L
+    private var lastLabelCacheTime = 0L
+    private val appLabelToPackageMap = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    private fun getPackageForLabel(label: String): String? {
+        val now = System.currentTimeMillis()
+        if (now - lastLabelCacheTime > 60000 || appLabelToPackageMap.isEmpty()) {
+            appLabelToPackageMap.clear()
+            val allFrozen = FreezerManager.getSpecialFreezeApps(this) + FreezerManager.getFrozenApps(this)
+            for (pkg in allFrozen) {
+                try {
+                    val appInfo = packageManager.getApplicationInfo(pkg, 0)
+                    val l = packageManager.getApplicationLabel(appInfo).toString().trim().lowercase()
+                    appLabelToPackageMap[l] = pkg
+                } catch (_: Exception) {}
+            }
+            lastLabelCacheTime = now
+        }
+        val clean = label.lowercase().trim()
+        val direct = appLabelToPackageMap[clean]
+        if (direct != null) return direct
+
+        return appLabelToPackageMap.entries.firstOrNull { (k, _) -> clean.startsWith(k) || clean.contains(k) }?.value
+    }
 
     private fun dispatchRecentsCheck() {
         val now = System.currentTimeMillis()
@@ -49,7 +72,7 @@ class AppEventService : AccessibilityService() {
         val pkgName = event.packageName?.toString() ?: ""
         val clsName = event.className?.toString() ?: ""
 
-        // 1. Instant Launcher Click Detection: Pre-unfreeze app on click before window transition starts
+        // 1. Instant Launcher Click Detection: Pre-register & protect app on click before window transition starts
         if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             val desc = event.contentDescription?.toString() ?: ""
             val text = event.text?.joinToString(" ") ?: ""
@@ -61,32 +84,28 @@ class AppEventService : AccessibilityService() {
             }
 
             if (cleanLabel.isNotBlank()) {
-                val allFrozen = FreezerManager.getSpecialFreezeApps(this) + FreezerManager.getFrozenApps(this)
-                val targetPkg = allFrozen.firstOrNull { pkg ->
-                    try {
-                        val appInfo = packageManager.getApplicationInfo(pkg, 0)
-                        packageManager.getApplicationLabel(appInfo).toString().equals(cleanLabel, ignoreCase = true)
-                    } catch (e: Exception) { false }
-                }
+                val targetPkg = getPackageForLabel(cleanLabel)
                 if (targetPkg != null) {
                     FreezerManager.registerAppOpen(targetPkg)
-                    FreezerManager.unfreezeApp(targetPkg)
                     if (combined.contains("Disabled ", ignoreCase = true)) {
                         FreezerManager.launchApp(this, targetPkg)
-                        return
                     }
+                    return // App launch triggered & protected! Do NOT fall through to recents check!
                 }
             }
         }
 
-        // 2. Instant Recents Task Dismissal / Task Clear Detection
+        // 2. Targeted Recents Task Dismissal / Task Clear Detection
         if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED ||
             eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
-            val isRecentsProvider = pkgName.contains("launcher", ignoreCase = true) ||
-                                    clsName.contains("Recents", ignoreCase = true) ||
+            val isExplicitRecents = clsName.contains("Recents", ignoreCase = true) ||
                                     clsName.contains("Overview", ignoreCase = true) ||
-                                    clsName.contains("Quickstep", ignoreCase = true)
-            if (isRecentsProvider) {
+                                    clsName.contains("TaskView", ignoreCase = true) ||
+                                    clsName.contains("ClearAll", ignoreCase = true) ||
+                                    clsName.contains("Dismiss", ignoreCase = true) ||
+                                    event.contentDescription?.contains("Clear all", ignoreCase = true) == true ||
+                                    event.text?.any { it.contains("Clear all", ignoreCase = true) } == true
+            if (isExplicitRecents) {
                 dispatchRecentsCheck()
             }
             return
