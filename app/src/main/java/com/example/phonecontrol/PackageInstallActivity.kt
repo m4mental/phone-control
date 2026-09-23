@@ -66,7 +66,7 @@ class PackageInstallActivity : AppCompatActivity() {
     }
 
     private fun resolveFileName(uri: Uri): String {
-        var name = "package.apk"
+        var name: String? = null
         try {
             contentResolver.query(uri, null, null, null, null)?.use { cursor ->
                 val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
@@ -76,13 +76,38 @@ class PackageInstallActivity : AppCompatActivity() {
             }
         } catch (e: Exception) {}
 
-        if (name == "package.apk" && uri.path != null) {
+        if (name.isNullOrBlank() || !name.contains(".")) {
+            val path = uri.path
+            if (!path.isNullOrBlank()) {
+                val candidate = path.substringAfterLast("/")
+                if (candidate.contains(".")) {
+                    name = candidate
+                }
+            }
+        }
+
+        if (name.isNullOrBlank() || !name.contains(".")) {
             val lastSegment = uri.lastPathSegment
-            if (!lastSegment.isNullOrBlank()) {
+            if (!lastSegment.isNullOrBlank() && lastSegment.contains(".")) {
                 name = lastSegment.substringAfterLast("/")
             }
         }
-        return name
+
+        // Infer extension from MIME type if filename lacks an extension
+        if (name.isNullOrBlank() || !name.contains(".")) {
+            val mime = try { contentResolver.getType(uri) } catch (e: Exception) { null }
+            val base = if (!name.isNullOrBlank()) name else "package"
+            name = when {
+                mime == "application/vnd.android.package-archive" -> "$base.apk"
+                mime == "application/xapk-package-archive" || mime?.contains("xapk", ignoreCase = true) == true -> "$base.xapk"
+                mime?.contains("apks", ignoreCase = true) == true -> "$base.apks"
+                mime?.contains("apkm", ignoreCase = true) == true || mime == "application/vnd.android.package-bundle" -> "$base.apkm"
+                mime == "application/zip" || mime == "application/x-zip-compressed" -> "$base.xapk"
+                else -> "$base.apk"
+            }
+        }
+
+        return name ?: "package.apk"
     }
 
     private fun showInitialInspectionSheet(uri: Uri, fileName: String) {
@@ -133,16 +158,26 @@ class PackageInstallActivity : AppCompatActivity() {
                     if (inspection != null) {
                         bindInspectionData(dialogView, inspection, uri, fileName)
                     } else {
-                        tvInstallType.text = "⚡ Package detected (Direct Root Install ready)"
-                        tvInstallType.setTextColor(Color.parseColor("#00E5FF"))
-                        btnInstall.visibility = View.VISIBLE
-                        btnInstall.isEnabled = true
-                        btnInstall.text = "⚡ Direct Root Install"
-                        btnInstall.setOnClickListener {
-                            btnInstall.isEnabled = false
-                            btnInstall.text = "⚡ Installing with Root..."
-                            val fallback = PackageInstallerManager.createFallbackInspection(fileName)
-                            executeInstallation(dialogView, uri, fileName, fallback, forceReinstall = false)
+                        val lower = fileName.lowercase()
+                        val isSingleApk = lower.endsWith(".apk")
+                        if (isSingleApk) {
+                            tvInstallType.text = "⚡ Package detected (Direct Root Install ready)"
+                            tvInstallType.setTextColor(Color.parseColor("#00E5FF"))
+                            btnInstall.visibility = View.VISIBLE
+                            btnInstall.isEnabled = true
+                            btnInstall.text = "⚡ Direct Root Install"
+                            btnInstall.setOnClickListener {
+                                btnInstall.isEnabled = false
+                                btnInstall.text = "⚡ Installing with Root..."
+                                val fallback = PackageInstallerManager.createFallbackInspection(fileName)
+                                executeInstallation(dialogView, uri, fileName, fallback, forceReinstall = false)
+                            }
+                        } else {
+                            tvInstallType.text = "⚠️ No installable Android app or bundle found inside this archive."
+                            tvInstallType.setTextColor(Color.parseColor("#FF5252"))
+                            btnInstall.visibility = View.GONE
+                            btnCancel.text = "Close"
+                            Toast.makeText(this@PackageInstallActivity, "Not a valid APK or App Bundle", Toast.LENGTH_LONG).show()
                         }
                     }
                 }

@@ -139,6 +139,7 @@
             android:excludeFromRecents="true"
             android:launchMode="singleTop">
 
+            <!-- 1. Standard Single APK MIME type (content & file schemes) -->
             <intent-filter tools:ignore="AppLinkUrlError">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -149,6 +150,7 @@
                 <data android:mimeType="application/vnd.android.package-archive" />
             </intent-filter>
 
+            <!-- 2. Known Bundle MIME types used by browsers & package managers -->
             <intent-filter tools:ignore="AppLinkUrlError">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -156,16 +158,51 @@
 
                 <data android:scheme="content" />
                 <data android:scheme="file" />
-                <data android:host="*" />
+                <data android:mimeType="application/xapk-package-archive" />
+                <data android:mimeType="application/apks-package-archive" />
+                <data android:mimeType="application/vnd.android.package-bundle" />
+                <data android:mimeType="application/x-xapk" />
+                <data android:mimeType="application/x-apks" />
+                <data android:mimeType="application/x-apkm" />
+            </intent-filter>
+
+            <!-- 3. General Archive MIME types used by File Managers (Google Files, Xiaomi, WhatsApp, Solid Explorer) -->
+            <intent-filter tools:ignore="AppLinkUrlError">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="application/zip" />
+                <data android:mimeType="application/x-zip" />
+                <data android:mimeType="application/x-zip-compressed" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+
+            <!-- 4. Explicit file path extensions for file managers providing file / content paths -->
+            <intent-filter tools:ignore="AppLinkUrlError">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="content" />
+                <data android:scheme="file" />
                 <data android:mimeType="*/*" />
                 <data android:pathPattern=".*\\.apk" />
                 <data android:pathPattern=".*\\..*\\.apk" />
                 <data android:pathPattern=".*\\..*\\..*\\.apk" />
                 <data android:pathPattern=".*\\.xapk" />
+                <data android:pathPattern=".*\\..*\\.xapk" />
                 <data android:pathPattern=".*\\.apks" />
+                <data android:pathPattern=".*\\..*\\.apks" />
                 <data android:pathPattern=".*\\.apkm" />
+                <data android:pathPattern=".*\\..*\\.apkm" />
+                <data android:pathPattern=".*\\.aab" />
+                <data android:pathPattern=".*\\..*\\.aab" />
             </intent-filter>
 
+            <!-- 5. Android Package Installer action -->
             <intent-filter>
                 <action android:name="android.intent.action.INSTALL_PACKAGE" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -173,6 +210,9 @@
                 <data android:scheme="content" />
                 <data android:scheme="file" />
                 <data android:mimeType="application/vnd.android.package-archive" />
+                <data android:mimeType="application/xapk-package-archive" />
+                <data android:mimeType="application/apks-package-archive" />
+                <data android:mimeType="application/vnd.android.package-bundle" />
             </intent-filter>
         </activity>
 

@@ -257,27 +257,54 @@ object PackageInstallerManager {
                 }
             } else {
                 // Zip bundle (.apks, .xapk, .apkm, .aab, etc.): extract base APK and detect all split modules
-                openPackageStream(context, uri)?.use { stream ->
-                    ZipInputStream(stream).use { zis ->
-                        var entry = zis.nextEntry
-                        var foundBase = false
-                        while (entry != null) {
-                            val name = entry.name.lowercase()
-                            if (!entry.isDirectory && name.endsWith(".apk")) {
-                                val cleanName = File(entry.name).nameWithoutExtension
-                                detectedSplits.add(cleanName)
-
-                                if (name.endsWith("base.apk") || (!foundBase && name.endsWith(".apk"))) {
-                                    FileOutputStream(tempInspect).use { fos ->
+                val inspectExtractDir = File(context.cacheDir, "inspect_bundle_${System.currentTimeMillis()}")
+                inspectExtractDir.mkdirs()
+                var hasDirectManifest = false
+                try {
+                    openPackageStream(context, uri)?.use { stream ->
+                        ZipInputStream(stream).use { zis ->
+                            var entry = zis.nextEntry
+                            while (entry != null) {
+                                val name = entry.name.lowercase()
+                                if (name == "androidmanifest.xml") {
+                                    hasDirectManifest = true
+                                }
+                                if (!entry.isDirectory && name.endsWith(".apk")) {
+                                    val cleanName = File(entry.name).nameWithoutExtension
+                                    detectedSplits.add(cleanName)
+                                    val out = File(inspectExtractDir, File(entry.name).name)
+                                    FileOutputStream(out).use { fos ->
                                         zis.copyTo(fos)
                                     }
-                                    foundBase = true
                                 }
+                                zis.closeEntry()
+                                entry = zis.nextEntry
                             }
-                            zis.closeEntry()
-                            entry = zis.nextEntry
                         }
                     }
+
+                    val extractedApks = inspectExtractDir.listFiles { _, name -> name.endsWith(".apk", ignoreCase = true) } ?: emptyArray()
+                    if (extractedApks.isNotEmpty()) {
+                        // Select true base APK:
+                        // 1. Explicitly base.apk
+                        // 2. Non-config/non-split standalone APK
+                        // 3. Largest APK size (base APK contains majority of dex code/resources)
+                        val bestBase = extractedApks.firstOrNull { it.name.equals("base.apk", ignoreCase = true) }
+                            ?: extractedApks.firstOrNull { !it.name.contains("config", ignoreCase = true) && !it.name.contains("split", ignoreCase = true) }
+                            ?: extractedApks.maxByOrNull { it.length() }
+
+                        if (bestBase != null && bestBase.exists() && bestBase.length() > 0) {
+                            bestBase.copyTo(tempInspect, overwrite = true)
+                        }
+                    } else if (hasDirectManifest) {
+                        openPackageStream(context, uri)?.use { input ->
+                            FileOutputStream(tempInspect).use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                    }
+                } finally {
+                    inspectExtractDir.deleteRecursively()
                 }
             }
 
@@ -715,26 +742,63 @@ object PackageInstallerManager {
             // 2. Split APKs / Bundles (.apks, .apkm, .xapk, .aab, .zip)
             onProgress("📦 Extracting bundle components (.apks / .xapk / .aab)...")
             val extractDir = File(stagingDir, "extracted")
-            ShellUtils.runAsRoot("mkdir -p ${extractDir.absolutePath} && chmod 777 ${extractDir.absolutePath}", 10000)
+            val localExtractDir = File(context.cacheDir, "bundle_extract_${System.currentTimeMillis()}")
+            localExtractDir.mkdirs()
 
-            openPackageStream(context, uri)?.use { stream ->
-                ZipInputStream(stream).use { zis ->
-                    var entry = zis.nextEntry
-                    while (entry != null) {
-                        val entryName = entry.name
-                        if (!entry.isDirectory && (entryName.endsWith(".apk") || entryName.endsWith(".obb"))) {
-                            val outFile = File(extractDir, File(entryName).name)
-                            FileOutputStream(outFile).use { fos ->
-                                zis.copyTo(fos)
+            var bundlePkg: String? = null
+            var bundleIncomingCode = incomingCode
+
+            try {
+                openPackageStream(context, uri)?.use { stream ->
+                    ZipInputStream(stream).use { zis ->
+                        var entry = zis.nextEntry
+                        while (entry != null) {
+                            val entryName = entry.name
+                            if (!entry.isDirectory && (entryName.endsWith(".apk", ignoreCase = true) || entryName.endsWith(".obb", ignoreCase = true))) {
+                                val outFile = File(localExtractDir, File(entryName).name)
+                                FileOutputStream(outFile).use { fos ->
+                                    zis.copyTo(fos)
+                                }
                             }
+                            zis.closeEntry()
+                            entry = zis.nextEntry
                         }
-                        zis.closeEntry()
-                        entry = zis.nextEntry
                     }
                 }
-            }
 
-            ShellUtils.runAsRoot("chmod -R 777 ${extractDir.absolutePath}", 15000)
+                val localApks = localExtractDir.listFiles { _, name -> name.endsWith(".apk", ignoreCase = true) } ?: emptyArray()
+                if (localApks.isEmpty()) {
+                    return InstallResult(false, "No APK files found inside the package bundle.", "")
+                }
+
+                // Parse package name and version code directly from extracted local APKs
+                for (apk in localApks) {
+                    try {
+                        val pi = context.packageManager.getPackageArchiveInfo(apk.absolutePath, 0)
+                        if (!pi?.packageName.isNullOrBlank()) {
+                            bundlePkg = pi.packageName
+                            val c = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                                pi.longVersionCode
+                            } else {
+                                @Suppress("DEPRECATION")
+                                pi.versionCode.toLong()
+                            }
+                            if (c > bundleIncomingCode) {
+                                bundleIncomingCode = c
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+                if (bundlePkg.isNullOrBlank()) {
+                    bundlePkg = detectedPkg
+                }
+
+                ShellUtils.runAsRoot("rm -rf '${extractDir.absolutePath}' && mkdir -p '${extractDir.absolutePath}'", 10000)
+                onProgress("📦 Staging bundle in root partition...")
+                ShellUtils.runAsRoot("cp -r '${localExtractDir.absolutePath}/.' '${extractDir.absolutePath}/' && chmod -R 777 '${extractDir.absolutePath}'", 30000)
+            } finally {
+                localExtractDir.deleteRecursively()
+            }
 
             val apkFilesOutput = ShellUtils.runAsRoot("find '${extractDir.absolutePath}' -type f -name '*.apk'", 15000).output
             val apkFiles = apkFilesOutput.split("\n").map { it.trim() }.filter { it.isNotBlank() }
@@ -749,7 +813,7 @@ object PackageInstallerManager {
                 val cmd = "pm install -r -d --bypass-low-target-sdk-block '${apkFiles[0]}'"
                 var result = ShellUtils.runAsRoot(cmd, 60000)
 
-                val singlePkg = try {
+                val singlePkg = bundlePkg ?: try {
                     context.packageManager.getPackageArchiveInfo(apkFiles[0], 0)?.packageName
                 } catch (e: Exception) { detectedPkg } ?: "existing package"
 
@@ -776,7 +840,7 @@ object PackageInstallerManager {
                         onProgress("🔄 Cleanly re-installing package...")
                         result = ShellUtils.runAsRoot(cmd, 60000)
                     } else {
-                        val diag = diagnoseStoppage(result.output, incomingCode, currentCode)
+                        val diag = diagnoseStoppage(result.output, bundleIncomingCode, currentCode)
                         return InstallResult(
                             success = false,
                             message = "${diag.title}: ${diag.explanation}",
@@ -795,7 +859,7 @@ object PackageInstallerManager {
                 if (result.output.contains("Success", ignoreCase = true)) {
                     setupObbFiles(extractDir, finalSinglePkg, onProgress)
                 }
-                return handleInstallOutput(result, apkFiles[0], isSplit = false, installedPackage = finalSinglePkg, backupPath = autoBackupPath, incomingCode = incomingCode, installedCode = currentCode)
+                return handleInstallOutput(result, apkFiles[0], isSplit = false, installedPackage = finalSinglePkg, backupPath = autoBackupPath, incomingCode = bundleIncomingCode, installedCode = currentCode)
             }
 
             // Multiple Split APKs -> Use pm install-create session API
@@ -814,26 +878,24 @@ object PackageInstallerManager {
             onProgress("📤 Streaming ${apkFiles.size} split APKs into session [$sessionId]...")
             for ((index, apkPath) in apkFiles.withIndex()) {
                 val splitFile = File(apkPath)
-                val splitName = splitFile.name
+                val splitName = "split_${index}_" + splitFile.name.replace(Regex("[^a-zA-Z0-9._-]"), "_")
                 val sizeResult = ShellUtils.runAsRoot("stat -c%s '$apkPath' 2>/dev/null || wc -c < '$apkPath'", 10000).output.trim()
                 val size = sizeResult.toLongOrNull() ?: splitFile.length()
 
-                onProgress("Writing split ${index + 1}/${apkFiles.size}: $splitName (${size / 1024} KB)...")
+                onProgress("Writing split ${index + 1}/${apkFiles.size}: ${splitFile.name} (${size / 1024} KB)...")
                 val writeCmd = "pm install-write -S $size $sessionId '$splitName' '$apkPath'"
                 val writeResult = ShellUtils.runAsRoot(writeCmd, 60000)
 
                 if (writeResult.exitCode != 0 || writeResult.output.contains("Failure", ignoreCase = true)) {
                     ShellUtils.runAsRoot("pm install-abandon $sessionId 2>/dev/null", 10000)
-                    return InstallResult(false, "Failed writing split $splitName: ${writeResult.output}", writeResult.output)
+                    return InstallResult(false, "Failed writing split ${splitFile.name}: ${writeResult.output}", writeResult.output)
                 }
             }
 
             onProgress("✅ Committing split session [$sessionId]...")
             var commitResult = ShellUtils.runAsRoot("pm install-commit $sessionId", 60000)
 
-            val splitPkg = try {
-                context.packageManager.getPackageArchiveInfo(apkFiles[0], 0)?.packageName
-            } catch (e: Exception) { detectedPkg }
+            val splitPkg = bundlePkg ?: detectedPkg
 
             val isSplitSigConflict = commitResult.output.contains("INSTALL_FAILED_UPDATE_INCOMPATIBLE", ignoreCase = true) ||
                 commitResult.output.contains("INSTALL_FAILED_SHARED_USER_INCOMPATIBLE", ignoreCase = true)
@@ -859,16 +921,16 @@ object PackageInstallerManager {
                     val retrySession = ShellUtils.runAsRoot("pm install-create -r -d --bypass-low-target-sdk-block --user 0", 20000).output.trim()
                     val retrySessionId = sessionRegex.find(retrySession)?.groupValues?.get(1)
                     if (retrySessionId != null) {
-                        for (apkPath in apkFiles) {
+                        for ((index, apkPath) in apkFiles.withIndex()) {
                             val sFile = File(apkPath)
-                            val sName = sFile.name
-                            val sSize = sFile.length()
+                            val sName = "split_${index}_" + sFile.name.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+                            val sSize = ShellUtils.runAsRoot("stat -c%s '$apkPath' 2>/dev/null || wc -c < '$apkPath'", 10000).output.trim().toLongOrNull() ?: sFile.length()
                             ShellUtils.runAsRoot("pm install-write -S $sSize $retrySessionId '$sName' '$apkPath'", 60000)
                         }
                         commitResult = ShellUtils.runAsRoot("pm install-commit $retrySessionId", 60000)
                     }
                 } else {
-                    val diag = diagnoseStoppage(commitResult.output, incomingCode, currentCode)
+                    val diag = diagnoseStoppage(commitResult.output, bundleIncomingCode, currentCode)
                     return InstallResult(
                         success = false,
                         message = "${diag.title}: ${diag.explanation}",
@@ -888,7 +950,7 @@ object PackageInstallerManager {
                 setupObbFiles(extractDir, finalSplitPkg, onProgress)
             }
 
-            return handleInstallOutput(commitResult, "", isSplit = true, installedPackage = finalSplitPkg, backupPath = autoBackupPath, incomingCode = incomingCode, installedCode = currentCode)
+            return handleInstallOutput(commitResult, "", isSplit = true, installedPackage = finalSplitPkg, backupPath = autoBackupPath, incomingCode = bundleIncomingCode, installedCode = currentCode)
         } catch (e: Exception) {
             Log.e("PackageInstaller", "Install failed", e)
             return InstallResult(false, "Installation exception: ${e.message}", e.stackTraceToString())
