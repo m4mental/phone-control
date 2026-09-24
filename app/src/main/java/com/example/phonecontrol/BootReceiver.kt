@@ -110,7 +110,6 @@ class BootReceiver : BroadcastReceiver() {
                 // 100% Display Safety: Always reset resolution and density on boot
                 ShellUtils.fastCmd("wm size reset")
                 ShellUtils.fastCmd("wm density reset")
-                prefs.edit().putString("screen_res", "rbRes1080").apply()
                 
                 // Re-initialize Studio Equalizer DSP if enabled
                 if (PowerampPresetManager.isMasterEnabled(context)) {

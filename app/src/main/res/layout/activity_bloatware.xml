@@ -11,42 +11,140 @@
         android:id="@+id/toolbarBloat"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
-        app:title="Bloatware Remover"
-        app:titleTextColor="@color/color_bloat"
+        app:title="System Bloatware Debloater"
+        app:titleTextColor="#00E5FF"
         app:navigationIcon="@android:drawable/ic_menu_revert"
-        app:navigationIconTint="@color/color_bloat" />
+        app:navigationIconTint="#00E5FF" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="16dp">
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="4dp">
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Easily disable system bloatware to free up RAM and CPU resources. Removed apps can be restored using 'pm enable'."
+            android:text="Disable carrier &amp; vendor bloatware to free RAM and battery. Core OS files are locked for safety. Disabled apps can be restored instantly with 1-tap."
             android:textColor="#AAAAAA"
             android:textSize="12sp"
-            android:layout_marginBottom="16dp" />
+            android:layout_marginBottom="10dp" />
 
         <EditText
             android:id="@+id/etSearchBloat"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Search system apps..."
+            android:hint="Search system or disabled apps..."
             android:textColor="@android:color/white"
             android:textColorHint="#555555"
-            android:background="#1A1A1A"
+            android:background="#191920"
             android:padding="12dp"
-            android:layout_marginBottom="12dp" />
+            android:textSize="14sp"
+            android:layout_marginBottom="10dp" />
+
+        <!-- Tabs / Chips for Filtering -->
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none"
+            android:layout_marginBottom="8dp">
+
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/chipGroupBloatTabs"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                app:singleSelection="true"
+                app:selectionRequired="true">
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipTabSystem"
+                    style="@style/Widget.MaterialComponents.Chip.Choice"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="System Apps"
+                    android:checked="true"
+                    app:chipBackgroundColor="#24242E"
+                    android:textColor="@android:color/white" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipTabDisabled"
+                    style="@style/Widget.MaterialComponents.Chip.Choice"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Disabled Apps (0)"
+                    app:chipBackgroundColor="#24242E"
+                    android:textColor="@android:color/white" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipTabPresets"
+                    style="@style/Widget.MaterialComponents.Chip.Choice"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Safe Debloat Preset"
+                    app:chipBackgroundColor="#24242E"
+                    android:textColor="@android:color/white" />
+
+            </com.google.android.material.chip.ChipGroup>
+        </HorizontalScrollView>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="6dp">
+
+            <TextView
+                android:id="@+id/tvBloatCount"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Loading system packages..."
+                android:textColor="#00E5FF"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnApplySafeDebloat"
+                style="@style/Widget.MaterialComponents.Button"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="⚡ 1-TAP DEBLOAT ALL"
+                android:textSize="11sp"
+                android:backgroundTint="#FF1744"
+                android:textColor="@android:color/white"
+                android:visibility="gone" />
+        </LinearLayout>
+
     </LinearLayout>
 
-    <ListView
-        android:id="@+id/lvBloatApps"
+    <ProgressBar
+        android:id="@+id/pbBloatLoading"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:layout_marginTop="32dp"
+        android:visibility="visible" />
+
+    <TextView
+        android:id="@+id/tvEmptyState"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="40dp"
+        android:gravity="center"
+        android:text="No apps found."
+        android:textColor="#777777"
+        android:textSize="14sp"
+        android:visibility="gone" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvBloatApps"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:divider="#222222"
-        android:dividerHeight="1dp" />
+        android:clipToPadding="false"
+        android:paddingBottom="16dp" />
 
 </LinearLayout>

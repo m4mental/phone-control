@@ -179,6 +179,7 @@ class SettingsActivity : AppCompatActivity() {
         val tvVersion = findViewById<TextView>(R.id.tvAboutVersion) ?: return
         val tvArch = findViewById<TextView>(R.id.tvAboutArch) ?: return
         val tvRoot = findViewById<TextView>(R.id.tvAboutRootStatus) ?: return
+        val tvBadge = findViewById<TextView>(R.id.tvAboutChannelBadge)
         val btnGitHub = findViewById<Button>(R.id.btnAboutGitHub) ?: return
         val btnCheckUpdates = findViewById<Button>(R.id.btnCheckUpdates)
 
@@ -186,7 +187,7 @@ class SettingsActivity : AppCompatActivity() {
             packageManager.getPackageInfo(packageName, 0)
         } catch (e: Exception) { null }
 
-        val verName = pkgInfo?.versionName ?: "v1.0.1"
+        val verName = pkgInfo?.versionName ?: "1.0"
         val verCode = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
             pkgInfo?.longVersionCode ?: 1L
         } else {
@@ -194,7 +195,12 @@ class SettingsActivity : AppCompatActivity() {
             (pkgInfo?.versionCode ?: 1).toLong()
         }
 
-        tvVersion.text = "v$verName (Build $verCode)"
+        tvVersion.text = "v$verName (Dev Beta • Build $verCode)"
+        tvBadge?.apply {
+            text = "BETA"
+            setTextColor(Color.parseColor("#00E5FF"))
+            setBackgroundColor(Color.parseColor("#002833"))
+        }
         tvArch.text = "Arch: ${android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"}"
 
         val isRooted = ShellUtils.checkRootStandalone()
@@ -222,27 +228,33 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun checkForAppUpdates(btnCheck: Button) {
         btnCheck.isEnabled = false
-        btnCheck.text = "🔍 Checking GitHub Releases..."
+        btnCheck.text = "🔍 Checking GitHub Releases (Root)..."
 
         thread {
             try {
-                val url = URL("https://api.github.com/repos/m4mental/phone-control/releases/latest")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 10000
-                conn.readTimeout = 10000
-                conn.setRequestProperty("User-Agent", "PhoneControl-Android")
-                conn.setRequestProperty("Accept", "application/vnd.github.v3+json")
+                val (success, responseBody, errorMsg) = RootNetManager.fetchHttps(
+                    this@SettingsActivity,
+                    "https://api.github.com/repos/m4mental/phone-control/releases/latest"
+                )
 
-                if (conn.responseCode != 200) {
+                if (!success || responseBody.isBlank()) {
                     runOnUiThread {
                         btnCheck.isEnabled = true
                         btnCheck.text = "⚡ Check for Updates"
-                        Toast.makeText(this@SettingsActivity, "GitHub API returned status ${conn.responseCode}", Toast.LENGTH_SHORT).show()
+                        AlertDialog.Builder(this@SettingsActivity)
+                            .setTitle("Update Check via Root")
+                            .setMessage("Could not fetch release via Root Shell: $errorMsg\n\nWould you like to open the GitHub Releases page in your browser instead?")
+                            .setPositiveButton("🌐 Open in Browser") { _, _ ->
+                                try {
+                                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/m4mental/phone-control/releases")))
+                                } catch (e: Exception) {}
+                            }
+                            .setNegativeButton("Cancel", null)
+                            .show()
                     }
                     return@thread
                 }
 
-                val responseBody = conn.inputStream.bufferedReader().use { it.readText() }
                 val json = JSONObject(responseBody)
                 val tagName = json.optString("tag_name", "")
                 val releaseName = json.optString("name", tagName)
@@ -345,6 +357,13 @@ class SettingsActivity : AppCompatActivity() {
         val dialog = AlertDialog.Builder(this)
             .setView(dialogView)
             .setPositiveButton("⚡ Download & Root Install", null)
+            .setNeutralButton("🌐 Browser") { _, _ ->
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl)))
+                } catch (e: Exception) {
+                    Toast.makeText(this, "Could not open browser: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
             .setNegativeButton("Cancel") { d, _ -> d.dismiss() }
             .create()
 
@@ -359,90 +378,73 @@ class SettingsActivity : AppCompatActivity() {
     private fun startDownloadAndInstallUpdate(downloadUrl: String, fileName: String) {
         @Suppress("DEPRECATION")
         val progressDialog = ProgressDialog(this).apply {
-            setTitle("📥 Downloading Update")
-            setMessage("Connecting to GitHub...")
-            setProgressStyle(ProgressDialog.STYLE_HORIZONTAL)
-            max = 100
+            setTitle("📥 Downloading Update (via Root)")
+            setMessage("Downloading latest APK via root shell...")
+            setProgressStyle(ProgressDialog.STYLE_SPINNER)
             setCancelable(false)
             show()
         }
 
         thread {
             val destination = File(cacheDir, fileName)
-            try {
-                val url = URL(downloadUrl)
-                val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 15000
-                conn.readTimeout = 30000
-                conn.setRequestProperty("User-Agent", "PhoneControl-Android")
+            val (downloadSuccess, downloadError) = RootNetManager.downloadFile(this@SettingsActivity, downloadUrl, destination)
 
-                val totalLength = conn.contentLength.toLong()
-                conn.inputStream.use { input ->
-                    FileOutputStream(destination).use { output ->
-                        val buffer = ByteArray(8192)
-                        var read: Int
-                        var totalRead = 0L
-                        while (input.read(buffer).also { read = it } != -1) {
-                            output.write(buffer, 0, read)
-                            totalRead += read
-                            if (totalLength > 0) {
-                                val progress = (totalRead * 100 / totalLength).toInt()
-                                runOnUiThread {
-                                    progressDialog.progress = progress
-                                    progressDialog.setMessage("Downloaded ${totalRead / (1024 * 1024)}MB of ${totalLength / (1024 * 1024)}MB...")
-                                }
+            if (!downloadSuccess) {
+                runOnUiThread {
+                    progressDialog.dismiss()
+                    AlertDialog.Builder(this@SettingsActivity)
+                        .setTitle("Download Failed")
+                        .setMessage("Root download failed: $downloadError\n\nWould you like to download directly via your browser?")
+                        .setPositiveButton("🌐 Open in Browser") { _, _ ->
+                            try {
+                                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl)))
+                            } catch (e: Exception) {}
+                        }
+                        .setNegativeButton("Cancel", null)
+                        .show()
+                }
+                return@thread
+            }
+
+            runOnUiThread {
+                progressDialog.setTitle("⚡ Root Installing Update")
+                progressDialog.setMessage("Invoking Universal Root Package Installer...")
+            }
+
+            val installResult = PackageInstallerManager.installPackage(
+                context = this@SettingsActivity,
+                uri = Uri.fromFile(destination),
+                fileName = fileName,
+                forceReinstall = false,
+                autoBackup = true
+            ) { progressText, _ ->
+                runOnUiThread {
+                    progressDialog.setMessage(progressText)
+                }
+            }
+
+            runOnUiThread {
+                progressDialog.dismiss()
+                if (installResult.success) {
+                    AlertDialog.Builder(this@SettingsActivity)
+                        .setTitle("✅ Update Successful")
+                        .setMessage("Phone Control has been updated to the latest build!\nRestarting app...")
+                        .setPositiveButton("Restart Now") { _, _ ->
+                            val restartIntent = packageManager.getLaunchIntentForPackage(packageName)
+                            if (restartIntent != null) {
+                                restartIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
+                                startActivity(restartIntent)
+                                Runtime.getRuntime().exit(0)
                             }
                         }
-                    }
-                }
-
-                runOnUiThread {
-                    progressDialog.setTitle("⚡ Root Installing Update")
-                    progressDialog.setMessage("Invoking Universal Root Package Installer...")
-                    progressDialog.progress = 90
-                }
-
-                val installResult = PackageInstallerManager.installPackage(
-                    context = this@SettingsActivity,
-                    uri = Uri.fromFile(destination),
-                    fileName = fileName,
-                    forceReinstall = false,
-                    autoBackup = true
-                ) { progressText, progressPercent ->
-                    runOnUiThread {
-                        progressDialog.setMessage(progressText)
-                        progressDialog.progress = progressPercent
-                    }
-                }
-
-                runOnUiThread {
-                    progressDialog.dismiss()
-                    if (installResult.success) {
-                        AlertDialog.Builder(this@SettingsActivity)
-                            .setTitle("✅ Update Successful")
-                            .setMessage("Phone Control has been updated to the latest build!\nRestarting app...")
-                            .setPositiveButton("Restart Now") { _, _ ->
-                                val restartIntent = packageManager.getLaunchIntentForPackage(packageName)
-                                if (restartIntent != null) {
-                                    restartIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    startActivity(restartIntent)
-                                    Runtime.getRuntime().exit(0)
-                                }
-                            }
-                            .setCancelable(false)
-                            .show()
-                    } else {
-                        AlertDialog.Builder(this@SettingsActivity)
-                            .setTitle("❌ Update Installation Failed")
-                            .setMessage("${installResult.message}\n\n${installResult.rawOutput}")
-                            .setPositiveButton("OK", null)
-                            .show()
-                    }
-                }
-            } catch (e: Exception) {
-                runOnUiThread {
-                    progressDialog.dismiss()
-                    Toast.makeText(this@SettingsActivity, "Download failed: ${e.message}", Toast.LENGTH_LONG).show()
+                        .setCancelable(false)
+                        .show()
+                } else {
+                    AlertDialog.Builder(this@SettingsActivity)
+                        .setTitle("❌ Update Installation Failed")
+                        .setMessage("${installResult.message}\n\n${installResult.rawOutput}")
+                        .setPositiveButton("OK", null)
+                        .show()
                 }
             }
         }
@@ -570,7 +572,6 @@ class SettingsActivity : AppCompatActivity() {
                 editor.putBoolean("game_turbo_enabled", true)
                 editor.putBoolean("per_app_enabled", true)
                 editor.putBoolean("master_performance_hub_enabled", true)
-                editor.putBoolean("resolution_enabled", true)
                 editor.putBoolean("ram_manager_enabled", true)
                 editor.putBoolean("adaptive_thermal_enabled", true)
                 editor.putBoolean("master_security_hub_enabled", true)
@@ -683,9 +684,8 @@ class SettingsActivity : AppCompatActivity() {
                 masterKey = "master_performance_hub_enabled",
                 accentColor = "#00E5FF",
                 iconRes = R.drawable.ic_hub_performance,
-                description = "Display scaling, ZRAM manager, Storage boost & Thermals",
+                description = "ZRAM manager, UFS storage boost & Thermals",
                 subFeatures = listOf(
-                    SubFeature("Display & Resolution Scaling", "resolution_enabled", "Modify display resolution (720p/1080p) and DPI scaling for higher framerates.", false, R.drawable.ic_sub_resolution),
                     SubFeature("Memory & ZRAM Manager", "ram_manager_enabled", "High-speed compressed physical RAM allocation and LMK tuning for fluid multitasking.", false, R.drawable.ic_sub_ram),
                     SubFeature("UFS Storage Boost", "storage_boost_enabled", "Automated weekly FSTRIM maintenance and mq-deadline I/O scheduler tuning.", false, R.drawable.ic_sub_storage),
                     SubFeature("Adaptive Thermal Engine", "adaptive_thermal_enabled", "Monitors battery and CPU temperatures to prevent hardware overheating.", false, R.drawable.ic_sub_thermal),
@@ -1062,10 +1062,6 @@ class SettingsActivity : AppCompatActivity() {
                 "sensor_firewall_enabled" -> {
                     BatteryManager.setPrivacySensorsShield(this, false)
                     BatteryManager.setKillSensorsScreenOff(this, false)
-                }
-                "resolution_enabled" -> {
-                    ShellUtils.runAsRoot("wm size reset")
-                    ShellUtils.runAsRoot("wm density reset")
                 }
                 "ram_manager_enabled" -> {
                     TweakManager.applyRamSettings("rbZram4G", "rbProfileBalance")

@@ -516,7 +516,7 @@
                                 android:id="@+id/tvAboutVersion"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="v1.0.1 (Alpha Rolling)"
+                                android:text="v1.0 (Dev Beta)"
                                 android:textColor="#00E5FF"
                                 android:textSize="13sp" />
                         </LinearLayout>
@@ -525,11 +525,11 @@
                             android:id="@+id/tvAboutChannelBadge"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="ALPHA"
+                            android:text="BETA"
                             android:textStyle="bold"
                             android:textSize="11sp"
-                            android:textColor="#FFD54F"
-                            android:background="#2E2400"
+                            android:textColor="#00E5FF"
+                            android:background="#002833"
                             android:paddingHorizontal="8dp"
                             android:paddingVertical="4dp" />
                     </LinearLayout>

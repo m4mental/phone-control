@@ -14,11 +14,6 @@ class OptimizationActivity : AppCompatActivity() {
 
         findViewById<MaterialToolbar>(R.id.toolbarOpt).setNavigationOnClickListener { finish() }
 
-        // Card 1: Display & Resolution Scaling
-        findViewById<View>(R.id.cardResolution).setOnClickListener {
-            startActivity(Intent(this, ResolutionActivity::class.java))
-        }
-
         // Card 2: Display Refresh Rate Override
         findViewById<View>(R.id.cardRefreshRate).setOnClickListener {
             startActivity(Intent(this, RefreshRateActivity::class.java))
@@ -49,8 +44,6 @@ class OptimizationActivity : AppCompatActivity() {
 
     private fun updateVisibility() {
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
-        findViewById<View>(R.id.cardResolution).visibility =
-            if (prefs.getBoolean("resolution_enabled", true)) View.VISIBLE else View.GONE
         findViewById<View>(R.id.cardRefreshRate).visibility =
             if (prefs.getBoolean("optimization_enabled", true)) View.VISIBLE else View.GONE
         findViewById<View>(R.id.cardRam).visibility =

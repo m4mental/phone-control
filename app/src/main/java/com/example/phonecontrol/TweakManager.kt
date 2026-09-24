@@ -1403,18 +1403,6 @@ object TweakManager {
         ShellUtils.fastCmd(script)
     }
 
-    /**
-     * 8. System Resolution Toggle
-     */
-    fun setSystemResolution(isLowRes: Boolean) {
-        if (isLowRes) {
-            ShellUtils.runAsRoot("wm size 720x1600")
-            ShellUtils.runAsRoot("wm density 320")
-        } else {
-            ShellUtils.runAsRoot("wm size reset")
-            ShellUtils.runAsRoot("wm density reset")
-        }
-    }
 
     /**
      * 9. Cluster Control (Core Parking)

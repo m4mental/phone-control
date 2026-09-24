@@ -227,11 +227,6 @@
             android:theme="@style/Theme.PhoneControl" />
 
         <activity
-            android:name=".ScalingWhitelistActivity"
-            android:exported="false"
-            android:theme="@style/Theme.PhoneControl" />
-
-        <activity
             android:name=".SettingsActivity"
             android:exported="false"
             android:theme="@style/Theme.PhoneControl" />
@@ -294,11 +289,6 @@
 
         <activity
             android:name=".NetworkActivity"
-            android:exported="false"
-            android:theme="@style/Theme.PhoneControl" />
-
-        <activity
-            android:name=".ResolutionActivity"
             android:exported="false"
             android:theme="@style/Theme.PhoneControl" />
 

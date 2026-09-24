@@ -267,8 +267,11 @@ class AppExtractorActivity : AppCompatActivity() {
         MaterialAlertDialogBuilder(this)
             .setTitle("📦 Extract ${app.appName}?")
             .setMessage("Package: ${app.packageName}\nVersion: v${app.versionName} (${app.versionCode})\nFormat: $format\nTotal Size: $size\n\nDestination: ${AppExtractorManager.EXTRACT_DIR}/")
-            .setPositiveButton("⚡ EXTRACT NOW") { _, _ ->
-                performExtraction(app)
+            .setPositiveButton("⚡ EXTRACT") { _, _ ->
+                performExtraction(app, autoShare = false)
+            }
+            .setNeutralButton("🚀 EXTRACT & SHARE") { _, _ ->
+                performExtraction(app, autoShare = true)
             }
             .setNegativeButton("Cancel", null)
             .show()
@@ -288,7 +291,7 @@ class AppExtractorActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun performExtraction(app: AppExtractorManager.AppItem) {
+    private fun performExtraction(app: AppExtractorManager.AppItem, autoShare: Boolean = false) {
         val progressDialog = MaterialAlertDialogBuilder(this)
             .setTitle("Extracting ${app.appName}")
             .setMessage("Starting extraction...")
@@ -306,7 +309,11 @@ class AppExtractorActivity : AppCompatActivity() {
             runOnUiThread {
                 progressDialog.dismiss()
                 if (result.success && result.outputPath != null) {
-                    showExtractionSuccessDialog(app, result.outputPath)
+                    if (autoShare) {
+                        shareFile(File(result.outputPath))
+                    } else {
+                        showExtractionSuccessDialog(app, result.outputPath)
+                    }
                 } else {
                     MaterialAlertDialogBuilder(this)
                         .setTitle("Extraction Failed")

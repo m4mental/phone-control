@@ -9,6 +9,7 @@ import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -20,6 +21,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.materialswitch.MaterialSwitch
 import java.util.Locale
 import kotlin.concurrent.thread
@@ -65,11 +67,20 @@ class StudioPresetPickerActivity : AppCompatActivity() {
     private lateinit var itemDnsAdguard: LinearLayout
     private lateinit var itemDnsCloudflare: LinearLayout
     private lateinit var itemDnsGoogle: LinearLayout
+    private lateinit var itemDnsQuad9: LinearLayout
+    private lateinit var itemDnsMullvad: LinearLayout
+    private lateinit var itemDnsControlD: LinearLayout
+    private lateinit var itemDnsCustom: LinearLayout
     private lateinit var itemDnsOff: LinearLayout
     private lateinit var ivCheckDnsAdguard: ImageView
     private lateinit var ivCheckDnsCloudflare: ImageView
     private lateinit var ivCheckDnsGoogle: ImageView
+    private lateinit var ivCheckDnsQuad9: ImageView
+    private lateinit var ivCheckDnsMullvad: ImageView
+    private lateinit var ivCheckDnsControlD: ImageView
+    private lateinit var ivCheckDnsCustom: ImageView
     private lateinit var ivCheckDnsOff: ImageView
+    private lateinit var tvDnsCustomDesc: TextView
     private lateinit var btnOpenNetworkSettings: MaterialButton
 
     // Performance HUD Dialog Section
@@ -184,11 +195,20 @@ class StudioPresetPickerActivity : AppCompatActivity() {
         itemDnsAdguard = findViewById(R.id.itemDnsAdguard)
         itemDnsCloudflare = findViewById(R.id.itemDnsCloudflare)
         itemDnsGoogle = findViewById(R.id.itemDnsGoogle)
+        itemDnsQuad9 = findViewById(R.id.itemDnsQuad9)
+        itemDnsMullvad = findViewById(R.id.itemDnsMullvad)
+        itemDnsControlD = findViewById(R.id.itemDnsControlD)
+        itemDnsCustom = findViewById(R.id.itemDnsCustom)
         itemDnsOff = findViewById(R.id.itemDnsOff)
         ivCheckDnsAdguard = findViewById(R.id.ivCheckDnsAdguard)
         ivCheckDnsCloudflare = findViewById(R.id.ivCheckDnsCloudflare)
         ivCheckDnsGoogle = findViewById(R.id.ivCheckDnsGoogle)
+        ivCheckDnsQuad9 = findViewById(R.id.ivCheckDnsQuad9)
+        ivCheckDnsMullvad = findViewById(R.id.ivCheckDnsMullvad)
+        ivCheckDnsControlD = findViewById(R.id.ivCheckDnsControlD)
+        ivCheckDnsCustom = findViewById(R.id.ivCheckDnsCustom)
         ivCheckDnsOff = findViewById(R.id.ivCheckDnsOff)
+        tvDnsCustomDesc = findViewById(R.id.tvDnsCustomDesc)
         btnOpenNetworkSettings = findViewById(R.id.btnOpenNetworkSettings)
 
         // Performance HUD
@@ -350,19 +370,15 @@ class StudioPresetPickerActivity : AppCompatActivity() {
         tvDialogTitle.text = "🛡️ Private DNS Profile"
         layoutSectionPrivateDns.visibility = View.VISIBLE
 
-        thread {
-            val curProvider = PrivateDnsManager.getCurrentProvider()
-            Handler(Looper.getMainLooper()).post {
-                ivCheckDnsAdguard.visibility = if (curProvider == PrivateDnsManager.DnsProvider.ADGUARD) View.VISIBLE else View.GONE
-                ivCheckDnsCloudflare.visibility = if (curProvider == PrivateDnsManager.DnsProvider.CLOUDFLARE) View.VISIBLE else View.GONE
-                ivCheckDnsGoogle.visibility = if (curProvider == PrivateDnsManager.DnsProvider.GOOGLE) View.VISIBLE else View.GONE
-                ivCheckDnsOff.visibility = if (curProvider == PrivateDnsManager.DnsProvider.OFF) View.VISIBLE else View.GONE
-            }
-        }
+        syncDnsState()
 
         itemDnsAdguard.setOnClickListener { selectDns(PrivateDnsManager.DnsProvider.ADGUARD) }
         itemDnsCloudflare.setOnClickListener { selectDns(PrivateDnsManager.DnsProvider.CLOUDFLARE) }
         itemDnsGoogle.setOnClickListener { selectDns(PrivateDnsManager.DnsProvider.GOOGLE) }
+        itemDnsQuad9.setOnClickListener { selectDns(PrivateDnsManager.DnsProvider.QUAD9) }
+        itemDnsMullvad.setOnClickListener { selectDns(PrivateDnsManager.DnsProvider.MULLVAD) }
+        itemDnsControlD.setOnClickListener { selectDns(PrivateDnsManager.DnsProvider.CONTROLD) }
+        itemDnsCustom.setOnClickListener { promptCustomDnsDialog() }
         itemDnsOff.setOnClickListener { selectDns(PrivateDnsManager.DnsProvider.OFF) }
 
         btnOpenNetworkSettings.setOnClickListener {
@@ -371,14 +387,45 @@ class StudioPresetPickerActivity : AppCompatActivity() {
         }
     }
 
+    private fun syncDnsState() {
+        val curProvider = PrivateDnsManager.getCurrentProvider(this)
+        val spec = PrivateDnsManager.getCurrentSpecifier(this)
+
+        val detail = if (curProvider == PrivateDnsManager.DnsProvider.CUSTOM && spec.isNotBlank()) {
+            "Active: Custom ($spec)"
+        } else {
+            "Active: ${curProvider.displayName}"
+        }
+        tvDnsSubtitle.text = detail
+
+        if (curProvider == PrivateDnsManager.DnsProvider.CUSTOM && spec.isNotBlank()) {
+            tvDnsCustomDesc.text = "Active: $spec (tap to edit)"
+        } else {
+            tvDnsCustomDesc.text = "NextDNS, Pi-hole, or user-defined hostname"
+        }
+
+        ivCheckDnsAdguard.visibility = if (curProvider == PrivateDnsManager.DnsProvider.ADGUARD) View.VISIBLE else View.GONE
+        ivCheckDnsCloudflare.visibility = if (curProvider == PrivateDnsManager.DnsProvider.CLOUDFLARE) View.VISIBLE else View.GONE
+        ivCheckDnsGoogle.visibility = if (curProvider == PrivateDnsManager.DnsProvider.GOOGLE) View.VISIBLE else View.GONE
+        ivCheckDnsQuad9.visibility = if (curProvider == PrivateDnsManager.DnsProvider.QUAD9) View.VISIBLE else View.GONE
+        ivCheckDnsMullvad.visibility = if (curProvider == PrivateDnsManager.DnsProvider.MULLVAD) View.VISIBLE else View.GONE
+        ivCheckDnsControlD.visibility = if (curProvider == PrivateDnsManager.DnsProvider.CONTROLD) View.VISIBLE else View.GONE
+        ivCheckDnsCustom.visibility = if (curProvider == PrivateDnsManager.DnsProvider.CUSTOM) View.VISIBLE else View.GONE
+        ivCheckDnsOff.visibility = if (curProvider == PrivateDnsManager.DnsProvider.OFF) View.VISIBLE else View.GONE
+    }
+
     private fun selectDns(provider: PrivateDnsManager.DnsProvider) {
         thread {
-            PrivateDnsManager.setProvider(provider)
+            PrivateDnsManager.setProvider(provider, this@StudioPresetPickerActivity)
             Handler(Looper.getMainLooper()).post {
                 val message = when (provider) {
                     PrivateDnsManager.DnsProvider.ADGUARD -> "🛡️ AdGuard DNS: Ads Blocked System-Wide"
                     PrivateDnsManager.DnsProvider.CLOUDFLARE -> "⚡ Cloudflare 1.1.1.1: Gaming DNS Active"
                     PrivateDnsManager.DnsProvider.GOOGLE -> "🌐 Google DNS: Fast CDN Active"
+                    PrivateDnsManager.DnsProvider.QUAD9 -> "🛡️ Quad9 DNS: Malware Protection Active"
+                    PrivateDnsManager.DnsProvider.MULLVAD -> "🔒 Mullvad DNS: Privacy & AdBlock Active"
+                    PrivateDnsManager.DnsProvider.CONTROLD -> "⚡ ControlD DNS: Filter Active"
+                    PrivateDnsManager.DnsProvider.CUSTOM -> "🔧 Custom DNS Hostname Active"
                     PrivateDnsManager.DnsProvider.OFF -> "⚪ DNS: Default ISP / Automatic"
                 }
                 Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
@@ -386,6 +433,39 @@ class StudioPresetPickerActivity : AppCompatActivity() {
                 finish()
             }
         }
+    }
+
+    private fun promptCustomDnsDialog() {
+        val currentSpec = PrivateDnsManager.getCurrentSpecifier(this)
+        val input = EditText(this).apply {
+            hint = "e.g. xxxxxx.dns.nextdns.io or dns.quad9.net"
+            setText(currentSpec)
+            setTextColor(android.graphics.Color.WHITE)
+            setHintTextColor(android.graphics.Color.GRAY)
+            setPadding(40, 30, 40, 30)
+        }
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("🔧 Custom Private DNS Hostname")
+            .setMessage("Enter your TLS/DoH DNS provider hostname (NextDNS, Pi-hole, AdGuard Home, ControlD):")
+            .setView(input)
+            .setPositiveButton("APPLY") { _, _ ->
+                val hostname = input.text.toString().trim()
+                thread {
+                    val success = PrivateDnsManager.setCustomHostname(hostname, this@StudioPresetPickerActivity)
+                    Handler(Looper.getMainLooper()).post {
+                        if (success) {
+                            Toast.makeText(this@StudioPresetPickerActivity, "Custom DNS set: $hostname", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(this@StudioPresetPickerActivity, "Failed to apply custom DNS", Toast.LENGTH_SHORT).show()
+                        }
+                        PrivateDnsTileService.updateTile(this@StudioPresetPickerActivity)
+                        finish()
+                    }
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     // =========================================================================

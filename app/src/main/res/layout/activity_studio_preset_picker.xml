@@ -397,217 +397,443 @@
                     android:textSize="12sp"
                     android:layout_marginBottom="10dp" />
 
-                <!-- AdGuard DNS -->
-                <LinearLayout
-                    android:id="@+id/itemDnsAdguard"
+                <androidx.core.widget.NestedScrollView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:background="@drawable/bg_preset_item_ripple"
-                    android:paddingVertical="9dp"
-                    android:paddingHorizontal="12dp"
-                    android:layout_marginBottom="4dp"
-                    android:clickable="true"
-                    android:focusable="true">
-
-                    <TextView
-                        android:layout_width="28dp"
-                        android:layout_height="wrap_content"
-                        android:text="🛡️"
-                        android:textSize="18sp"
-                        android:gravity="center"
-                        android:layout_marginEnd="10dp" />
+                    android:scrollbars="vertical"
+                    android:layout_marginBottom="12dp">
 
                     <LinearLayout
-                        android:layout_width="0dp"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
                         android:orientation="vertical">
 
-                        <TextView
-                            android:layout_width="wrap_content"
+                        <!-- AdGuard DNS -->
+                        <LinearLayout
+                            android:id="@+id/itemDnsAdguard"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:text="AdGuard DNS"
-                            android:textColor="#F1F5F9"
-                            android:textSize="13sp"
-                            android:textStyle="bold" />
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:background="@drawable/bg_preset_item_ripple"
+                            android:paddingVertical="9dp"
+                            android:paddingHorizontal="12dp"
+                            android:layout_marginBottom="4dp"
+                            android:clickable="true"
+                            android:focusable="true">
 
-                        <TextView
-                            android:layout_width="wrap_content"
+                            <TextView
+                                android:layout_width="28dp"
+                                android:layout_height="wrap_content"
+                                android:text="🛡️"
+                                android:textSize="18sp"
+                                android:gravity="center"
+                                android:layout_marginEnd="10dp" />
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="AdGuard DNS"
+                                    android:textColor="#F1F5F9"
+                                    android:textSize="13sp"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="System-wide ad &amp; tracker blocker"
+                                    android:textColor="#64748B"
+                                    android:textSize="11sp" />
+                            </LinearLayout>
+
+                            <ImageView
+                                android:id="@+id/ivCheckDnsAdguard"
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:src="@android:drawable/checkbox_on_background"
+                                app:tint="#00E5FF"
+                                android:visibility="gone" />
+                        </LinearLayout>
+
+                        <!-- Cloudflare DNS -->
+                        <LinearLayout
+                            android:id="@+id/itemDnsCloudflare"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:text="System-wide ad &amp; tracker blocker"
-                            android:textColor="#64748B"
-                            android:textSize="11sp" />
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:background="@drawable/bg_preset_item_ripple"
+                            android:paddingVertical="9dp"
+                            android:paddingHorizontal="12dp"
+                            android:layout_marginBottom="4dp"
+                            android:clickable="true"
+                            android:focusable="true">
+
+                            <TextView
+                                android:layout_width="28dp"
+                                android:layout_height="wrap_content"
+                                android:text="⚡"
+                                android:textSize="18sp"
+                                android:gravity="center"
+                                android:layout_marginEnd="10dp" />
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Cloudflare 1.1.1.1"
+                                    android:textColor="#F1F5F9"
+                                    android:textSize="13sp"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Ultra-fast resolution &amp; low gaming ping"
+                                    android:textColor="#64748B"
+                                    android:textSize="11sp" />
+                            </LinearLayout>
+
+                            <ImageView
+                                android:id="@+id/ivCheckDnsCloudflare"
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:src="@android:drawable/checkbox_on_background"
+                                app:tint="#00E5FF"
+                                android:visibility="gone" />
+                        </LinearLayout>
+
+                        <!-- Google DNS -->
+                        <LinearLayout
+                            android:id="@+id/itemDnsGoogle"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:background="@drawable/bg_preset_item_ripple"
+                            android:paddingVertical="9dp"
+                            android:paddingHorizontal="12dp"
+                            android:layout_marginBottom="4dp"
+                            android:clickable="true"
+                            android:focusable="true">
+
+                            <TextView
+                                android:layout_width="28dp"
+                                android:layout_height="wrap_content"
+                                android:text="🌐"
+                                android:textSize="18sp"
+                                android:gravity="center"
+                                android:layout_marginEnd="10dp" />
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Google Public DNS"
+                                    android:textColor="#F1F5F9"
+                                    android:textSize="13sp"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Reliable global Anycast CDN resolution"
+                                    android:textColor="#64748B"
+                                    android:textSize="11sp" />
+                            </LinearLayout>
+
+                            <ImageView
+                                android:id="@+id/ivCheckDnsGoogle"
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:src="@android:drawable/checkbox_on_background"
+                                app:tint="#00E5FF"
+                                android:visibility="gone" />
+                        </LinearLayout>
+
+                        <!-- Quad9 DNS -->
+                        <LinearLayout
+                            android:id="@+id/itemDnsQuad9"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:background="@drawable/bg_preset_item_ripple"
+                            android:paddingVertical="9dp"
+                            android:paddingHorizontal="12dp"
+                            android:layout_marginBottom="4dp"
+                            android:clickable="true"
+                            android:focusable="true">
+
+                            <TextView
+                                android:layout_width="28dp"
+                                android:layout_height="wrap_content"
+                                android:text="🛡️"
+                                android:textSize="18sp"
+                                android:gravity="center"
+                                android:layout_marginEnd="10dp" />
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Quad9 DNS"
+                                    android:textColor="#F1F5F9"
+                                    android:textSize="13sp"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Malware &amp; phishing threat protection"
+                                    android:textColor="#64748B"
+                                    android:textSize="11sp" />
+                            </LinearLayout>
+
+                            <ImageView
+                                android:id="@+id/ivCheckDnsQuad9"
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:src="@android:drawable/checkbox_on_background"
+                                app:tint="#00E5FF"
+                                android:visibility="gone" />
+                        </LinearLayout>
+
+                        <!-- Mullvad AdBlock DNS -->
+                        <LinearLayout
+                            android:id="@+id/itemDnsMullvad"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:background="@drawable/bg_preset_item_ripple"
+                            android:paddingVertical="9dp"
+                            android:paddingHorizontal="12dp"
+                            android:layout_marginBottom="4dp"
+                            android:clickable="true"
+                            android:focusable="true">
+
+                            <TextView
+                                android:layout_width="28dp"
+                                android:layout_height="wrap_content"
+                                android:text="🔒"
+                                android:textSize="18sp"
+                                android:gravity="center"
+                                android:layout_marginEnd="10dp" />
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Mullvad AdBlock DoH"
+                                    android:textColor="#F1F5F9"
+                                    android:textSize="13sp"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="High-security European zero-log privacy"
+                                    android:textColor="#64748B"
+                                    android:textSize="11sp" />
+                            </LinearLayout>
+
+                            <ImageView
+                                android:id="@+id/ivCheckDnsMullvad"
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:src="@android:drawable/checkbox_on_background"
+                                app:tint="#00E5FF"
+                                android:visibility="gone" />
+                        </LinearLayout>
+
+                        <!-- ControlD Free AdBlock DNS -->
+                        <LinearLayout
+                            android:id="@+id/itemDnsControlD"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:background="@drawable/bg_preset_item_ripple"
+                            android:paddingVertical="9dp"
+                            android:paddingHorizontal="12dp"
+                            android:layout_marginBottom="4dp"
+                            android:clickable="true"
+                            android:focusable="true">
+
+                            <TextView
+                                android:layout_width="28dp"
+                                android:layout_height="wrap_content"
+                                android:text="⚡"
+                                android:textSize="18sp"
+                                android:gravity="center"
+                                android:layout_marginEnd="10dp" />
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="ControlD Free AdBlock"
+                                    android:textColor="#F1F5F9"
+                                    android:textSize="13sp"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Ultra-lightweight modern ad &amp; malware filter"
+                                    android:textColor="#64748B"
+                                    android:textSize="11sp" />
+                            </LinearLayout>
+
+                            <ImageView
+                                android:id="@+id/ivCheckDnsControlD"
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:src="@android:drawable/checkbox_on_background"
+                                app:tint="#00E5FF"
+                                android:visibility="gone" />
+                        </LinearLayout>
+
+                        <!-- Custom DNS Hostname -->
+                        <LinearLayout
+                            android:id="@+id/itemDnsCustom"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:background="@drawable/bg_preset_item_ripple"
+                            android:paddingVertical="9dp"
+                            android:paddingHorizontal="12dp"
+                            android:layout_marginBottom="4dp"
+                            android:clickable="true"
+                            android:focusable="true">
+
+                            <TextView
+                                android:layout_width="28dp"
+                                android:layout_height="wrap_content"
+                                android:text="🔧"
+                                android:textSize="18sp"
+                                android:gravity="center"
+                                android:layout_marginEnd="10dp" />
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Custom DNS Hostname"
+                                    android:textColor="#F1F5F9"
+                                    android:textSize="13sp"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:id="@+id/tvDnsCustomDesc"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="NextDNS, Pi-hole, or user-defined hostname"
+                                    android:textColor="#64748B"
+                                    android:textSize="11sp" />
+                            </LinearLayout>
+
+                            <ImageView
+                                android:id="@+id/ivCheckDnsCustom"
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:src="@android:drawable/checkbox_on_background"
+                                app:tint="#00E5FF"
+                                android:visibility="gone" />
+                        </LinearLayout>
+
+                        <!-- DNS Off -->
+                        <LinearLayout
+                            android:id="@+id/itemDnsOff"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:background="@drawable/bg_preset_item_ripple"
+                            android:paddingVertical="9dp"
+                            android:paddingHorizontal="12dp"
+                            android:layout_marginBottom="4dp"
+                            android:clickable="true"
+                            android:focusable="true">
+
+                            <TextView
+                                android:layout_width="28dp"
+                                android:layout_height="wrap_content"
+                                android:text="⭕"
+                                android:textSize="18sp"
+                                android:gravity="center"
+                                android:layout_marginEnd="10dp" />
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Off (ISP Default)"
+                                    android:textColor="#F1F5F9"
+                                    android:textSize="13sp"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Standard carrier / Wi-Fi network DNS"
+                                    android:textColor="#64748B"
+                                    android:textSize="11sp" />
+                            </LinearLayout>
+
+                            <ImageView
+                                android:id="@+id/ivCheckDnsOff"
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:src="@android:drawable/checkbox_on_background"
+                                app:tint="#00E5FF"
+                                android:visibility="gone" />
+                        </LinearLayout>
                     </LinearLayout>
-
-                    <ImageView
-                        android:id="@+id/ivCheckDnsAdguard"
-                        android:layout_width="20dp"
-                        android:layout_height="20dp"
-                        android:src="@android:drawable/checkbox_on_background"
-                        app:tint="#00E5FF"
-                        android:visibility="gone" />
-                </LinearLayout>
-
-                <!-- Cloudflare DNS -->
-                <LinearLayout
-                    android:id="@+id/itemDnsCloudflare"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:background="@drawable/bg_preset_item_ripple"
-                    android:paddingVertical="9dp"
-                    android:paddingHorizontal="12dp"
-                    android:layout_marginBottom="4dp"
-                    android:clickable="true"
-                    android:focusable="true">
-
-                    <TextView
-                        android:layout_width="28dp"
-                        android:layout_height="wrap_content"
-                        android:text="⚡"
-                        android:textSize="18sp"
-                        android:gravity="center"
-                        android:layout_marginEnd="10dp" />
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Cloudflare 1.1.1.1"
-                            android:textColor="#F1F5F9"
-                            android:textSize="13sp"
-                            android:textStyle="bold" />
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Ultra-fast resolution &amp; low gaming ping"
-                            android:textColor="#64748B"
-                            android:textSize="11sp" />
-                    </LinearLayout>
-
-                    <ImageView
-                        android:id="@+id/ivCheckDnsCloudflare"
-                        android:layout_width="20dp"
-                        android:layout_height="20dp"
-                        android:src="@android:drawable/checkbox_on_background"
-                        app:tint="#00E5FF"
-                        android:visibility="gone" />
-                </LinearLayout>
-
-                <!-- Google DNS -->
-                <LinearLayout
-                    android:id="@+id/itemDnsGoogle"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:background="@drawable/bg_preset_item_ripple"
-                    android:paddingVertical="9dp"
-                    android:paddingHorizontal="12dp"
-                    android:layout_marginBottom="4dp"
-                    android:clickable="true"
-                    android:focusable="true">
-
-                    <TextView
-                        android:layout_width="28dp"
-                        android:layout_height="wrap_content"
-                        android:text="🌐"
-                        android:textSize="18sp"
-                        android:gravity="center"
-                        android:layout_marginEnd="10dp" />
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Google Public DNS"
-                            android:textColor="#F1F5F9"
-                            android:textSize="13sp"
-                            android:textStyle="bold" />
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Reliable global Anycast CDN resolution"
-                            android:textColor="#64748B"
-                            android:textSize="11sp" />
-                    </LinearLayout>
-
-                    <ImageView
-                        android:id="@+id/ivCheckDnsGoogle"
-                        android:layout_width="20dp"
-                        android:layout_height="20dp"
-                        android:src="@android:drawable/checkbox_on_background"
-                        app:tint="#00E5FF"
-                        android:visibility="gone" />
-                </LinearLayout>
-
-                <!-- DNS Off -->
-                <LinearLayout
-                    android:id="@+id/itemDnsOff"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:background="@drawable/bg_preset_item_ripple"
-                    android:paddingVertical="9dp"
-                    android:paddingHorizontal="12dp"
-                    android:layout_marginBottom="12dp"
-                    android:clickable="true"
-                    android:focusable="true">
-
-                    <TextView
-                        android:layout_width="28dp"
-                        android:layout_height="wrap_content"
-                        android:text="⭕"
-                        android:textSize="18sp"
-                        android:gravity="center"
-                        android:layout_marginEnd="10dp" />
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Off (ISP Default)"
-                            android:textColor="#F1F5F9"
-                            android:textSize="13sp"
-                            android:textStyle="bold" />
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Standard carrier / Wi-Fi network DNS"
-                            android:textColor="#64748B"
-                            android:textSize="11sp" />
-                    </LinearLayout>
-
-                    <ImageView
-                        android:id="@+id/ivCheckDnsOff"
-                        android:layout_width="20dp"
-                        android:layout_height="20dp"
-                        android:src="@android:drawable/checkbox_on_background"
-                        app:tint="#00E5FF"
-                        android:visibility="gone" />
-                </LinearLayout>
+                </androidx.core.widget.NestedScrollView>
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnOpenNetworkSettings"

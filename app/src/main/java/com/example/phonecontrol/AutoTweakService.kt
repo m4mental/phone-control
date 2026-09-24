@@ -48,7 +48,7 @@ class AutoTweakService : Service() {
     @Volatile private var isGameTurboActive = false
     @Volatile private var isPerAppBypassActive = false
     @Volatile private var isPerAppDndActive = false
-    @Volatile private var isDynamicScalingActive = false
+    @Volatile private var isChargingCutOffActive = false
     @Volatile private var isFloatingWindowActive = false
     @Volatile private var isScreenOn = true
     @Volatile private var isWakeupBoosting = false
@@ -262,6 +262,7 @@ class AutoTweakService : Service() {
                 val tempTenths = intent.getIntExtra(AndroidBatteryManager.EXTRA_TEMPERATURE, 0)
                 val level = intent.getIntExtra(AndroidBatteryManager.EXTRA_LEVEL, -1)
                 val scale = intent.getIntExtra(AndroidBatteryManager.EXTRA_SCALE, -1)
+                val plugged = intent.getIntExtra(AndroidBatteryManager.EXTRA_PLUGGED, 0)
 
                 tweakExecutor.execute {
                     val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
@@ -272,9 +273,35 @@ class AutoTweakService : Service() {
                         ThermalManager.applyAdaptiveThrottling(this@AutoTweakService, tempCelsius)
                     }
 
-                    // 2. Low Battery Auto-Saver Trigger
+                    // 2. Autonomous Battery Charging Cut-off Enforcer (Hysteresis Loop)
+                    val isLimitEnabled = prefs.getBoolean("battery_limit_enabled", false)
+                    val limitPercent = prefs.getInt("battery_limit_percent", 80)
                     if (level >= 0 && scale > 0) {
                         val battPct = (level * 100) / scale
+                        if (plugged != 0) {
+                            if (isLimitEnabled) {
+                                if (battPct >= limitPercent && !isChargingCutOffActive) {
+                                    Log.d("AutoTweak", "⚡ Battery limit reached ($battPct% >= $limitPercent%) -> Cutting off charging!")
+                                    BatteryManager.setChargingEnabled(false)
+                                    isChargingCutOffActive = true
+                                } else if (battPct <= (limitPercent - 3) && isChargingCutOffActive) {
+                                    Log.d("AutoTweak", "⚡ Battery dropped below threshold ($battPct% <= ${limitPercent - 3}%) -> Resuming charging!")
+                                    BatteryManager.setChargingEnabled(true)
+                                    isChargingCutOffActive = false
+                                }
+                            } else if (isChargingCutOffActive) {
+                                BatteryManager.setChargingEnabled(true)
+                                isChargingCutOffActive = false
+                            }
+                        } else {
+                            if (isChargingCutOffActive) {
+                                Log.d("AutoTweak", "⚡ Charger unplugged -> Resetting charging cut-off state")
+                                BatteryManager.setChargingEnabled(true)
+                                isChargingCutOffActive = false
+                            }
+                        }
+
+                        // 3. Low Battery Auto-Saver Trigger
                         val isLowBattTrigger = prefs.getBoolean("batt_low_trigger_enabled", false)
                         val triggerValue = prefs.getInt("batt_low_trigger_value", 20)
                         if (isLowBattTrigger && battPct <= triggerValue) {
@@ -407,6 +434,27 @@ class AutoTweakService : Service() {
             // Auto-initialize Studio Equalizer DSP in background on service startup
             if (PowerampPresetManager.isMasterEnabled(this@AutoTweakService)) {
                 StudioDspManager.init(this@AutoTweakService)
+            }
+
+            try {
+                val dnsObserver = object : android.database.ContentObserver(Handler(Looper.getMainLooper())) {
+                    override fun onChange(selfChange: Boolean) {
+                        PrivateDnsTileService.updateTile(applicationContext)
+                    }
+                }
+                contentResolver.registerContentObserver(
+                    android.provider.Settings.Global.getUriFor("private_dns_mode"),
+                    false,
+                    dnsObserver
+                )
+                contentResolver.registerContentObserver(
+                    android.provider.Settings.Global.getUriFor("private_dns_specifier"),
+                    false,
+                    dnsObserver
+                )
+                PrivateDnsTileService.updateTile(this@AutoTweakService)
+            } catch (e: Exception) {
+                Log.w("AutoTweak", "Failed to register DNS observer: ${e.message}")
             }
         }
 
@@ -723,24 +771,7 @@ class AutoTweakService : Service() {
         val turboPrefs = getSharedPreferences("game_turbo_prefs", MODE_PRIVATE)
         val games = turboPrefs.getStringSet("game_packages", emptySet()) ?: emptySet()
         
-        // Dynamic Resolution Scaling Whitelist Check
-        val isDynamicScalingEnabled = prefs.getBoolean("dynamic_scaling_enabled", false)
-        val scalingWhitelist = prefs.getStringSet("scaling_whitelist", emptySet()) ?: emptySet()
 
-        if (isDynamicScalingEnabled) {
-            if (scalingWhitelist.contains(foregroundPkg)) {
-                if (!isDynamicScalingActive) {
-                    Log.d("AutoTweak", "Dynamic Resolution Scaling -> 720p for $foregroundPkg")
-                    TweakManager.setSystemResolution(true)
-                    isDynamicScalingActive = true
-                }
-            } else if (isDynamicScalingActive) {
-                Log.d("AutoTweak", "Dynamic Resolution Scaling -> Reverting to standard resolution")
-                val savedRes = prefs.getString("screen_res", "rbRes1080")
-                TweakManager.setSystemResolution(savedRes == "rbRes720")
-                isDynamicScalingActive = false
-            }
-        }
 
         // 1. Collect all live packages in Recent Tasks + In-Memory Active Sessions + Current Foreground
         val recentPkgs = FreezerManager.getRecentPackages(forceRefresh = true).toMutableSet()

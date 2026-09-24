@@ -3,8 +3,13 @@ package com.example.phonecontrol
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
+import android.widget.EditText
+import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlin.concurrent.thread
 
 class NetworkActivity : AppCompatActivity() {
 
@@ -45,11 +50,18 @@ class NetworkActivity : AppCompatActivity() {
     }
 
     private fun refreshDnsStatus() {
-        val tvStatus = findViewById<android.widget.TextView>(R.id.tvPrivateDnsStatus) ?: return
-        kotlin.concurrent.thread {
+        val tvStatus = findViewById<TextView>(R.id.tvPrivateDnsStatus) ?: return
+        thread {
             val current = PrivateDnsManager.getCurrentProvider()
+            val spec = PrivateDnsManager.getCurrentSpecifier()
+            
             runOnUiThread {
-                tvStatus.text = "Active: ${current.displayName}\n${current.description}"
+                val detail = if (current == PrivateDnsManager.DnsProvider.CUSTOM && spec.isNotBlank()) {
+                    "Custom: $spec\n${current.description}"
+                } else {
+                    "Active: ${current.displayName}\n${current.description}"
+                }
+                tvStatus.text = detail
             }
         }
     }
@@ -57,18 +69,77 @@ class NetworkActivity : AppCompatActivity() {
     private fun showPrivateDnsDialog() {
         val providers = PrivateDnsManager.DnsProvider.values()
         val current = PrivateDnsManager.getCurrentProvider()
+        val spec = PrivateDnsManager.getCurrentSpecifier()
+
         val items = providers.map {
-            if (it == current) "● ${it.displayName}" else "○ ${it.displayName}"
+            val isCurrent = (it == current)
+            val prefix = if (isCurrent) "● " else "○ "
+            if (it == PrivateDnsManager.DnsProvider.CUSTOM && isCurrent && spec.isNotBlank()) {
+                "$prefix${it.displayName} ($spec)"
+            } else {
+                "$prefix${it.displayName}"
+            }
         }.toTypedArray()
 
-        com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle("🛡️ Select Private DNS Profile")
             .setItems(items) { _, which ->
                 val selected = providers[which]
-                kotlin.concurrent.thread {
-                    PrivateDnsManager.setProvider(selected)
+                if (selected == PrivateDnsManager.DnsProvider.CUSTOM) {
+                    promptCustomDnsDialog()
+                } else {
+                    thread {
+                        PrivateDnsManager.setProvider(selected)
+                        runOnUiThread {
+                            Toast.makeText(this, "DNS updated: ${selected.displayName}", Toast.LENGTH_SHORT).show()
+                            refreshDnsStatus()
+                            PrivateDnsTileService.updateTile(this)
+                        }
+                    }
+                }
+            }
+            .setNeutralButton("⚡ Test Ping") { _, _ ->
+                runDnsPingTest()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun runDnsPingTest() {
+        Toast.makeText(this, "Testing DNS latency via Root Shell...", Toast.LENGTH_SHORT).show()
+        thread {
+            val ping = PrivateDnsManager.measureDnsLatencyRoot()
+            runOnUiThread {
+                val msg = if (ping >= 0) "⚡ Root Ping: ${ping}ms (DNS Connected)" else "❌ Root Ping Failed / Offline"
+                Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun promptCustomDnsDialog() {
+        val currentSpec = PrivateDnsManager.getCurrentSpecifier()
+        val input = EditText(this).apply {
+            hint = "e.g. xxxxxx.dns.nextdns.io or dns.quad9.net"
+            setText(currentSpec)
+            setTextColor(android.graphics.Color.WHITE)
+            setHintTextColor(android.graphics.Color.GRAY)
+            setPadding(40, 30, 40, 30)
+        }
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("🔧 Custom Private DNS Hostname")
+            .setMessage("Enter your TLS/DoH DNS provider hostname (NextDNS, Pi-hole, AdGuard Home, ControlD):")
+            .setView(input)
+            .setPositiveButton("APPLY") { _, _ ->
+                val hostname = input.text.toString().trim()
+                thread {
+                    val success = PrivateDnsManager.setCustomHostname(hostname)
                     runOnUiThread {
-                        android.widget.Toast.makeText(this, "DNS updated: ${selected.displayName}", android.widget.Toast.LENGTH_SHORT).show()
+                        if (success) {
+                            Toast.makeText(this, "Custom DNS set: $hostname", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(this, "Failed to apply custom DNS", Toast.LENGTH_SHORT).show()
+                        }
                         refreshDnsStatus()
                         PrivateDnsTileService.updateTile(this)
                     }
