@@ -617,6 +617,7 @@ class AutoTweakService : Service() {
         // 3. Service Startup Checks
         tweakExecutor.execute {
             val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+            prefs.edit().remove("user_saved_auto_rotate").apply()
             BackupManager.ensureStorageStructure()
             DaemonManager.startDaemon(this@AutoTweakService)
 

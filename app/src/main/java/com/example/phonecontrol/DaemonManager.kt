@@ -70,7 +70,6 @@ object DaemonManager {
 
                 if [ ${'$'}indiv_block -eq 0 ]; then
                     settings put global sensor_privacy 1
-                    cmd sensor_privacy enable 0 all 2>/dev/null
                 fi
             }
 

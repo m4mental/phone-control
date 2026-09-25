@@ -50,7 +50,7 @@ object MasterManager {
         
         // 3. Revert Sensors, Privacy, Location & Power State
         val sensorCmds = listOf(
-            "cmd sensor_privacy disable 0 all 2>/dev/null",
+            "settings put global sensor_privacy 0 2>/dev/null",
             "settings put global motion_engine_power_save 0 2>/dev/null",
             "settings put system touch_responsiveness 0 2>/dev/null",
             "echo 0 > /proc/touchpanel/game_switch_enable 2>/dev/null",

@@ -70,6 +70,8 @@ class MainActivity : AppCompatActivity() {
             registerReceiver(uiReceiver, uiFilter)
         }
         
+        getSharedPreferences("prefs", MODE_PRIVATE).edit().remove("user_saved_auto_rotate").apply()
+
         tvLiveWatts = findViewById(R.id.tvLiveWatts)
         tvLiveVolt = findViewById(R.id.tvLiveVolt)
         tvLiveCycles = findViewById(R.id.tvLiveCycles)

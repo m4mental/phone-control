@@ -459,7 +459,13 @@ class AdbShellActivity : AppCompatActivity() {
                 } else {
                     FreezerManager.unfreezeApp(pkg)
                     Toast.makeText(this, "Launching $pkg...", Toast.LENGTH_SHORT).show()
-                    ShellUtils.runAsRoot("monkey -p $pkg -c android.intent.category.LAUNCHER 1")
+                    val amResult = ShellUtils.runAsRoot("cmd package resolve-activity --brief $pkg", 5000)
+                    val activityLine = amResult.output.lines().find { it.contains("/") && !it.contains("priority=") }?.trim()
+                    if (!activityLine.isNullOrBlank()) {
+                        ShellUtils.runAsRoot("am start --user 0 -n $activityLine")
+                    } else {
+                        ShellUtils.runAsRoot("am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER --user 0 $pkg")
+                    }
                 }
             }
         }

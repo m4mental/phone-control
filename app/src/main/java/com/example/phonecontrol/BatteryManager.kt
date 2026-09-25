@@ -167,11 +167,7 @@ object BatteryManager {
     fun setPrivacySensorsShield(context: Context, enabled: Boolean) {
         val prefs = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
         prefs.edit().putBoolean("battery_privacy_sensors", enabled).apply()
-        if (enabled) {
-            ShellUtils.fastCmd("cmd sensor_privacy enable 0 all 2>/dev/null")
-        } else {
-            ShellUtils.fastCmd("cmd sensor_privacy disable 0 all 2>/dev/null")
-        }
+        SensorManager.setSensorsEnabled(context, !enabled)
     }
 
     fun setForceDoze(enabled: Boolean) {

@@ -403,6 +403,9 @@ class PackageInstallActivity : AppCompatActivity() {
         val tvBackupTitle = dialogView.findViewById<TextView>(R.id.tvConflictBackupTitle)
         val tvBackupDesc = dialogView.findViewById<TextView>(R.id.tvConflictBackupDesc)
 
+        val isDupPerm = result.failureTitle?.contains("Duplicate Permission", ignoreCase = true) == true ||
+                        result.rawOutput.contains("INSTALL_FAILED_DUPLICATE_PERMISSION", ignoreCase = true)
+
         fun updateBackupUi(checked: Boolean) {
             cbAutoBackup?.isChecked = checked
             if (checked) {
@@ -411,14 +414,14 @@ class PackageInstallActivity : AppCompatActivity() {
                 tvBackupTitle?.setTextColor(Color.parseColor("#00E676"))
                 tvBackupDesc?.text = "Archives accounts, databases & settings to restore in 1-click. Uncheck for a fresh clean install."
                 tvBackupDesc?.setTextColor(Color.parseColor("#C8E6C9"))
-                btnProceed.text = "⚡ Force Install (Safe)"
+                btnProceed.text = if (isDupPerm) "⚡ Replace Conflict & Install (Safe)" else "⚡ Force Install (Safe)"
             } else {
                 layoutBackupToggle?.setBackgroundColor(Color.parseColor("#1E1E24"))
                 tvBackupTitle?.text = "⚠️ No Backup (Fresh Clean Install)"
                 tvBackupTitle?.setTextColor(Color.parseColor("#FF9800"))
-                tvBackupDesc?.text = "Previous app data will be deleted. The new build will start in completely fresh default state."
+                tvBackupDesc?.text = if (isDupPerm) "Removes the conflicting signature package and installs this new build cleanly." else "Previous app data will be deleted. The new build will start in completely fresh default state."
                 tvBackupDesc?.setTextColor(Color.parseColor("#FFE0B2"))
-                btnProceed.text = "⚡ Force Install (Clean)"
+                btnProceed.text = if (isDupPerm) "⚡ Clean Reinstall & Replace Conflict" else "⚡ Force Install (Clean)"
             }
         }
 
@@ -435,7 +438,11 @@ class PackageInstallActivity : AppCompatActivity() {
 
         tvHeaderTitle.text = result.failureTitle ?: "Installation Stoppage Detected"
         tvReasonTitle.text = result.failureTitle ?: "Conflict Occurred"
-        tvReasonExplanation.text = result.failureExplanation ?: result.message
+        tvReasonExplanation.text = if (isDupPerm && !result.conflictPackage.isNullOrBlank()) {
+            "Another app installed on your phone ('${result.conflictPackage}') owns a signature permission that conflicts with this APK. Android blocks co-existence unless the conflicting app is replaced.\n\nTapping below will automatically uninstall the conflicting build and cleanly install this APK."
+        } else {
+            result.failureExplanation ?: result.message
+        }
 
         val oldVer = inspection.installedVersionName?.let { "v$it (Build ${inspection.installedVersionCode ?: 0})" } ?: "None"
         val newVer = "v${inspection.incomingVersionName} (Build ${inspection.incomingVersionCode})"
@@ -450,7 +457,11 @@ class PackageInstallActivity : AppCompatActivity() {
             val shouldBackup = cbAutoBackup?.isChecked ?: true
             btnCancel.isEnabled = false
             btnProceed.isEnabled = false
-            btnProceed.text = if (shouldBackup) "⚡ Backing up & Force Installing..." else "⚡ Clean Force Installing..."
+            btnProceed.text = if (isDupPerm) {
+                if (shouldBackup) "⚡ Resolving Conflict & Installing..." else "⚡ Clean Replacing Conflict..."
+            } else {
+                if (shouldBackup) "⚡ Backing up & Force Installing..." else "⚡ Clean Force Installing..."
+            }
 
             thread {
                 val forceResult = PackageInstallerManager.installPackage(
@@ -569,17 +580,10 @@ class PackageInstallActivity : AppCompatActivity() {
                     try {
                         startActivity(launchIntent)
                     } catch (e: Exception) {
-                        ShellUtils.runAsRoot("monkey -p $pkg -c android.intent.category.LAUNCHER 1")
+                        launchAppSafely(pkg)
                     }
                 } else {
-                    Toast.makeText(this, "Launching $pkg...", Toast.LENGTH_SHORT).show()
-                    val amResult = ShellUtils.runAsRoot("cmd package resolve-activity --brief $pkg", 5000)
-                    val activityLine = amResult.output.lines().find { it.contains("/") && !it.contains("priority=") }?.trim()
-                    if (!activityLine.isNullOrBlank()) {
-                        ShellUtils.runAsRoot("am start --user 0 -n $activityLine")
-                    } else {
-                        ShellUtils.runAsRoot("monkey -p $pkg -c android.intent.category.LAUNCHER 1")
-                    }
+                    launchAppSafely(pkg)
                 }
             }
             finish()
@@ -615,5 +619,17 @@ class PackageInstallActivity : AppCompatActivity() {
         }
 
         dialog.show()
+    }
+
+    private fun launchAppSafely(pkg: String) {
+        try {
+            val amResult = ShellUtils.runAsRoot("cmd package resolve-activity --brief $pkg", 5000)
+            val activityLine = amResult.output.lines().find { it.contains("/") && !it.contains("priority=") }?.trim()
+            if (!activityLine.isNullOrBlank()) {
+                ShellUtils.runAsRoot("am start --user 0 -n $activityLine")
+            } else {
+                ShellUtils.runAsRoot("am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER --user 0 $pkg")
+            }
+        } catch (_: Exception) {}
     }
 }

@@ -24,17 +24,24 @@ object SensorManager {
 
         val value = if (enabled) "0" else "1"
         ShellUtils.fastCmd("settings put global sensor_privacy $value")
-        
-        val privacyAction = if (enabled) "disable" else "enable"
-        ShellUtils.fastCmd("cmd sensor_privacy $privacyAction 0 all 2>/dev/null")
 
         // 2. Strictly preserve and enforce user's exact Auto-Rotate state
         if (enabled) {
-            val targetRotation = prefs.getInt("user_saved_auto_rotate", currentRotation)
+            val saved = if (prefs.contains("user_saved_auto_rotate")) {
+                val s = prefs.getInt("user_saved_auto_rotate", 0)
+                prefs.edit().remove("user_saved_auto_rotate").apply()
+                s
+            } else {
+                currentRotation
+            }
+
+            // CRITICAL GUARD: If the user currently has Auto-Rotate disabled (0), NEVER flip it to 1!
+            val targetRotation = if (currentRotation == 0) 0 else saved
+
             ShellUtils.fastCmd("settings put system accelerometer_rotation $targetRotation")
             
-            // Android SensorPrivacyService asynchronously flips rotation after unmuting sensors;
-            // re-enforce the user's exact saved preference after 350ms to prevent OS corruption.
+            // Android SensorPrivacyService asynchronously attempts to flip rotation;
+            // re-enforce the user's exact preference to ensure it stays strictly off
             kotlin.concurrent.thread {
                 try {
                     Thread.sleep(350)
