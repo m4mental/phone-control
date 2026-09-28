@@ -612,7 +612,7 @@ class SettingsActivity : AppCompatActivity() {
                 editor.putBoolean("update_shield_enabled", true)
             }
         }
-        editor.commit()
+        editor.apply()
         Toast.makeText(this, "Preset applied: $preset", Toast.LENGTH_SHORT).show()
         refreshToggles()
     }
@@ -846,7 +846,7 @@ class SettingsActivity : AppCompatActivity() {
                 }
             }
 
-            editor.commit()
+            editor.apply()
             // Refresh sub-views inside container
             if (holder.subItems.isNotEmpty() || isChecked) {
                 renderSubFeatures(holder, isChecked)
@@ -927,7 +927,7 @@ class SettingsActivity : AppCompatActivity() {
             }
 
             swSub.setOnCheckedChangeListener { _, isChecked ->
-                prefs.edit().putBoolean(sub.prefKey, isChecked).commit()
+                prefs.edit().putBoolean(sub.prefKey, isChecked).apply()
                 if (sub.prefKey == "default_installer_enabled") {
                     PackageInstallerManager.setDefaultInstallerEnabled(this@SettingsActivity, isChecked)
                     if (isChecked) {
@@ -1057,7 +1057,7 @@ class SettingsActivity : AppCompatActivity() {
                     BatteryManager.setChargingLimit(this, 100)
                 }
                 "smart_switch_enabled" -> {
-                    getSharedPreferences("prefs", MODE_PRIVATE).edit().putBoolean("smart_switch_enabled", false).commit()
+                    getSharedPreferences("prefs", MODE_PRIVATE).edit().putBoolean("smart_switch_enabled", false).apply()
                 }
                 "sensor_firewall_enabled" -> {
                     BatteryManager.setPrivacySensorsShield(this, false)
@@ -1070,21 +1070,21 @@ class SettingsActivity : AppCompatActivity() {
                     StorageManager.applyStorageBoost(false)
                 }
                 "adaptive_thermal_enabled" -> {
-                    getSharedPreferences("prefs", MODE_PRIVATE).edit().putInt("active_cpu_cap", 100).commit()
+                    getSharedPreferences("prefs", MODE_PRIVATE).edit().putInt("active_cpu_cap", 100).apply()
                     TweakManager.limitCpuFrequency(100)
                     ThermalManager.setThrottlingEnabled(true)
                 }
                 "optimization_enabled" -> {
-                    getSharedPreferences("prefs", MODE_PRIVATE).edit().putBoolean("silent_system_enabled", false).commit()
+                    getSharedPreferences("prefs", MODE_PRIVATE).edit().putBoolean("silent_system_enabled", false).apply()
                     TweakManager.setSilentSystem(false)
                     TweakManager.setRefreshRate("Default")
                 }
                 "game_turbo_enabled" -> {
-                    getSharedPreferences("game_turbo_prefs", MODE_PRIVATE).edit().putBoolean("game_turbo_enabled", false).commit()
+                    getSharedPreferences("game_turbo_prefs", MODE_PRIVATE).edit().putBoolean("game_turbo_enabled", false).apply()
                     GameTurboManager.applyTouchSampling(this, false)
                 }
                 "per_app_enabled" -> {
-                    getSharedPreferences("per_app_prefs", MODE_PRIVATE).edit().clear().commit()
+                    getSharedPreferences("per_app_prefs", MODE_PRIVATE).edit().clear().apply()
                 }
                 "network_priority_enabled" -> {
                     ShellUtils.runAsRoot("iptables -t mangle -F OUTPUT 2>/dev/null")
@@ -1095,16 +1095,16 @@ class SettingsActivity : AppCompatActivity() {
                 }
                 "firewall_enabled" -> {
                     ShellUtils.runAsRoot("iptables -F OUTPUT 2>/dev/null")
-                    getSharedPreferences("firewall_prefs", MODE_PRIVATE).edit().clear().commit()
+                    getSharedPreferences("firewall_prefs", MODE_PRIVATE).edit().clear().apply()
                 }
                 "tower_lock_enabled" -> {
                     ShellUtils.runAsRoot("echo -e \"AT+ECELL=0\\r\\n\" > /dev/radio/pttycmd1 2>/dev/null")
                     ShellUtils.runAsRoot("echo -e \"AT+E5GSWITCH=0\\r\\n\" > /dev/radio/pttycmd1 2>/dev/null")
-                    getSharedPreferences("tower_prefs", MODE_PRIVATE).edit().clear().commit()
+                    getSharedPreferences("tower_prefs", MODE_PRIVATE).edit().clear().apply()
                 }
                 "freezer_enabled" -> {
                     val freezerPrefs = getSharedPreferences("freezer_prefs", MODE_PRIVATE)
-                    freezerPrefs.edit().putBoolean("auto_freeze_enabled", false).commit()
+                    freezerPrefs.edit().putBoolean("auto_freeze_enabled", false).apply()
                     val frozen = FreezerManager.getFrozenApps(this)
                     for (pkg in frozen) {
                         FreezerManager.unfreezeApp(pkg)
@@ -1125,7 +1125,7 @@ class SettingsActivity : AppCompatActivity() {
                     WirelessAdbManager.disable(this)
                 }
                 "vault_enabled" -> {
-                    getSharedPreferences("vault_prefs", MODE_PRIVATE).edit().clear().commit()
+                    getSharedPreferences("vault_prefs", MODE_PRIVATE).edit().clear().apply()
                 }
             }
         }

@@ -34,7 +34,7 @@ object UpdateShieldManager {
         if (enabled) {
             editor.putBoolean("master_tools_hub_enabled", true)
         }
-        editor.putBoolean("update_shield_enabled", enabled).commit()
+        editor.putBoolean("update_shield_enabled", enabled).apply()
         if (enabled) {
             enforceAllShields(context)
         } else {
@@ -64,12 +64,12 @@ object UpdateShieldManager {
                 masterPrefs.edit()
                     .putBoolean("master_tools_hub_enabled", true)
                     .putBoolean("update_shield_enabled", true)
-                    .commit()
+                    .apply()
             }
         } else {
             current.remove(packageName)
         }
-        prefs.edit().putStringSet(KEY_SHIELDED_PACKAGES, current).commit()
+        prefs.edit().putStringSet(KEY_SHIELDED_PACKAGES, current).apply()
 
         return if (shielded) {
             detachPackages(context, listOf(packageName))

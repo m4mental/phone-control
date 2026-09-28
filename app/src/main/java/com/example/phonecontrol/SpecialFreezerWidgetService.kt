@@ -25,7 +25,12 @@ class SpecialFreezerRemoteViewsFactory(private val context: Context) : RemoteVie
 
     override fun onDataSetChanged() {
         val customSet = FreezerManager.getCustomWidgetApps(context)
-        val finalSet = if (customSet.isNotEmpty()) customSet else FreezerManager.getSpecialFreezeApps(context)
+        val specialSet = FreezerManager.getSpecialFreezeApps(context)
+        val finalSet = if (customSet.isNotEmpty() || specialSet.isNotEmpty()) {
+            customSet + specialSet
+        } else {
+            FreezerManager.getFrozenApps(context)
+        }
         specialFrozenAppsList.clear()
         specialFrozenAppsList.addAll(finalSet.sorted())
     }
@@ -80,10 +85,10 @@ class SpecialFreezerRemoteViewsFactory(private val context: Context) : RemoteVie
     }
 
     private fun drawableToBitmap(drawable: Drawable, applyMonochrome: Boolean): Bitmap {
-        val width = drawable.intrinsicWidth.coerceAtLeast(100)
-        val height = drawable.intrinsicHeight.coerceAtLeast(100)
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val size = 108 // Fixed optimal size for 48dp widget icon, lightweight (<46KB) and prevents TransactionTooLargeException
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
+        drawable.setBounds(0, 0, size, size)
         
         if (applyMonochrome) {
             val paint = Paint()
@@ -100,14 +105,10 @@ class SpecialFreezerRemoteViewsFactory(private val context: Context) : RemoteVie
             matrix.postConcat(cm)
             paint.colorFilter = ColorMatrixColorFilter(matrix)
             
-            val tempBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-            val tempCanvas = Canvas(tempBitmap)
-            drawable.setBounds(0, 0, width, height)
-            drawable.draw(tempCanvas)
-            
-            canvas.drawBitmap(tempBitmap, 0f, 0f, paint)
+            canvas.saveLayer(null, paint)
+            drawable.draw(canvas)
+            canvas.restore()
         } else {
-            drawable.setBounds(0, 0, width, height)
             drawable.draw(canvas)
         }
         return bitmap

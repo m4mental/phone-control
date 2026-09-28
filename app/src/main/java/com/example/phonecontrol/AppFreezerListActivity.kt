@@ -255,7 +255,7 @@ class AppFreezerListActivity : AppCompatActivity() {
     }
 
     private fun freezeAll() {
-        val apps = FreezerManager.getFrozenApps(this)
+        val apps = FreezerManager.getFrozenApps(this) + FreezerManager.getSpecialFreezeApps(this)
         if (apps.isEmpty()) {
             Toast.makeText(this, "No apps in Hibernation list to freeze!", Toast.LENGTH_SHORT).show()
             return
@@ -268,7 +268,7 @@ class AppFreezerListActivity : AppCompatActivity() {
         }
 
         thread {
-            FreezerManager.freezeMultipleApps(this, apps)
+            FreezerManager.freezeMultipleApps(this, apps, force = true)
             val estimatedRamMb = (apps.size * 115).coerceAtLeast(150)
             runOnUiThread {
                 progress.dismiss()
@@ -310,10 +310,10 @@ class AppFreezerListActivity : AppCompatActivity() {
                         FreezerManager.setSpecialFreeze(this, pkg, newVal)
                         thread {
                             if (newVal) {
-                                FreezerManager.freezeApp(this, pkg)
+                                FreezerManager.freezeApp(this, pkg, force = true)
                             } else {
                                 ShellUtils.fastCmd("pm unsuspend $pkg 2>/dev/null")
-                                FreezerManager.freezeApp(this, pkg)
+                                FreezerManager.freezeApp(this, pkg, force = true)
                             }
                             runOnUiThread {
                                 refreshList()
@@ -335,6 +335,10 @@ class AppFreezerListActivity : AppCompatActivity() {
                         current.remove(pkg)
                         thread {
                             FreezerManager.setSpecialFreeze(this, pkg, false)
+                            val custom = FreezerManager.getCustomWidgetApps(this).toMutableSet()
+                            if (custom.remove(pkg)) {
+                                FreezerManager.saveCustomWidgetApps(this, custom)
+                            }
                             FreezerManager.unfreezeApp(pkg)
                             FreezerManager.saveFrozenApps(this, current)
                             runOnUiThread {
@@ -389,6 +393,11 @@ class AppFreezerListActivity : AppCompatActivity() {
                 current.removeAll(toRemove)
                 FreezerManager.saveFrozenApps(this, current)
 
+                val custom = FreezerManager.getCustomWidgetApps(this).toMutableSet()
+                if (custom.removeAll(toRemove)) {
+                    FreezerManager.saveCustomWidgetApps(this, custom)
+                }
+
                 thread {
                     for (pkg in toRemove) {
                         FreezerManager.setSpecialFreeze(this, pkg, false)
@@ -430,8 +439,8 @@ class AppFreezerListActivity : AppCompatActivity() {
             } else {
                 allApps.filter { it.label.lowercase().contains(query) || it.info.packageName.lowercase().contains(query) }
             }
-            pickerAdapter = AppPickerAdapter(filteredApps)
-            lvApps.adapter = pickerAdapter
+            pickerAdapter.items = filteredApps
+            pickerAdapter.notifyDataSetChanged()
         }
 
         etSearch.addTextChangedListener(object : TextWatcher {
@@ -455,6 +464,12 @@ class AppFreezerListActivity : AppCompatActivity() {
                 if (newlySelected.isNotEmpty()) {
                     val updatedSet = currentFrozen.toMutableSet().apply { addAll(newlySelected) }
                     FreezerManager.saveFrozenApps(this, updatedSet)
+                    if (!FreezerManager.isAutoFreezeEnabled(this)) {
+                        FreezerManager.setAutoFreezeEnabled(this, true)
+                    }
+                    for (pkg in newlySelected) {
+                        FreezerManager.freezeApp(this, pkg, force = true)
+                    }
                     refreshList()
                     notifyWidgets()
                     Toast.makeText(this, "Added ${newlySelected.size} apps to Hibernation list", Toast.LENGTH_SHORT).show()
@@ -483,7 +498,7 @@ class AppFreezerListActivity : AppCompatActivity() {
     }
 
     private fun showCustomWidgetAppPicker() {
-        val allFrozen = FreezerManager.getFrozenApps(this)
+        val allFrozen = FreezerManager.getFrozenApps(this) + FreezerManager.getSpecialFreezeApps(this)
         if (allFrozen.isEmpty()) {
             Toast.makeText(this, "No apps in hibernation list yet! Add apps first.", Toast.LENGTH_SHORT).show()
             return
@@ -520,8 +535,8 @@ class AppFreezerListActivity : AppCompatActivity() {
             } else {
                 allItems.filter { it.label.lowercase().contains(query) || it.info.packageName.lowercase().contains(query) }
             }
-            pickerAdapter = AppPickerAdapter(filteredItems)
-            lvApps.adapter = pickerAdapter
+            pickerAdapter.items = filteredItems
+            pickerAdapter.notifyDataSetChanged()
         }
 
         etSearch.addTextChangedListener(object : TextWatcher {
@@ -794,7 +809,7 @@ class AppFreezerListActivity : AppCompatActivity() {
         }
     }
 
-    private inner class AppPickerAdapter(val items: List<AppItem>) : BaseAdapter() {
+    private inner class AppPickerAdapter(var items: List<AppItem>) : BaseAdapter() {
         override fun getCount(): Int = items.size
         override fun getItem(position: Int): AppItem = items[position]
         override fun getItemId(position: Int): Long = position.toLong()
@@ -815,7 +830,9 @@ class AppFreezerListActivity : AppCompatActivity() {
             cbSelect.isChecked = item.isChecked
             tvStatus.visibility = View.GONE
 
-            val cachedIcon = appInfoCache[item.info.packageName]?.second
+            val pkgName = item.info.packageName
+            ivIcon.tag = pkgName
+            val cachedIcon = appInfoCache[pkgName]?.second
             if (cachedIcon != null) {
                 ivIcon.setImageDrawable(cachedIcon)
             } else {
@@ -823,8 +840,12 @@ class AppFreezerListActivity : AppCompatActivity() {
                 thread {
                     val icon = try { pm.getApplicationIcon(item.info) } catch (e: Exception) { null }
                     if (icon != null) {
-                        appInfoCache[item.info.packageName] = Pair(item.label, icon)
-                        runOnUiThread { ivIcon.setImageDrawable(icon) }
+                        appInfoCache[pkgName] = Pair(item.label, icon)
+                        runOnUiThread {
+                            if (ivIcon.tag == pkgName) {
+                                ivIcon.setImageDrawable(icon)
+                            }
+                        }
                     }
                 }
             }

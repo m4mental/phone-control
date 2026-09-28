@@ -22,6 +22,13 @@ object GameTurboManager {
         prefs.edit().putStringSet(KEY_GAMES, games).apply()
     }
 
+    fun removeGame(context: Context, packageName: String) {
+        val games = getTurboGames(context).toMutableSet()
+        if (games.remove(packageName)) {
+            saveTurboGames(context, games)
+        }
+    }
+
     fun applyTouchSampling(context: Context, enabled: Boolean) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putBoolean("game_turbo_touch_sampling", enabled).apply()
@@ -110,6 +117,7 @@ object GameTurboManager {
             ShellUtils.fastCmd("sysctl -w vm.swappiness=30 2>/dev/null")
             ShellUtils.fastCmd("sysctl -w vm.vfs_cache_pressure=150 2>/dev/null")
             TweakManager.applyLmkTuning("rbProfilePerformance")
+        } else {
             if (!isGameTurboActive) return
             isGameTurboActive = false
 

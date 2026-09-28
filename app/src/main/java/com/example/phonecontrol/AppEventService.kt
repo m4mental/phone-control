@@ -27,6 +27,7 @@ class AppEventService : AccessibilityService() {
     )
 
     private var lastRecentsCheckTime = 0L
+    private var lastForegroundDispatchTime = 0L
     private var lastLabelCacheTime = 0L
     private val appLabelToPackageMap = java.util.concurrent.ConcurrentHashMap<String, String>()
 
@@ -65,6 +66,27 @@ class AppEventService : AccessibilityService() {
         }
     }
 
+    private var cachedHomePackage: String? = null
+
+    private fun isHomeOrLauncher(pkgName: String, clsName: String): Boolean {
+        if (pkgName.isBlank()) return false
+        if (pkgName.contains("launcher", ignoreCase = true) || 
+            pkgName.contains("home", ignoreCase = true) || 
+            clsName.contains("Recents", ignoreCase = true) ||
+            clsName.contains("Overview", ignoreCase = true) ||
+            clsName.contains("Launcher", ignoreCase = true)) {
+            return true
+        }
+        if (cachedHomePackage == null) {
+            try {
+                val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+                val res = packageManager.resolveActivity(homeIntent, 0)
+                cachedHomePackage = res?.activityInfo?.packageName
+            } catch (_: Exception) {}
+        }
+        return pkgName == cachedHomePackage
+    }
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
 
@@ -77,17 +99,20 @@ class AppEventService : AccessibilityService() {
             val desc = event.contentDescription?.toString() ?: ""
             val text = event.text?.joinToString(" ") ?: ""
             val combined = if (desc.isNotBlank()) desc else text
-            val cleanLabel = if (combined.contains("Disabled ", ignoreCase = true)) {
-                combined.substringAfter("Disabled ").trim()
-            } else {
-                combined.trim()
+            var cleanLabel = combined.trim()
+            if (cleanLabel.contains("Disabled ", ignoreCase = true)) {
+                cleanLabel = cleanLabel.substringAfter("Disabled ").trim()
+            } else if (cleanLabel.contains("Paused ", ignoreCase = true)) {
+                cleanLabel = cleanLabel.substringAfter("Paused ").trim()
             }
 
             if (cleanLabel.isNotBlank()) {
                 val targetPkg = getPackageForLabel(cleanLabel)
                 if (targetPkg != null) {
                     FreezerManager.registerAppOpen(targetPkg)
-                    if (combined.contains("Disabled ", ignoreCase = true)) {
+                    if (combined.contains("Disabled ", ignoreCase = true) ||
+                        combined.contains("Paused ", ignoreCase = true) ||
+                        FreezerManager.isSpecialFreeze(this, targetPkg)) {
                         FreezerManager.launchApp(this, targetPkg)
                     }
                     return // App launch triggered & protected! Do NOT fall through to recents check!
@@ -134,6 +159,7 @@ class AppEventService : AccessibilityService() {
                 }
             }
             if (targetPkg != null) {
+                performGlobalAction(GLOBAL_ACTION_BACK)
                 FreezerManager.unfreezeApp(targetPkg)
                 FreezerManager.launchApp(this, targetPkg)
             }
@@ -157,7 +183,7 @@ class AppEventService : AccessibilityService() {
                                      clsName.contains("Video", ignoreCase = true)
 
         // Instant session registration: Protect app from freeze & unfreeze immediately
-        val isHomeOrRecents = pkgName.contains("launcher", ignoreCase = true) || clsName.contains("Recents", ignoreCase = true)
+        val isHomeOrRecents = isHomeOrLauncher(pkgName, clsName)
         if (!isHomeOrRecents && pkgName != packageName) {
             FreezerManager.registerAppOpen(pkgName)
         }
@@ -167,9 +193,12 @@ class AppEventService : AccessibilityService() {
             dispatchRecentsCheck()
         }
 
+        val now = android.os.SystemClock.uptimeMillis()
         if (pkgName == lastDispatchedPkg && !isCallOrCameraActivity) return
+        if (pkgName == lastDispatchedPkg && (now - lastForegroundDispatchTime < 50)) return
 
         lastDispatchedPkg = pkgName
+        lastForegroundDispatchTime = now
 
         // Instant notification to AutoTweakService with zero polling delay
         val intent = Intent(this, AutoTweakService::class.java).apply {
@@ -194,7 +223,12 @@ class AppEventService : AccessibilityService() {
         fun enableViaRoot(packageName: String) {
             kotlin.concurrent.thread {
                 val serviceComponent = "$packageName/${AppEventService::class.java.canonicalName}"
-                val currentServices = ShellUtils.runAsRoot("settings get secure enabled_accessibility_services").output.trim()
+                val res = ShellUtils.runAsRoot("settings get secure enabled_accessibility_services", 2500)
+                if (!res.isSuccess) return@thread
+                val currentServices = res.output.trim()
+                if (currentServices.contains("Timed Out") || currentServices.contains("Shell Busy") || currentServices.startsWith("Error")) {
+                    return@thread
+                }
                 
                 if (!currentServices.contains(serviceComponent)) {
                     val updated = if (currentServices.isEmpty() || currentServices == "null") {
@@ -202,7 +236,7 @@ class AppEventService : AccessibilityService() {
                     } else {
                         "$currentServices:$serviceComponent"
                     }
-                    ShellUtils.fastCmd("settings put secure enabled_accessibility_services $updated")
+                    ShellUtils.fastCmd("settings put secure enabled_accessibility_services '$updated'")
                     ShellUtils.fastCmd("settings put secure accessibility_enabled 1")
                 }
             }

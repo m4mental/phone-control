@@ -17,6 +17,7 @@ object ShellUtils {
     private const val DONE_TOKEN = "---CMD_DONE---"
     private const val MAX_OUTPUT_LINES = 400
     private val shellExecutor = Executors.newSingleThreadExecutor()
+    private val shellLock = Any()
 
     @Volatile var isRootGrantedCached: Boolean? = null
 
@@ -70,7 +71,7 @@ object ShellUtils {
     }
 
     /**
-     * Runs a command as root and returns the output safely with a strict 4.0s timeout watchdog.
+     * Runs a command as root and returns the output safely with an effective watchdog.
      * Prevents pipe buffer deadlock, ANRs, and OutOfMemoryError.
      */
     fun runAsRoot(command: String, timeoutMs: Long = 4000): ShellResult {
@@ -85,7 +86,7 @@ object ShellUtils {
         var submittedFuture: java.util.concurrent.Future<ShellResult>? = null
         return try {
             val future = shellExecutor.submit<ShellResult> {
-                synchronized(this@ShellUtils) {
+                synchronized(shellLock) {
                     try {
                         isBusy = true
                         ensureShell()
@@ -125,13 +126,13 @@ object ShellUtils {
         } catch (e: TimeoutException) {
             Log.e("ShellUtils", "runAsRoot timed out (${effectiveTimeout}ms) on command: $command")
             submittedFuture?.cancel(true)
-            kotlin.concurrent.thread { closePersistentShell() }
+            kotlin.concurrent.thread { synchronized(shellLock) { closePersistentShell() } }
             isBusy = false
             ShellResult(-1, "Command Timed Out")
         } catch (e: Exception) {
             Log.e("ShellUtils", "Error running command: $command", e)
             submittedFuture?.cancel(true)
-            kotlin.concurrent.thread { closePersistentShell() }
+            kotlin.concurrent.thread { synchronized(shellLock) { closePersistentShell() } }
             isBusy = false
             ShellResult(-1, e.message ?: "Error")
         }
@@ -140,23 +141,26 @@ object ShellUtils {
     /**
      * Fast command execution (no output). 
      * Directs stdout/stderr to /dev/null to prevent 64KB Linux pipe buffer overflow.
+     * Synchronized on shellLock to ensure zero interleaved pipe writes.
      */
-    @Synchronized
     fun fastCmd(command: String) {
-        try {
-            ensureShell()
-            os?.writeBytes("($command) >/dev/null 2>&1\n")
-            os?.flush()
-        } catch (e: Exception) {
-            Log.e("ShellUtils", "Error in fastCmd", e)
-            closePersistentShell()
+        shellExecutor.execute {
+            synchronized(shellLock) {
+                try {
+                    ensureShell()
+                    os?.writeBytes("($command) >/dev/null 2>&1\n")
+                    os?.flush()
+                } catch (e: Exception) {
+                    Log.e("ShellUtils", "Error in fastCmd", e)
+                    closePersistentShell()
+                }
+            }
         }
     }
 
     /**
      * Fast atomic batch execution of multiple commands in a single write.
      */
-    @Synchronized
     fun fastBatchCmd(commands: List<String>) {
         if (commands.isEmpty()) return
         val joined = commands.joinToString("; ")
@@ -189,19 +193,25 @@ object ShellUtils {
         }
     }
 
-    @Synchronized
     private fun ensureShell() {
         if (persistentProcess == null || !isProcessAlive(persistentProcess)) {
             closePersistentShell()
-            persistentProcess = try {
-                val proc = Runtime.getRuntime().exec(arrayOf("su", "-mm"))
-                Thread.sleep(50)
-                if (isProcessAlive(proc)) proc else Runtime.getRuntime().exec("su")
+            val proc = try {
+                Runtime.getRuntime().exec(arrayOf("su", "-mm"))
             } catch (e: Exception) {
                 Runtime.getRuntime().exec("su")
             }
-            os = DataOutputStream(persistentProcess!!.outputStream)
-            reader = BufferedReader(InputStreamReader(persistentProcess!!.inputStream))
+            persistentProcess = proc
+            os = DataOutputStream(proc.outputStream)
+            reader = BufferedReader(InputStreamReader(proc.inputStream))
+            
+            // Continuous background stderr drainer to eliminate pipe buffer deadlocks
+            kotlin.concurrent.thread(isDaemon = true) {
+                try {
+                    val errReader = BufferedReader(InputStreamReader(proc.errorStream))
+                    while (errReader.readLine() != null) {}
+                } catch (_: Exception) {}
+            }
         }
     }
 
@@ -214,7 +224,6 @@ object ShellUtils {
         }
     }
 
-    @Synchronized
     fun closePersistentShell() {
         try {
             os?.writeBytes("exit\n")
@@ -237,8 +246,10 @@ object ShellUtils {
     }
 
     fun runCommandsAsRoot(commands: List<String>): ShellResult {
-        return runAsRoot(commands.joinToString(" && "))
+        return runAsRoot(commands.joinToString(";\n"))
     }
 
-    data class ShellResult(val exitCode: Int, val output: String)
+    data class ShellResult(val exitCode: Int, val output: String) {
+        val isSuccess: Boolean get() = exitCode == 0
+    }
 }

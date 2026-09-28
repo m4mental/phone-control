@@ -30,6 +30,17 @@ class AppUninstallReceiver : BroadcastReceiver() {
         val pkgName = intent.data?.schemeSpecificPart ?: return
         if (pkgName.isBlank() || pkgName == context.packageName) return
 
+        // Always purge uninstalled package from all internal managers & widgets
+        try {
+            FreezerManager.pruneUninstalledPackages(context)
+            FreezerWidgetProvider.updateAllWidgets(context)
+            SpecialFreezerWidgetProvider.updateAllWidgets(context)
+            PerAppManager.removeConfig(context, pkgName)
+            GameTurboManager.removeGame(context, pkgName)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error pruning uninstalled package $pkgName: ${e.message}")
+        }
+
         val prefs = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
         val isAutoCleanEnabled = prefs.getBoolean("auto_clean_ghost_residue", true)
         if (!isAutoCleanEnabled) {

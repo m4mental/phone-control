@@ -280,7 +280,7 @@ class AppInspectorActivity : AppCompatActivity() {
                 // Disable & Freeze & Hide
                 val cmd = "am force-stop ${item.packageName}; pm disable-user --user 0 ${item.packageName} 2>/dev/null; pm hide ${item.packageName} 2>/dev/null; am freeze ${item.packageName} 2>/dev/null"
                 ShellUtils.runAsRoot(cmd)
-                FreezerManager.freezeApp(this, item.packageName)
+                FreezerManager.freezeApp(this, item.packageName, force = true)
                 runOnUiThread {
                     Toast.makeText(this, "Disabled & Hidden ${item.name}", Toast.LENGTH_SHORT).show()
                     loadAppsInBackground()

@@ -136,16 +136,16 @@ object MasterManager {
         ShellUtils.runAsRoot("rm -f /data/local/tmp/pc_screen /data/local/tmp/last_trim")
 
         // 10. Clear all sub-preferences cleanly
-        context.getSharedPreferences("firewall_prefs", Context.MODE_PRIVATE).edit().clear().commit()
-        context.getSharedPreferences("multitasking_prefs", Context.MODE_PRIVATE).edit().clear().commit()
-        context.getSharedPreferences("tower_prefs", Context.MODE_PRIVATE).edit().clear().commit()
-        context.getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE).edit().clear().commit()
-        context.getSharedPreferences("game_turbo_prefs", Context.MODE_PRIVATE).edit().clear().commit()
-        context.getSharedPreferences("super_doze_prefs", Context.MODE_PRIVATE).edit().clear().commit()
-        context.getSharedPreferences("vault_prefs", Context.MODE_PRIVATE).edit().clear().commit()
-        context.getSharedPreferences("per_app_prefs", Context.MODE_PRIVATE).edit().clear().commit()
+        context.getSharedPreferences("firewall_prefs", Context.MODE_PRIVATE).edit().clear().apply()
+        context.getSharedPreferences("multitasking_prefs", Context.MODE_PRIVATE).edit().clear().apply()
+        context.getSharedPreferences("tower_prefs", Context.MODE_PRIVATE).edit().clear().apply()
+        context.getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE).edit().clear().apply()
+        context.getSharedPreferences("game_turbo_prefs", Context.MODE_PRIVATE).edit().clear().apply()
+        context.getSharedPreferences("super_doze_prefs", Context.MODE_PRIVATE).edit().clear().apply()
+        context.getSharedPreferences("vault_prefs", Context.MODE_PRIVATE).edit().clear().apply()
+        context.getSharedPreferences("per_app_prefs", Context.MODE_PRIVATE).edit().clear().apply()
 
-        // 11. Explicitly Turn OFF All Master Hubs & Sub-Feature Toggles synchronously
+        // 11. Explicitly Turn OFF All Master Hubs & Sub-Feature Toggles asynchronously
         val editor = prefs.edit().clear()
 
         // Master Category Switches (ALL OFF)
@@ -189,7 +189,7 @@ object MasterManager {
         PackageInstallerManager.setDefaultInstallerEnabled(context, false)
 
         editor.putString("selected_mode", "rbBalance")
-        editor.commit()
+        editor.apply()
 
         // 12. Stop Background Daemons, Services & Wireless ADB
         WirelessAdbManager.disable(context)

@@ -29,7 +29,7 @@ object WirelessAdbManager {
      */
     fun enable(context: Context): String {
         ShellUtils.fastCmd("setprop service.adb.tcp.port $ADB_PORT; stop adbd; start adbd")
-        context.getSharedPreferences("prefs", Context.MODE_PRIVATE).edit().putBoolean(PREF_KEY, true).commit()
+        context.getSharedPreferences("prefs", Context.MODE_PRIVATE).edit().putBoolean(PREF_KEY, true).apply()
         WirelessAdbTileService.updateTile(context)
         return getConnectCommand()
     }
@@ -39,7 +39,7 @@ object WirelessAdbManager {
      */
     fun disable(context: Context): Boolean {
         ShellUtils.fastCmd("setprop service.adb.tcp.port -1; stop adbd; start adbd")
-        context.getSharedPreferences("prefs", Context.MODE_PRIVATE).edit().putBoolean(PREF_KEY, false).commit()
+        context.getSharedPreferences("prefs", Context.MODE_PRIVATE).edit().putBoolean(PREF_KEY, false).apply()
         WirelessAdbTileService.updateTile(context)
         return true
     }

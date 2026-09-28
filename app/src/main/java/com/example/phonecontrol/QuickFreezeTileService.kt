@@ -29,7 +29,7 @@ class QuickFreezeTileService : TileService() {
         super.onStartListening()
         val tile = qsTile ?: return
 
-        val frozenApps = FreezerManager.getFrozenApps(this)
+        val frozenApps = FreezerManager.getFrozenApps(this) + FreezerManager.getSpecialFreezeApps(this)
         tile.state = Tile.STATE_INACTIVE
         tile.label = "Freeze Apps"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -56,7 +56,7 @@ class QuickFreezeTileService : TileService() {
         tile.updateTile()
 
         thread {
-            FreezerManager.freezeMultipleApps(this, apps)
+            FreezerManager.freezeMultipleApps(this, apps, force = true)
             val ramFreedMb = (apps.size * 115).coerceAtLeast(150)
 
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({

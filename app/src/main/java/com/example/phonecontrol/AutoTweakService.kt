@@ -74,9 +74,11 @@ class AutoTweakService : Service() {
     private var audioPauseDebounceRunnable: Runnable? = null
     private var screenOffFreezeJob: Runnable? = null
     private val screenOffHandler = Handler(Looper.getMainLooper())
+    private val backgroundFreezeJobs = java.util.concurrent.ConcurrentHashMap<String, Runnable>()
     private var aiTickerHandler: Handler? = null
     private var aiTickerRunnable: Runnable? = null
     private var lastServiceCpuTotal = 0L
+    private var dnsObserver: android.database.ContentObserver? = null
     private var lastServiceCpuIdle = 0L
 
     private val cameraAvailabilityCallback = object : CameraManager.AvailabilityCallback() {
@@ -242,6 +244,22 @@ class AutoTweakService : Service() {
         }
     }
 
+    private val packageReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val action = intent?.action ?: return
+            if (action == Intent.ACTION_PACKAGE_FULLY_REMOVED || action == Intent.ACTION_PACKAGE_REMOVED) {
+                val replacing = intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)
+                if (!replacing && context != null) {
+                    freezerExecutor.execute {
+                        FreezerManager.pruneUninstalledPackages(context)
+                        FreezerWidgetProvider.updateAllWidgets(context)
+                        SpecialFreezerWidgetProvider.updateAllWidgets(context)
+                    }
+                }
+            }
+        }
+    }
+
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             val pendingAction = intent.action ?: return
@@ -363,6 +381,13 @@ class AutoTweakService : Service() {
             registerReceiver(wifiStateReceiver, wifiFilter)
         }
 
+        val packageFilter = IntentFilter().apply {
+            addAction(Intent.ACTION_PACKAGE_FULLY_REMOVED)
+            addAction(Intent.ACTION_PACKAGE_REMOVED)
+            addDataScheme("package")
+        }
+        registerReceiver(packageReceiver, packageFilter)
+
         // Check initial WiFi state upon service startup
         if (isWifiActive()) {
             handleSmartNetworkSwitch(true)
@@ -437,7 +462,7 @@ class AutoTweakService : Service() {
             }
 
             try {
-                val dnsObserver = object : android.database.ContentObserver(Handler(Looper.getMainLooper())) {
+                dnsObserver = object : android.database.ContentObserver(Handler(Looper.getMainLooper())) {
                     override fun onChange(selfChange: Boolean) {
                         PrivateDnsTileService.updateTile(applicationContext)
                     }
@@ -445,12 +470,12 @@ class AutoTweakService : Service() {
                 contentResolver.registerContentObserver(
                     android.provider.Settings.Global.getUriFor("private_dns_mode"),
                     false,
-                    dnsObserver
+                    dnsObserver!!
                 )
                 contentResolver.registerContentObserver(
                     android.provider.Settings.Global.getUriFor("private_dns_specifier"),
                     false,
-                    dnsObserver
+                    dnsObserver!!
                 )
                 PrivateDnsTileService.updateTile(this@AutoTweakService)
             } catch (e: Exception) {
@@ -587,9 +612,9 @@ class AutoTweakService : Service() {
             }
             recentsFreezeRunnable?.let { equalizerFreezeHandler?.removeCallbacks(it) }
             recentsFreezeRunnable = Runnable {
-                triggerFreezerDispatch(lastForegroundApp)
+                triggerFreezerDispatch(lastForegroundApp, forceRecentsSweep = true)
             }
-            equalizerFreezeHandler?.postDelayed(recentsFreezeRunnable!!, 600)
+            equalizerFreezeHandler?.postDelayed(recentsFreezeRunnable!!, 300)
             return START_STICKY
         }
 
@@ -692,9 +717,56 @@ class AutoTweakService : Service() {
         return 10
     }
 
+    private fun cancelBackgroundAppFreeze(pkg: String) {
+        if (pkg.isBlank()) return
+        backgroundFreezeJobs.remove(pkg)?.let {
+            equalizerFreezeHandler?.removeCallbacks(it)
+        }
+    }
+
+    private fun scheduleBackgroundAppFreeze(pkg: String) {
+        if (pkg.isBlank() || pkg == packageName || pkg.contains("launcher", ignoreCase = true) || pkg.contains("home", ignoreCase = true) || pkg == "com.android.systemui") return
+        if (!FreezerManager.isAutoFreezeEnabled(this)) return
+
+        val frozenApps = FreezerManager.getFrozenApps(this) + FreezerManager.getSpecialFreezeApps(this)
+        if (!frozenApps.contains(pkg)) return
+
+        // Cancel any pending freeze job for this package if any
+        cancelBackgroundAppFreeze(pkg)
+
+        val delaySeconds = FreezerManager.getAutoFreezeDelaySeconds(this)
+        // If user configured 0s (Instant), give a graceful 4s settling time so app doesn't freeze mid-animation
+        val delayMs = if (delaySeconds > 0) delaySeconds * 1000L else 4000L
+
+        val runnable = Runnable {
+            backgroundFreezeJobs.remove(pkg)
+            freezerExecutor.execute {
+                val isStillForeground = (lastForegroundApp == pkg)
+                val isVisible = FreezerManager.isAppCurrentlyVisible(pkg)
+                val isAudio = FreezerManager.getActivePlayingAudioPackages(this@AutoTweakService).contains(pkg)
+                val allSafeApps = MultitaskingManager.getUserWhitelist(this@AutoTweakService) + MultitaskingManager.protectedApps
+
+                if (!isStillForeground && !isVisible && !isAudio && !allSafeApps.contains(pkg)) {
+                    Log.d("AutoTweak", "❄️ Autonomous Background Freeze -> Hibernating $pkg after ${delayMs}ms settling")
+                    FreezerManager.removeActiveSession(pkg)
+                    FreezerManager.freezeApp(this@AutoTweakService, pkg, force = true)
+                    SpecialFreezerWidgetProvider.updateAllWidgets(this@AutoTweakService)
+                    FreezerWidgetProvider.updateAllWidgets(this@AutoTweakService)
+                }
+            }
+        }
+
+        backgroundFreezeJobs[pkg] = runnable
+        equalizerFreezeHandler?.postDelayed(runnable, delayMs)
+        Log.d("AutoTweak", "⏳ Scheduled autonomous background freeze for $pkg in ${delayMs}ms")
+    }
+
     private fun handleForegroundAppTransition(previousPkg: String, newPkg: String) {
         // Cancel any pending recents freeze sweep when user transitions to a new app
         recentsFreezeRunnable?.let { equalizerFreezeHandler?.removeCallbacks(it) }
+
+        // Cancel any pending background freeze job if returning to the app
+        cancelBackgroundAppFreeze(newPkg)
 
         // Instant 200ms Window Animation Boost for butter-smooth 120fps app-switch transition (skip for Phone Control)
         if (newPkg != packageName) {
@@ -714,24 +786,28 @@ class AutoTweakService : Service() {
         // 2. BACKGROUND FREEZER DISPATCH:
         triggerFreezerDispatch(newPkg)
 
-        // 3. Fallback verification for Recents swipe: When returning to launcher/home, re-check recents after 800ms
-        if (newPkg.contains("launcher", ignoreCase = true)) {
+        // 3. Autonomous Background Settling Freeze for previous app:
+        scheduleBackgroundAppFreeze(previousPkg)
+
+        // 4. Fallback verification for Recents swipe: When returning to launcher/home, re-check recents after 500ms
+        if (newPkg.contains("launcher", ignoreCase = true) || newPkg.contains("home", ignoreCase = true)) {
             equalizerFreezeHandler?.postDelayed({
                 tweakExecutor.execute {
                     reevaluatePerAppHierarchy(newPkg)
                 }
-                triggerFreezerDispatch(newPkg)
-            }, 800)
+                triggerFreezerDispatch(newPkg, forceRecentsSweep = true)
+            }, 500)
         }
     }
 
-    private fun triggerFreezerDispatch(currentForeground: String) {
+    private fun triggerFreezerDispatch(currentForeground: String, forceRecentsSweep: Boolean = false) {
         if (!FreezerManager.isAutoFreezeEnabled(this)) return
 
         freezerExecutor.execute {
             // 1. Register foreground app if it's a real user application (grants 0ms immunity + unfreezes)
             if (currentForeground.isNotBlank() &&
                 !currentForeground.contains("launcher", ignoreCase = true) &&
+                !currentForeground.contains("home", ignoreCase = true) &&
                 currentForeground != "com.android.systemui" &&
                 currentForeground != packageName
             ) {
@@ -739,7 +815,7 @@ class AutoTweakService : Service() {
             }
 
             // 2. Sync all alive recents tasks into activeSessionApps
-            val recentPkgs = FreezerManager.getRecentPackages()
+            val recentPkgs = FreezerManager.getRecentPackages(forceRefresh = forceRecentsSweep)
             for (p in recentPkgs) {
                 FreezerManager.activeSessionApps.add(p)
             }
@@ -1047,8 +1123,10 @@ class AutoTweakService : Service() {
         val isSpeaker = currentOutput == PowerampPresetManager.AudioOutputType.SPEAKER
 
         if (isHeadphonesOnly && isSpeaker) {
-            Log.d("AutoTweak", "🎧 Headphones Only Mode active & Phone Speaker in use -> DSP Sleep (Bypass)")
-            StudioDspManager.setBypass(this, true)
+            if (!StudioDspManager.isBypassed()) {
+                Log.d("AutoTweak", "🎧 Headphones Only Mode active & Phone Speaker in use -> DSP Sleep (Bypass)")
+                StudioDspManager.setBypass(this, true)
+            }
             return
         }
 
@@ -1482,14 +1560,20 @@ class AutoTweakService : Service() {
             val frozenApps = FreezerManager.getFrozenApps(this@AutoTweakService) + FreezerManager.getSpecialFreezeApps(this@AutoTweakService)
             val activeAudioApps = FreezerManager.getActivePlayingAudioPackages(this@AutoTweakService)
 
+            // Screen is OFF: Clear active session apps so they don't block deep sleep
+            FreezerManager.activeSessionApps.clear()
+
             for (pkg in frozenApps) {
                 // EXEMPT ONLY the active music player; hibernate all other apps immediately!
                 if (!allSafeApps.contains(pkg) && !activeAudioApps.contains(pkg)) {
-                    FreezerManager.freezeApp(this@AutoTweakService, pkg)
+                    FreezerManager.freezeApp(this@AutoTweakService, pkg, force = true)
                 } else if (activeAudioApps.contains(pkg)) {
                     Log.d("AutoTweak", "🎵 Smart Media Guard: Exempting active music app '$pkg' from Screen-Off freeze")
                 }
             }
+
+            SpecialFreezerWidgetProvider.updateAllWidgets(this@AutoTweakService)
+            FreezerWidgetProvider.updateAllWidgets(this@AutoTweakService)
         }
     }
 
@@ -1579,13 +1663,27 @@ class AutoTweakService : Service() {
                 audioManager?.unregisterAudioPlaybackCallback(audioPlaybackCallback)
             }
         } catch (e: Exception) {}
-        unregisterReceiver(screenReceiver)
-        unregisterReceiver(batteryThermalReceiver)
+        try { unregisterReceiver(screenReceiver) } catch (e: Exception) {}
+        try { unregisterReceiver(batteryThermalReceiver) } catch (e: Exception) {}
         try { unregisterReceiver(wifiStateReceiver) } catch (e: Exception) {}
+        try { unregisterReceiver(packageReceiver) } catch (e: Exception) {}
         try { unregisterReceiver(audioRouteReceiver) } catch (e: Exception) {}
         try { connectivityManager.unregisterNetworkCallback(networkCallback) } catch (e: Exception) {}
         try {
             cameraManager?.unregisterAvailabilityCallback(cameraAvailabilityCallback)
+        } catch (e: Exception) {}
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                appOpsManager.stopWatchingActive(opActiveListener)
+            }
+        } catch (e: Exception) {}
+        try {
+            dnsObserver?.let { contentResolver.unregisterContentObserver(it) }
+            dnsObserver = null
+        } catch (e: Exception) {}
+        try {
+            equalizerFreezeHandler?.removeCallbacksAndMessages(null)
+            screenOffHandler.removeCallbacksAndMessages(null)
         } catch (e: Exception) {}
         tweakExecutor.shutdown()
         freezerExecutor.shutdown()

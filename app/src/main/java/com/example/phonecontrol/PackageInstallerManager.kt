@@ -259,14 +259,28 @@ object PackageInstallerManager {
      */
     fun inspectApk(context: Context, uri: Uri, fileName: String): ApkInspection? {
         val lowerName = fileName.lowercase()
-        val tempInspect = File(context.cacheDir, "temp_inspect.apk")
+        val tempInspect = File(context.cacheDir, "temp_inspect_${System.currentTimeMillis()}.apk")
         val detectedSplits = mutableListOf<String>()
+
+        val directFile = if (uri.scheme == "file" || uri.scheme == null) {
+            val filePath = uri.path ?: uri.toString().removePrefix("file://")
+            val f = File(filePath)
+            if (f.exists() && f.canRead() && f.length() > 0) f else null
+        } else null
+
+        val inspectFile = if (directFile != null && lowerName.endsWith(".apk")) {
+            directFile
+        } else {
+            tempInspect
+        }
 
         try {
             if (lowerName.endsWith(".apk")) {
-                openPackageStream(context, uri)?.use { input ->
-                    FileOutputStream(tempInspect).use { output ->
-                        input.copyTo(output)
+                if (inspectFile === tempInspect) {
+                    openPackageStream(context, uri)?.use { input ->
+                        FileOutputStream(tempInspect).use { output ->
+                            input.copyTo(output)
+                        }
                     }
                 }
             } else {
@@ -322,27 +336,27 @@ object PackageInstallerManager {
                 }
             }
 
-            Log.d("PackageInstaller", "inspectApk: file=${fileName}, tempLen=${tempInspect.length()}")
-            if (!tempInspect.exists() || tempInspect.length() == 0L) {
-                Log.e("PackageInstaller", "inspectApk: tempInspect is empty or missing")
+            Log.d("PackageInstaller", "inspectApk: file=${fileName}, tempLen=${inspectFile.length()}")
+            if (!inspectFile.exists() || inspectFile.length() == 0L) {
+                Log.e("PackageInstaller", "inspectApk: inspectFile is empty or missing")
                 return null
             }
 
             val pm = context.packageManager
             var pkgInfo = try {
-                pm.getPackageArchiveInfo(tempInspect.absolutePath, PackageManager.GET_PERMISSIONS)
+                pm.getPackageArchiveInfo(inspectFile.absolutePath, PackageManager.GET_PERMISSIONS)
             } catch (e: Exception) { null }
             if (pkgInfo == null) {
                 pkgInfo = try {
-                    pm.getPackageArchiveInfo(tempInspect.absolutePath, 0)
+                    pm.getPackageArchiveInfo(inspectFile.absolutePath, 0)
                 } catch (e: Exception) { null }
             }
             if (pkgInfo == null) {
-                Log.e("PackageInstaller", "inspectApk: getPackageArchiveInfo returned null for ${tempInspect.absolutePath}")
+                Log.e("PackageInstaller", "inspectApk: getPackageArchiveInfo returned null for ${inspectFile.absolutePath}")
                 return null
             }
-            pkgInfo.applicationInfo?.sourceDir = tempInspect.absolutePath
-            pkgInfo.applicationInfo?.publicSourceDir = tempInspect.absolutePath
+            pkgInfo.applicationInfo?.sourceDir = inspectFile.absolutePath
+            pkgInfo.applicationInfo?.publicSourceDir = inspectFile.absolutePath
 
             val appName = try {
                 pkgInfo.applicationInfo?.loadLabel(pm)?.toString() ?: pkgInfo.packageName
@@ -381,9 +395,9 @@ object PackageInstallerManager {
             val targetSdkLabel = "API $targetSdk\n(${getAndroidCodename(targetSdk)})"
 
             val sizeBytes = try {
-                context.contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize } ?: tempInspect.length()
+                context.contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize } ?: inspectFile.length()
             } catch (e: Exception) {
-                tempInspect.length()
+                inspectFile.length()
             }
             val sizeFormatted = String.format(java.util.Locale.US, "%.1f MB", sizeBytes / (1024.0 * 1024.0))
 
@@ -419,7 +433,7 @@ object PackageInstallerManager {
             }
 
             // Max SDK extraction from AndroidManifest.xml
-            val maxSdk = extractMaxSdkVersion(tempInspect.absolutePath)
+            val maxSdk = extractMaxSdkVersion(inspectFile.absolutePath)
             val maxSdkLabel = if (maxSdk != null && maxSdk > 0) {
                 "API $maxSdk\n(${getAndroidCodename(maxSdk)})"
             } else {
@@ -435,7 +449,7 @@ object PackageInstallerManager {
             val detectedTrackers = if (packageName == context.packageName) {
                 emptyList()
             } else {
-                scanApkForTrackers(tempInspect)
+                scanApkForTrackers(inspectFile)
             }
 
             return ApkInspection(
@@ -466,7 +480,9 @@ object PackageInstallerManager {
             Log.e("PackageInstaller", "Error inspecting APK", e)
             return null
         } finally {
-            tempInspect.delete()
+            if (tempInspect.exists()) {
+                tempInspect.delete()
+            }
         }
     }
 
@@ -670,7 +686,8 @@ object PackageInstallerManager {
         ShellUtils.runAsRoot("rm -rf ${stagingDir.absolutePath} && mkdir -p ${stagingDir.absolutePath} && chmod 777 ${stagingDir.absolutePath}", 10000)
 
         val lowerName = fileName.lowercase()
-        val tempInput = File(context.cacheDir, "temp_installer_input")
+        val tempInput = File(context.cacheDir, "temp_installer_input_${System.currentTimeMillis()}")
+        var localExtractDir: File? = null
         var autoBackupPath: String? = null
 
         try {
@@ -788,8 +805,9 @@ object PackageInstallerManager {
             // 2. Split APKs / Bundles (.apks, .apkm, .xapk, .aab, .zip)
             onProgress("📦 Extracting bundle components (.apks / .xapk / .aab)...", 30)
             val extractDir = File(stagingDir, "extracted")
-            val localExtractDir = File(context.cacheDir, "bundle_extract_${System.currentTimeMillis()}")
-            localExtractDir.mkdirs()
+            val extractTarget = File(context.cacheDir, "bundle_extract_${System.currentTimeMillis()}")
+            localExtractDir = extractTarget
+            extractTarget.mkdirs()
 
             var bundlePkg: String? = null
             var bundleIncomingCode = incomingCode
@@ -1032,6 +1050,8 @@ object PackageInstallerManager {
             Log.e("PackageInstaller", "Install failed", e)
             return InstallResult(false, "Installation exception: ${e.message}", e.stackTraceToString())
         } finally {
+            try { if (tempInput.exists()) tempInput.delete() } catch (_: Exception) {}
+            try { localExtractDir?.deleteRecursively() } catch (_: Exception) {}
             ShellUtils.runAsRoot("rm -rf ${stagingDir.absolutePath}", 10000)
         }
     }
@@ -1122,7 +1142,7 @@ object PackageInstallerManager {
      */
     fun setDefaultInstallerEnabled(context: Context, enabled: Boolean) {
         val prefs = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
-        prefs.edit().putBoolean("default_installer_enabled", enabled).commit()
+        prefs.edit().putBoolean("default_installer_enabled", enabled).apply()
 
         try {
             val componentName = ComponentName(context, PackageInstallActivity::class.java)

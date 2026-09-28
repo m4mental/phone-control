@@ -1,11 +1,16 @@
 package com.example.phonecontrol
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.provider.Settings
+import android.view.HapticFeedbackConstants
 import android.view.View
 import android.widget.Button
 import android.widget.CheckBox
@@ -15,6 +20,7 @@ import android.widget.TextView
 import android.widget.Toast
 import android.content.res.ColorStateList
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.NotificationCompat
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
@@ -29,7 +35,19 @@ class PackageInstallActivity : AppCompatActivity() {
 
     private var currentUri: Uri? = null
     private var currentFileName: String = "package.apk"
+    private var currentAppName: String = "App"
     private var installSheetDialog: BottomSheetDialog? = null
+    private var currentInspection: PackageInstallerManager.ApkInspection? = null
+    @Volatile private var pendingConflictResult: PackageInstallerManager.InstallResult? = null
+
+    @Volatile private var isInstalling = false
+    @Volatile private var isBackgroundInstall = false
+
+    companion object {
+        private const val CHANNEL_ID_INSTALLER = "package_installer_channel"
+        private const val NOTIFICATION_ID_PROGRESS = 2001
+        private const val NOTIFICATION_ID_COMPLETE = 2002
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -58,6 +76,15 @@ class PackageInstallActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (intent.getBooleanExtra("extra_from_conflict", false)) {
+            val res = pendingConflictResult
+            val insp = currentInspection
+            val uri = currentUri
+            if (res != null && insp != null && uri != null) {
+                showConflictForceDialog(uri, currentFileName, insp, res, null)
+                return
+            }
+        }
         val uri = intent.data
             ?: @Suppress("DEPRECATION") intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
             ?: intent.clipData?.getItemAt(0)?.uri ?: return
@@ -120,7 +147,13 @@ class PackageInstallActivity : AppCompatActivity() {
         dialog.setContentView(dialogView)
         dialog.setCancelable(true)
         dialog.setOnDismissListener {
-            if (!isFinishing) finish()
+            if (isInstalling) {
+                if (!isBackgroundInstall) {
+                    moveToBackground(currentAppName)
+                }
+            } else if (!isFinishing) {
+                finish()
+            }
         }
         installSheetDialog = dialog
 
@@ -173,6 +206,7 @@ class PackageInstallActivity : AppCompatActivity() {
                             btnInstall.setOnClickListener {
                                 btnInstall.isEnabled = false
                                 btnInstall.text = "⚡ Installing with Root..."
+                                currentAppName = fileName.substringBeforeLast(".")
                                 val fallback = PackageInstallerManager.createFallbackInspection(fileName)
                                 executeInstallation(dialogView, uri, fileName, fallback, forceReinstall = false)
                             }
@@ -216,6 +250,7 @@ class PackageInstallActivity : AppCompatActivity() {
 
         tvAppName.text = inspection.appName
         tvPkg.text = inspection.packageName
+        currentAppName = inspection.appName.ifBlank { fileName.substringBeforeLast(".") }
         if (inspection.icon != null) {
             ivIcon.setImageDrawable(inspection.icon)
         }
@@ -333,10 +368,21 @@ class PackageInstallActivity : AppCompatActivity() {
         val pbProgress = dialogView.findViewById<ProgressBar>(R.id.pbInstallProgress)
         val tvProgressText = dialogView.findViewById<TextView>(R.id.tvInstallProgressText)
         val tvProgressPercent = dialogView.findViewById<TextView>(R.id.tvInstallProgressPercent)
+        val btnRunInBackground = dialogView.findViewById<View>(R.id.btnRunInBackground)
 
+        currentInspection = inspection
         layoutProgress?.visibility = View.VISIBLE
         btnInstall.isEnabled = false
         btnCancel.isEnabled = false
+
+        isInstalling = true
+        isBackgroundInstall = false
+
+        btnRunInBackground?.visibility = View.VISIBLE
+        btnRunInBackground?.setOnClickListener {
+            btnRunInBackground.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+            moveToBackground(currentAppName)
+        }
 
         val statusMsg = if (forceReinstall) "⚡ Auto-backing up previous app data & force reinstalling..." else "⚡ Executing root install..."
         tvInstallType.text = statusMsg
@@ -356,20 +402,41 @@ class PackageInstallActivity : AppCompatActivity() {
                     tvProgressPercent?.text = "$progressPercent%"
                     tvProgressText?.text = progressText
                     tvInstallType.text = progressText
+                    if (isBackgroundInstall) {
+                        updateProgressNotification(currentAppName, progressText, progressPercent)
+                    }
                 }
             }
 
             runOnUiThread {
-                if (isFinishing || isDestroyed) return@runOnUiThread
-                // Clear dismiss listener first so programmatic dismiss does NOT finish the activity
-                installSheetDialog?.setOnDismissListener(null)
-                installSheetDialog?.dismiss()
-                installSheetDialog = null
+                isInstalling = false
+                val currentDialog = installSheetDialog
 
-                if (result.success) {
-                    showPostInstallDialog(result.installedPackage ?: inspection.packageName, result.backupPath, fileName)
+                if (isBackgroundInstall) {
+                    showCompletionNotification(
+                        appName = currentAppName,
+                        packageName = result.installedPackage ?: inspection.packageName,
+                        success = result.success,
+                        failureTitle = result.failureTitle
+                    )
+                    if (result.success) {
+                        Toast.makeText(this@PackageInstallActivity, "✅ $currentAppName installed successfully!", Toast.LENGTH_LONG).show()
+                        finish()
+                    } else {
+                        Toast.makeText(this@PackageInstallActivity, "⚠️ $currentAppName install conflict: ${result.failureTitle}", Toast.LENGTH_LONG).show()
+                        isBackgroundInstall = false
+                        pendingConflictResult = result
+                        bringInstallerToFront()
+                        showConflictForceDialog(uri, fileName, inspection, result, null)
+                    }
                 } else {
-                    showConflictForceDialog(uri, fileName, inspection, result)
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+
+                    if (result.success) {
+                        showPostInstallDialog(result.installedPackage ?: inspection.packageName, result.backupPath, fileName, currentDialog)
+                    } else {
+                        showConflictForceDialog(uri, fileName, inspection, result, currentDialog)
+                    }
                 }
             }
         }
@@ -379,16 +446,34 @@ class PackageInstallActivity : AppCompatActivity() {
         uri: Uri,
         fileName: String,
         inspection: PackageInstallerManager.ApkInspection,
-        result: PackageInstallerManager.InstallResult
+        result: PackageInstallerManager.InstallResult,
+        existingDialog: BottomSheetDialog? = null
     ) {
         if (isFinishing || isDestroyed) return
 
         val dialogView = layoutInflater.inflate(R.layout.layout_dialog_conflict_force, null)
-        val dialog = BottomSheetDialog(this)
+        val dialog = existingDialog ?: BottomSheetDialog(this)
         dialog.setContentView(dialogView)
         dialog.setCancelable(true)
         dialog.setOnDismissListener {
-            if (!isFinishing) finish()
+            if (isInstalling) {
+                if (!isBackgroundInstall) {
+                    moveToBackground(currentAppName)
+                }
+            } else if (!isFinishing) {
+                finish()
+            }
+        }
+        installSheetDialog = dialog
+
+        dialogView.post {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    dialogView.performHapticFeedback(HapticFeedbackConstants.REJECT)
+                } else {
+                    dialogView.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                }
+            } catch (_: Exception) {}
         }
 
         val tvHeaderTitle = dialogView.findViewById<TextView>(R.id.tvConflictHeaderTitle)
@@ -429,6 +514,7 @@ class PackageInstallActivity : AppCompatActivity() {
 
         layoutBackupToggle?.setOnClickListener {
             val newChecked = !(cbAutoBackup?.isChecked ?: true)
+            layoutBackupToggle.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
             updateBackupUi(newChecked)
         }
 
@@ -449,11 +535,13 @@ class PackageInstallActivity : AppCompatActivity() {
         tvAppInfo.text = "Installed: $oldVer  ➔  Incoming: $newVer"
 
         btnCancel.setOnClickListener {
+            btnCancel.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
             dialog.dismiss()
             finish()
         }
 
         btnProceed.setOnClickListener {
+            btnProceed.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
             val shouldBackup = cbAutoBackup?.isChecked ?: true
             btnCancel.isEnabled = false
             btnProceed.isEnabled = false
@@ -463,6 +551,9 @@ class PackageInstallActivity : AppCompatActivity() {
                 if (shouldBackup) "⚡ Backing up & Force Installing..." else "⚡ Clean Force Installing..."
             }
 
+            isInstalling = true
+            isBackgroundInstall = false
+
             thread {
                 val forceResult = PackageInstallerManager.installPackage(
                     this,
@@ -470,40 +561,75 @@ class PackageInstallActivity : AppCompatActivity() {
                     fileName,
                     forceReinstall = true,
                     autoBackup = shouldBackup
-                ) { progressText ->
+                ) { progressText, progressPercent ->
                     runOnUiThread {
                         btnProceed.text = progressText
+                        if (isBackgroundInstall) {
+                            updateProgressNotification(currentAppName, progressText, progressPercent)
+                        }
                     }
                 }
 
                 runOnUiThread {
-                    if (isFinishing || isDestroyed) return@runOnUiThread
-                    dialog.setOnDismissListener(null)
-                    dialog.dismiss()
-
-                    if (forceResult.success) {
-                        showPostInstallDialog(forceResult.installedPackage ?: inspection.packageName, forceResult.backupPath, fileName)
+                    isInstalling = false
+                    if (isBackgroundInstall) {
+                        showCompletionNotification(
+                            appName = currentAppName,
+                            packageName = forceResult.installedPackage ?: inspection.packageName,
+                            success = forceResult.success,
+                            failureTitle = forceResult.failureTitle
+                        )
+                        if (forceResult.success) {
+                            Toast.makeText(this@PackageInstallActivity, "✅ $currentAppName force-installed successfully!", Toast.LENGTH_LONG).show()
+                            finish()
+                        } else {
+                            Toast.makeText(this@PackageInstallActivity, "❌ $currentAppName force install failed: ${forceResult.failureTitle}", Toast.LENGTH_LONG).show()
+                            isBackgroundInstall = false
+                            pendingConflictResult = forceResult
+                            bringInstallerToFront()
+                            showConflictForceDialog(uri, fileName, inspection, forceResult, null)
+                        }
                     } else {
-                        showConflictForceDialog(uri, fileName, inspection, forceResult)
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+
+                        if (forceResult.success) {
+                            showPostInstallDialog(forceResult.installedPackage ?: inspection.packageName, forceResult.backupPath, fileName, dialog)
+                        } else {
+                            showConflictForceDialog(uri, fileName, inspection, forceResult, dialog)
+                        }
                     }
                 }
             }
         }
 
-        dialog.show()
+        if (!dialog.isShowing) {
+            dialog.show()
+        }
     }
 
     private fun showPostInstallDialog(
         packageName: String?,
         backupPath: String?,
-        fileName: String
+        fileName: String,
+        existingDialog: BottomSheetDialog? = null
     ) {
         val dialogView = layoutInflater.inflate(R.layout.layout_dialog_post_install, null)
-        val dialog = BottomSheetDialog(this)
+        val dialog = existingDialog ?: BottomSheetDialog(this)
         dialog.setContentView(dialogView)
         dialog.setCancelable(true)
         dialog.setOnDismissListener {
             if (!isFinishing) finish()
+        }
+        installSheetDialog = dialog
+
+        dialogView.post {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    dialogView.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                } else {
+                    dialogView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                }
+            } catch (_: Exception) {}
         }
 
         val ivIcon = dialogView.findViewById<ImageView>(R.id.ivPostIcon)
@@ -629,6 +755,121 @@ class PackageInstallActivity : AppCompatActivity() {
                 ShellUtils.runAsRoot("am start --user 0 -n $activityLine")
             } else {
                 ShellUtils.runAsRoot("am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER --user 0 $pkg")
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun moveToBackground(appName: String) {
+        if (!isInstalling || isBackgroundInstall) return
+        isBackgroundInstall = true
+        ensureNotificationChannel()
+        Toast.makeText(this, "📥 Installing $appName in background...", Toast.LENGTH_SHORT).show()
+        updateProgressNotification(appName, "⚡ Installing with Root...", 0)
+        try {
+            installSheetDialog?.dismiss()
+        } catch (_: Exception) {}
+        moveTaskToBack(true)
+    }
+
+    private fun bringInstallerToFront() {
+        try {
+            val reopenIntent = Intent(this, PackageInstallActivity::class.java).apply {
+                data = currentUri
+                putExtra("extra_from_conflict", true)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+            startActivity(reopenIntent)
+        } catch (_: Exception) {}
+        // Guaranteed root launch into foreground over any active app
+        ShellUtils.fastCmd("am start -n com.example.phonecontrol/.PackageInstallActivity --activity-reorder-to-front")
+    }
+
+    private fun ensureNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                CHANNEL_ID_INSTALLER,
+                "Package Installer",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Shows progress and completion status for background app installations"
+                setShowBadge(false)
+            }
+            val nm = getSystemService(NotificationManager::class.java)
+            nm?.createNotificationChannel(channel)
+        }
+    }
+
+    private fun updateProgressNotification(appName: String, progressText: String, progressPercent: Int) {
+        try {
+            ensureNotificationChannel()
+            val nm = getSystemService(NotificationManager::class.java) ?: return
+            val builder = NotificationCompat.Builder(this, CHANNEL_ID_INSTALLER)
+                .setSmallIcon(R.drawable.ic_sub_installer)
+                .setContentTitle("Installing $appName")
+                .setContentText(progressText)
+                .setProgress(100, progressPercent, progressPercent <= 0)
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+            nm.notify(NOTIFICATION_ID_PROGRESS, builder.build())
+        } catch (_: Exception) {}
+    }
+
+    private fun showCompletionNotification(
+        appName: String,
+        packageName: String,
+        success: Boolean,
+        failureTitle: String? = null
+    ) {
+        try {
+            ensureNotificationChannel()
+            val nm = getSystemService(NotificationManager::class.java) ?: return
+            nm.cancel(NOTIFICATION_ID_PROGRESS)
+
+            if (success) {
+                val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+                val pendingIntent = if (launchIntent != null) {
+                    PendingIntent.getActivity(
+                        this,
+                        0,
+                        launchIntent,
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                    )
+                } else null
+
+                val builder = NotificationCompat.Builder(this, CHANNEL_ID_INSTALLER)
+                    .setSmallIcon(R.drawable.ic_sub_installer)
+                    .setContentTitle("✅ $appName Installed")
+                    .setContentText("Tap to launch application")
+                    .setAutoCancel(true)
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+
+                if (pendingIntent != null) {
+                    builder.setContentIntent(pendingIntent)
+                    builder.addAction(android.R.drawable.ic_menu_send, "Open", pendingIntent)
+                }
+                nm.notify(NOTIFICATION_ID_COMPLETE, builder.build())
+            } else {
+                val reopenIntent = Intent(this, PackageInstallActivity::class.java).apply {
+                    data = currentUri
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                }
+                val pendingIntent = PendingIntent.getActivity(
+                    this,
+                    0,
+                    reopenIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+
+                val builder = NotificationCompat.Builder(this, CHANNEL_ID_INSTALLER)
+                    .setSmallIcon(R.drawable.ic_sub_installer)
+                    .setContentTitle("⚠️ $appName Install Conflict")
+                    .setContentText(failureTitle ?: "Tap to resolve and force install")
+                    .setAutoCancel(true)
+                    .setContentIntent(pendingIntent)
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+
+                nm.notify(NOTIFICATION_ID_COMPLETE, builder.build())
             }
         } catch (_: Exception) {}
     }

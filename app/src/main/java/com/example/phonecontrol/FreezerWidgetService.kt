@@ -24,7 +24,7 @@ class FreezerRemoteViewsFactory(private val context: Context) : RemoteViewsServi
     override fun onCreate() {}
 
     override fun onDataSetChanged() {
-        val set = FreezerManager.getFrozenApps(context)
+        val set = FreezerManager.getFrozenApps(context) + FreezerManager.getSpecialFreezeApps(context)
         frozenAppsList.clear()
         frozenAppsList.addAll(set.sorted())
     }
@@ -80,10 +80,10 @@ class FreezerRemoteViewsFactory(private val context: Context) : RemoteViewsServi
     }
 
     private fun drawableToBitmap(drawable: Drawable, applyMonochrome: Boolean): Bitmap {
-        val width = drawable.intrinsicWidth.coerceAtLeast(100)
-        val height = drawable.intrinsicHeight.coerceAtLeast(100)
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val size = 108 // Fixed optimal size for 48dp widget icon, lightweight (<46KB) and prevents TransactionTooLargeException
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
+        drawable.setBounds(0, 0, size, size)
         
         if (applyMonochrome) {
             val paint = Paint()
@@ -99,12 +99,10 @@ class FreezerRemoteViewsFactory(private val context: Context) : RemoteViewsServi
             ))
             matrix.postConcat(cm)
             paint.colorFilter = ColorMatrixColorFilter(matrix)
-            drawable.setBounds(0, 0, canvas.width, canvas.height)
             canvas.saveLayer(null, paint)
             drawable.draw(canvas)
             canvas.restore()
         } else {
-            drawable.setBounds(0, 0, canvas.width, canvas.height)
             drawable.draw(canvas)
         }
         return bitmap

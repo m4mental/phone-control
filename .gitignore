@@ -16,3 +16,4 @@ local.properties
 *.jks
 *.keystore
 /keystore/
+.vscode/
