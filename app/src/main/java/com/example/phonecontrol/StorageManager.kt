@@ -132,6 +132,7 @@ object StorageManager {
             if (res.exitCode == 0) {
                 freedBytes += item.sizeBytes
             }
+            ShellUtils.runAsRoot("pm uninstall --all-users ${item.packageName} 2>/dev/null", 10000)
         }
         ShellUtils.runAsRoot("sync", 10000)
         return freedBytes

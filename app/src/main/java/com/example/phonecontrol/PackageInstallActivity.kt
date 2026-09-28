@@ -311,8 +311,13 @@ class PackageInstallActivity : AppCompatActivity() {
             }
         } else {
             tvInstalledVer.text = "Not Installed"
-            tvInstallType.text = "✨ Fresh App Installation"
-            tvInstallType.setTextColor(Color.parseColor("#00E676"))
+            if (inspection.isGhostPackage) {
+                tvInstallType.text = "👻 Ghost Package in System Cache (Auto Clean & Install)"
+                tvInstallType.setTextColor(Color.parseColor("#FFD54F"))
+            } else {
+                tvInstallType.text = "✨ Fresh App Installation"
+                tvInstallType.setTextColor(Color.parseColor("#00E676"))
+            }
         }
 
         tvSize.text = inspection.fileSizeFormatted
@@ -345,11 +350,12 @@ class PackageInstallActivity : AppCompatActivity() {
         }
 
         btnInstall.isEnabled = true
-        btnInstall.text = "⚡ Install with Root"
+        btnInstall.text = if (inspection.isGhostPackage) "👻 Clean & Install with Root" else "⚡ Install with Root"
         btnInstall.setOnClickListener {
             btnInstall.isEnabled = false
             btnInstall.text = "⚡ Installing with Root..."
-            executeInstallation(dialogView, uri, fileName, inspection, forceReinstall = false, selectedSplits = selectedSplits)
+            val force = inspection.isGhostPackage
+            executeInstallation(dialogView, uri, fileName, inspection, forceReinstall = force, selectedSplits = selectedSplits)
         }
     }
 

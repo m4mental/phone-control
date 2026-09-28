@@ -25,7 +25,9 @@ class AppUninstallReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent?) {
         val action = intent?.action ?: return
-        if (action != Intent.ACTION_PACKAGE_FULLY_REMOVED) return
+        val isReplacing = intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)
+        if (isReplacing) return
+        if (action != Intent.ACTION_PACKAGE_FULLY_REMOVED && action != Intent.ACTION_PACKAGE_REMOVED) return
 
         val pkgName = intent.data?.schemeSpecificPart ?: return
         if (pkgName.isBlank() || pkgName == context.packageName) return

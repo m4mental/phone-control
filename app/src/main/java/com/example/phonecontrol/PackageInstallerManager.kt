@@ -47,7 +47,8 @@ object PackageInstallerManager {
         val trackers: List<String>,
         val isInstalled: Boolean,
         val isDowngrade: Boolean,
-        val isSameVersion: Boolean
+        val isSameVersion: Boolean,
+        val isGhostPackage: Boolean = false
     )
 
     fun createFallbackInspection(fileName: String): ApkInspection {
@@ -74,7 +75,8 @@ object PackageInstallerManager {
             trackers = emptyList(),
             isInstalled = false,
             isDowngrade = false,
-            isSameVersion = false
+            isSameVersion = false,
+            isGhostPackage = false
         )
     }
 
@@ -409,6 +411,14 @@ object PackageInstallerManager {
             }
 
             val isInstalled = installedPkgInfo != null
+            val isGhostPackage = if (!isInstalled) {
+                try {
+                    val res = ShellUtils.runAsRoot("pm list packages -u $packageName 2>/dev/null", 3000).output
+                    res.lines().any { it.trim() == "package:$packageName" }
+                } catch (e: Exception) {
+                    false
+                }
+            } else false
             val installedVersionName = installedPkgInfo?.versionName
             val installedVersionCode = if (installedPkgInfo != null) {
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
@@ -474,7 +484,8 @@ object PackageInstallerManager {
                 trackers = detectedTrackers,
                 isInstalled = isInstalled,
                 isDowngrade = isDowngrade,
-                isSameVersion = isSameVersion
+                isSameVersion = isSameVersion,
+                isGhostPackage = isGhostPackage
             )
         } catch (e: Exception) {
             Log.e("PackageInstaller", "Error inspecting APK", e)
@@ -754,12 +765,26 @@ object PackageInstallerManager {
                     isDupPermConflict
                 val isDowngrade = result.output.contains("INSTALL_FAILED_VERSION_DOWNGRADE", ignoreCase = true) || (isSigConflict && isVersionLower)
 
-                if (isSigConflict || isDowngrade) {
-                    val effectiveTarget = targetPkg ?: conflictPkg
+                val effectiveTarget = targetPkg ?: conflictPkg
+
+                // ⚡ Auto-healing for Ghost Packages (Uninstalled on active user, but leftover record in other profile/system cache causes signature conflict)
+                if (isSigConflict && installedPkgInfo == null && !effectiveTarget.isNullOrBlank()) {
+                    onProgress("🧹 Ghost signature conflict detected from system cache. Purging leftover across all users...", 70)
+                    ShellUtils.runAsRoot("pm uninstall --all-users $effectiveTarget 2>/dev/null; pm clear $effectiveTarget 2>/dev/null", 30000)
+                    onProgress("🔄 Cleanly re-installing requested package...", 85)
+                    result = ShellUtils.runAsRoot(cmd, 60000)
+                }
+
+                val isStillSigConflict = result.output.contains("INSTALL_FAILED_UPDATE_INCOMPATIBLE", ignoreCase = true) ||
+                    result.output.contains("INSTALL_FAILED_SHARED_USER_INCOMPATIBLE", ignoreCase = true) ||
+                    result.output.contains("INSTALL_FAILED_DUPLICATE_PERMISSION", ignoreCase = true)
+                val isStillDowngrade = result.output.contains("INSTALL_FAILED_VERSION_DOWNGRADE", ignoreCase = true) || (isStillSigConflict && isVersionLower)
+
+                if (isStillSigConflict || isStillDowngrade) {
                     if (forceReinstall && (!effectiveTarget.isNullOrBlank() || !conflictPkg.isNullOrBlank())) {
-                        val reason = if (isDupPermConflict) "duplicate permission conflict (owned by $conflictPkg)" else if (isSigConflict && isDowngrade) "signature conflict & downgrade" else if (isDowngrade) "downgrade" else "signature conflict"
+                        val reason = if (isDupPermConflict) "duplicate permission conflict (owned by $conflictPkg)" else if (isStillSigConflict && isStillDowngrade) "signature conflict & downgrade" else if (isStillDowngrade) "downgrade" else "signature conflict"
                         
-                        if (autoBackup && !effectiveTarget.isNullOrBlank()) {
+                        if (autoBackup && !effectiveTarget.isNullOrBlank() && installedPkgInfo != null) {
                             onProgress("🛡️ Auto-backing up app data before clean reinstall...", 70)
                             autoBackupPath = backupAppData(effectiveTarget)
                             if (autoBackupPath != null) {
@@ -773,12 +798,12 @@ object PackageInstallerManager {
 
                         if (isDupPermConflict && !conflictPkg.isNullOrBlank()) {
                             onProgress("⚠️ Auto-uninstalling conflicting package ($conflictPkg)...", 78)
-                            ShellUtils.runAsRoot("pm uninstall $conflictPkg", 30000)
+                            ShellUtils.runAsRoot("pm uninstall --all-users $conflictPkg 2>/dev/null", 30000)
                         }
 
                         if (!effectiveTarget.isNullOrBlank() && effectiveTarget != conflictPkg) {
                             onProgress("⚠️ Auto-uninstalling previous build ($effectiveTarget) for $reason...", 80)
-                            ShellUtils.runAsRoot("pm uninstall $effectiveTarget", 30000)
+                            ShellUtils.runAsRoot("pm uninstall --all-users $effectiveTarget 2>/dev/null", 30000)
                         }
                         onProgress("🔄 Cleanly re-installing requested package...", 85)
                         result = ShellUtils.runAsRoot(cmd, 60000)
@@ -788,8 +813,8 @@ object PackageInstallerManager {
                             success = false,
                             message = "${diag.title}: ${diag.explanation}",
                             rawOutput = result.output,
-                            isSignatureConflict = isSigConflict,
-                            isDowngradeConflict = isDowngrade,
+                            isSignatureConflict = isStillSigConflict,
+                            isDowngradeConflict = isStillDowngrade,
                             conflictPackage = if (isDupPermConflict && !conflictPkg.isNullOrBlank()) conflictPkg else effectiveTarget,
                             installedPackage = effectiveTarget,
                             failureTitle = diag.title,
@@ -900,11 +925,23 @@ object PackageInstallerManager {
                     result.output.contains("INSTALL_FAILED_SHARED_USER_INCOMPATIBLE", ignoreCase = true)
                 val isDowngrade = result.output.contains("INSTALL_FAILED_VERSION_DOWNGRADE", ignoreCase = true) || (isSigConflict && isVersionLower)
 
-                if (isSigConflict || isDowngrade) {
+                // ⚡ Auto-healing for Ghost Packages
+                if (isSigConflict && installedPkgInfo == null && singlePkg != "existing package") {
+                    onProgress("🧹 Ghost signature conflict detected. Purging leftover across all users...", 75)
+                    ShellUtils.runAsRoot("pm uninstall --all-users $singlePkg 2>/dev/null; pm clear $singlePkg 2>/dev/null", 30000)
+                    onProgress("🔄 Cleanly re-installing package...", 85)
+                    result = ShellUtils.runAsRoot(cmd, 60000)
+                }
+
+                val isStillSigConflict = result.output.contains("INSTALL_FAILED_UPDATE_INCOMPATIBLE", ignoreCase = true) ||
+                    result.output.contains("INSTALL_FAILED_SHARED_USER_INCOMPATIBLE", ignoreCase = true)
+                val isStillDowngrade = result.output.contains("INSTALL_FAILED_VERSION_DOWNGRADE", ignoreCase = true) || (isStillSigConflict && isVersionLower)
+
+                if (isStillSigConflict || isStillDowngrade) {
                     if (forceReinstall && singlePkg != "existing package") {
-                        val reason = if (isSigConflict && isDowngrade) "signature conflict & downgrade" else if (isDowngrade) "downgrade" else "signature conflict"
+                        val reason = if (isStillSigConflict && isStillDowngrade) "signature conflict & downgrade" else if (isStillDowngrade) "downgrade" else "signature conflict"
                         
-                        if (autoBackup) {
+                        if (autoBackup && installedPkgInfo != null) {
                             onProgress("🛡️ Auto-backing up app data before clean reinstall...", 75)
                             autoBackupPath = backupAppData(singlePkg)
                             if (autoBackupPath != null) {
@@ -915,7 +952,7 @@ object PackageInstallerManager {
                         }
 
                         onProgress("⚠️ Auto-uninstalling previous build ($singlePkg) for $reason...", 85)
-                        ShellUtils.runAsRoot("pm uninstall $singlePkg", 30000)
+                        ShellUtils.runAsRoot("pm uninstall --all-users $singlePkg 2>/dev/null", 30000)
                         onProgress("🔄 Cleanly re-installing package...", 90)
                         result = ShellUtils.runAsRoot(cmd, 60000)
                     } else {
@@ -924,8 +961,8 @@ object PackageInstallerManager {
                             success = false,
                             message = "${diag.title}: ${diag.explanation}",
                             rawOutput = result.output,
-                            isSignatureConflict = isSigConflict,
-                            isDowngradeConflict = isDowngrade,
+                            isSignatureConflict = isStillSigConflict,
+                            isDowngradeConflict = isStillDowngrade,
                             conflictPackage = if (singlePkg != "existing package") singlePkg else detectedPkg,
                             installedPackage = if (singlePkg != "existing package") singlePkg else detectedPkg,
                             failureTitle = diag.title,
@@ -987,56 +1024,64 @@ object PackageInstallerManager {
                 isSplitDupPermConflict
             val isSplitDowngrade = commitResult.output.contains("INSTALL_FAILED_VERSION_DOWNGRADE", ignoreCase = true) || (isSplitSigConflict && isVersionLower)
 
-            if (isSplitSigConflict || isSplitDowngrade) {
-                if (forceReinstall && (!splitPkg.isNullOrBlank() || !splitConflictPkg.isNullOrBlank())) {
-                    val reason = if (isSplitDupPermConflict) "duplicate permission conflict (owned by $splitConflictPkg)" else if (isSplitSigConflict && isSplitDowngrade) "signature conflict & downgrade" else if (isSplitDowngrade) "downgrade" else "signature conflict"
-                    val targetToBackup = splitPkg ?: splitConflictPkg
-                    
-                    if (autoBackup && !targetToBackup.isNullOrBlank()) {
-                        onProgress("🛡️ Auto-backing up app data before clean reinstall...", 93)
-                        autoBackupPath = backupAppData(targetToBackup)
-                        if (autoBackupPath != null) {
-                            onProgress("✅ App data safely backed up: $autoBackupPath", 94)
-                        }
-                    } else {
-                        onProgress("⚡ Skipping backup (Clean install requested)...", 94)
-                    }
+            val splitTarget = splitPkg ?: splitConflictPkg
 
-                    if (isSplitDupPermConflict && !splitConflictPkg.isNullOrBlank()) {
-                        onProgress("⚠️ Auto-uninstalling conflicting package ($splitConflictPkg)...", 94)
-                        ShellUtils.runAsRoot("pm uninstall $splitConflictPkg", 30000)
-                    }
+            // ⚡ Auto-healing for ghost packages in split sessions
+            var retryNeeded = false
+            if (isSplitSigConflict && installedPkgInfo == null && !splitTarget.isNullOrBlank()) {
+                onProgress("🧹 Ghost signature conflict detected in split install. Purging leftover across all users...", 90)
+                ShellUtils.runAsRoot("pm uninstall --all-users $splitTarget 2>/dev/null; pm clear $splitTarget 2>/dev/null", 30000)
+                retryNeeded = true
+            }
 
-                    if (!splitPkg.isNullOrBlank() && splitPkg != splitConflictPkg) {
-                        onProgress("⚠️ Auto-uninstalling previous build ($splitPkg) for $reason...", 95)
-                        ShellUtils.runAsRoot("pm uninstall $splitPkg", 30000)
-                    }
-                    onProgress("🔄 Re-creating session for clean installation...", 96)
-                    val retrySession = ShellUtils.runAsRoot("pm install-create -r -d --bypass-low-target-sdk-block --user 0", 20000).output.trim()
-                    val retrySessionId = sessionRegex.find(retrySession)?.groupValues?.get(1)
-                    if (retrySessionId != null) {
-                        for ((index, apkPath) in apkFiles.withIndex()) {
-                            val sFile = File(apkPath)
-                            val sName = "split_${index}_" + sFile.name.replace(Regex("[^a-zA-Z0-9._-]"), "_")
-                            val sSize = ShellUtils.runAsRoot("stat -c%s '$apkPath' 2>/dev/null || wc -c < '$apkPath'", 10000).output.trim().toLongOrNull() ?: sFile.length()
-                            ShellUtils.runAsRoot("pm install-write -S $sSize $retrySessionId '$sName' '$apkPath'", 60000)
-                        }
-                        commitResult = ShellUtils.runAsRoot("pm install-commit $retrySessionId", 60000)
+            if ((forceReinstall || retryNeeded) && (!splitPkg.isNullOrBlank() || !splitConflictPkg.isNullOrBlank())) {
+                val reason = if (retryNeeded) "purging leftover ghost package" else if (isSplitDupPermConflict) "duplicate permission conflict (owned by $splitConflictPkg)" else if (isSplitSigConflict && isSplitDowngrade) "signature conflict & downgrade" else if (isSplitDowngrade) "downgrade" else "signature conflict"
+                val targetToBackup = splitPkg ?: splitConflictPkg
+                
+                if (!retryNeeded && autoBackup && !targetToBackup.isNullOrBlank() && installedPkgInfo != null) {
+                    onProgress("🛡️ Auto-backing up app data before clean reinstall...", 93)
+                    autoBackupPath = backupAppData(targetToBackup)
+                    if (autoBackupPath != null) {
+                        onProgress("✅ App data safely backed up: $autoBackupPath", 94)
                     }
                 } else {
-                    val diag = diagnoseStoppage(commitResult.output, bundleIncomingCode, currentCode)
-                    return InstallResult(
-                        success = false,
-                        message = "${diag.title}: ${diag.explanation}",
-                        rawOutput = commitResult.output,
-                        isSignatureConflict = isSplitSigConflict,
-                        isDowngradeConflict = isSplitDowngrade,
-                        conflictPackage = if (isSplitDupPermConflict && !splitConflictPkg.isNullOrBlank()) splitConflictPkg else splitPkg,
-                        installedPackage = splitPkg,
-                        failureTitle = diag.title,
-                        failureExplanation = diag.explanation
-                    )
+                    onProgress("⚡ Skipping backup (Clean install requested)...", 94)
                 }
+
+                if (isSplitDupPermConflict && !splitConflictPkg.isNullOrBlank()) {
+                    onProgress("⚠️ Auto-uninstalling conflicting package ($splitConflictPkg)...", 94)
+                    ShellUtils.runAsRoot("pm uninstall --all-users $splitConflictPkg 2>/dev/null", 30000)
+                }
+
+                if (!splitPkg.isNullOrBlank() && splitPkg != splitConflictPkg) {
+                    onProgress("⚠️ Auto-uninstalling previous build ($splitPkg) for $reason...", 95)
+                    ShellUtils.runAsRoot("pm uninstall --all-users $splitPkg 2>/dev/null", 30000)
+                }
+                onProgress("🔄 Re-creating session for clean installation...", 96)
+                val retrySession = ShellUtils.runAsRoot("pm install-create -r -d --bypass-low-target-sdk-block --user 0", 20000).output.trim()
+                val retrySessionId = sessionRegex.find(retrySession)?.groupValues?.get(1)
+                if (retrySessionId != null) {
+                    for ((index, apkPath) in apkFiles.withIndex()) {
+                        val sFile = File(apkPath)
+                        val sName = "split_${index}_" + sFile.name.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+                        val sSize = ShellUtils.runAsRoot("stat -c%s '$apkPath' 2>/dev/null || wc -c < '$apkPath'", 10000).output.trim().toLongOrNull() ?: sFile.length()
+                        ShellUtils.runAsRoot("pm install-write -S $sSize $retrySessionId '$sName' '$apkPath'", 60000)
+                    }
+                    commitResult = ShellUtils.runAsRoot("pm install-commit $retrySessionId", 60000)
+                }
+            } else if (isSplitSigConflict || isSplitDowngrade) {
+                val diag = diagnoseStoppage(commitResult.output, bundleIncomingCode, currentCode)
+                return InstallResult(
+                    success = false,
+                    message = "${diag.title}: ${diag.explanation}",
+                    rawOutput = commitResult.output,
+                    isSignatureConflict = isSplitSigConflict,
+                    isDowngradeConflict = isSplitDowngrade,
+                    conflictPackage = if (isSplitDupPermConflict && !splitConflictPkg.isNullOrBlank()) splitConflictPkg else splitPkg,
+                    installedPackage = splitPkg,
+                    failureTitle = diag.title,
+                    failureExplanation = diag.explanation
+                )
             }
 
             val finalSplitPkg = splitPkg ?: detectedPkg

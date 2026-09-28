@@ -641,13 +641,13 @@ class AdbShellActivity : AppCompatActivity() {
     private fun showDeleteAppDialog() {
         val et = EditText(this).apply { hint = "com.package.name" }
         AlertDialog.Builder(this)
-            .setTitle("Force Delete (Uninstall)")
-            .setMessage("WARNING: This will uninstall the app for the current user!")
+            .setTitle("Force Delete (Deep Purge)")
+            .setMessage("WARNING: This will completely uninstall the app for ALL users and wipe all system signature/ghost records!")
             .setView(et)
             .setPositiveButton("DELETE") { _, _ ->
                 val pkg = et.text.toString().trim()
                 if (pkg.isNotEmpty()) {
-                    executeCommand("pm uninstall -k --user 0 $pkg")
+                    executeCommand("pm uninstall --all-users $pkg")
                 }
             }
             .setNegativeButton("Cancel", null)
