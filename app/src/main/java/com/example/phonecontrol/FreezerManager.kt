@@ -88,14 +88,13 @@ object FreezerManager {
                 fi
                 if [ "${'$'}is_safe" -eq 0 ]; then
                     am force-stop "$packageName" 2>/dev/null
-                    pm suspend "$packageName" 2>/dev/null
                 fi
             """.trimIndent()
             ShellUtils.fastCmd(specialScript)
             return
         }
 
-        // Standard Freeze: Restrict standby bucket, block background execution, and freeze cgroup / am freeze
+        // Standard Freeze: Restrict standby bucket, block background execution, and cleanly stop background processes (0ms ANRs)
         val forceFlag = if (force) 1 else 0
         val script = """
             am set-standby-bucket "$packageName" restricted 2>/dev/null
@@ -113,12 +112,7 @@ object FreezerManager {
                 done
             fi
             if [ "${'$'}is_safe" -eq 0 ]; then
-                am freeze "$packageName" 2>/dev/null
-                if [ -n "${'$'}pids" ]; then
-                    for p in ${'$'}pids; do
-                        echo 900 > /proc/${'$'}p/oom_score_adj 2>/dev/null
-                    done
-                fi
+                am stop-app "$packageName" 2>/dev/null || am kill "$packageName" 2>/dev/null
             fi
         """.trimIndent()
         ShellUtils.fastCmd(script)
@@ -226,15 +220,14 @@ object FreezerManager {
     }
 
     /**
-     * One-time background sweep to clean up any legacy pm suspend state from previous builds.
-     * Only unsuspends standard hibernation apps, strictly preserving special freeze suspended apps.
+     * Sweep to clean up any legacy pm suspend and sticky am freeze states from all freezer apps.
      */
     fun cleanLegacySuspendedApps(context: Context) {
-        val standardApps = getFrozenApps(context) - getSpecialFreezeApps(context)
-        if (standardApps.isEmpty()) return
-        val pkgList = standardApps.joinToString(" ")
+        val allApps = getFrozenApps(context) + getSpecialFreezeApps(context)
+        if (allApps.isEmpty()) return
+        val pkgList = allApps.joinToString(" ")
         freezerExecutor.execute {
-            ShellUtils.fastCmd("for p in $pkgList; do pm unsuspend ${'$'}p 2>/dev/null; done")
+            ShellUtils.fastCmd("for p in $pkgList; do cmd package unsuspend --user 0 ${'$'}p 2>/dev/null; pm unsuspend ${'$'}p 2>/dev/null; am unfreeze ${'$'}p 2>/dev/null; done")
         }
     }
 
@@ -317,6 +310,7 @@ object FreezerManager {
     fun unfreezeApp(packageName: String) {
         if (packageName.isBlank()) return
         val script = """
+            cmd package unsuspend --user 0 "$packageName" 2>/dev/null
             pm unsuspend "$packageName" 2>/dev/null
             pm enable "$packageName" 2>/dev/null
             am unfreeze "$packageName" 2>/dev/null
@@ -341,6 +335,7 @@ object FreezerManager {
         val pkgList = packages.joinToString(" ")
         val script = """
             for pkg in $pkgList; do
+                cmd package unsuspend --user 0 "${'$'}pkg" 2>/dev/null
                 pm unsuspend "${'$'}pkg" 2>/dev/null
                 pm enable "${'$'}pkg" 2>/dev/null
                 am unfreeze "${'$'}pkg" 2>/dev/null
@@ -501,6 +496,7 @@ object FreezerManager {
         // 3. Atomically unsuspend, enable, unfreeze, and launch in root shell asynchronously with 0ms UI delay
         // Sequential shell execution guarantees pm unsuspend finishes BEFORE am start, preventing SuspendedAppActivity
         val launchScript = """
+            cmd package unsuspend --user 0 "$packageName" 2>/dev/null
             pm unsuspend "$packageName" 2>/dev/null
             pm enable "$packageName" 2>/dev/null
             am unfreeze "$packageName" 2>/dev/null
@@ -671,11 +667,8 @@ object FreezerManager {
     fun instantFreezeEqualizer(packageName: String) {
         if (packageName.isBlank()) return
         val script = """
-            am freeze "$packageName" 2>/dev/null
             am set-standby-bucket "$packageName" restricted 2>/dev/null
-            for p in $(pidof "$packageName"); do
-                echo 900 > /proc/${'$'}p/oom_score_adj 2>/dev/null
-            done
+            am stop-app "$packageName" 2>/dev/null || am kill "$packageName" 2>/dev/null
         """.trimIndent()
         ShellUtils.fastCmd(script)
     }

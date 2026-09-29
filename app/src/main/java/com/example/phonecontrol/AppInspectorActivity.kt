@@ -269,7 +269,7 @@ class AppInspectorActivity : AppCompatActivity() {
         thread {
             if (item.isDisabledOrFrozen) {
                 // Enable & Unfreeze & Unhide
-                val cmd = "pm default-state --user 0 ${item.packageName} 2>/dev/null; pm unhide ${item.packageName} 2>/dev/null; pm enable ${item.packageName} 2>/dev/null; pm unsuspend ${item.packageName} 2>/dev/null; am unfreeze ${item.packageName} 2>/dev/null; am set-standby-bucket ${item.packageName} active 2>/dev/null"
+                val cmd = "pm default-state --user 0 ${item.packageName} 2>/dev/null; pm unhide ${item.packageName} 2>/dev/null; pm enable ${item.packageName} 2>/dev/null; cmd package unsuspend --user 0 ${item.packageName} 2>/dev/null; pm unsuspend ${item.packageName} 2>/dev/null; am unfreeze ${item.packageName} 2>/dev/null; am set-standby-bucket ${item.packageName} active 2>/dev/null"
                 ShellUtils.runAsRoot(cmd)
                 FreezerManager.unfreezeApp(item.packageName)
                 runOnUiThread {
@@ -278,7 +278,7 @@ class AppInspectorActivity : AppCompatActivity() {
                 }
             } else {
                 // Disable & Freeze & Hide
-                val cmd = "am force-stop ${item.packageName}; pm disable-user --user 0 ${item.packageName} 2>/dev/null; pm hide ${item.packageName} 2>/dev/null; am freeze ${item.packageName} 2>/dev/null"
+                val cmd = "am force-stop ${item.packageName}; pm disable-user --user 0 ${item.packageName} 2>/dev/null; pm hide ${item.packageName} 2>/dev/null"
                 ShellUtils.runAsRoot(cmd)
                 FreezerManager.freezeApp(this, item.packageName, force = true)
                 runOnUiThread {

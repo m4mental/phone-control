@@ -312,7 +312,7 @@ class AppFreezerListActivity : AppCompatActivity() {
                             if (newVal) {
                                 FreezerManager.freezeApp(this, pkg, force = true)
                             } else {
-                                ShellUtils.fastCmd("pm unsuspend $pkg 2>/dev/null")
+                                ShellUtils.fastCmd("cmd package unsuspend --user 0 $pkg 2>/dev/null; pm unsuspend $pkg 2>/dev/null")
                                 FreezerManager.freezeApp(this, pkg, force = true)
                             }
                             runOnUiThread {
