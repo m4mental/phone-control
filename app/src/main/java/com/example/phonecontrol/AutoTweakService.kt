@@ -662,11 +662,14 @@ class AutoTweakService : Service() {
                 TweakManager.setSilentSystem(true)
             }
 
-            if (prefs.getString("selected_mode", "rbBalance") == "rbAutomatic" && !isPerAppActive && activePerAppMergedConfig == null) {
-                val focus = prefs.getString("selected_focus", "rbFocusDaily") ?: "rbFocusDaily"
-                val targetPkg = if (lastForegroundApp.isNotBlank()) lastForegroundApp else packageName
-                val load = calculateAppAiLoad(targetPkg)
-                applyAiTweak(load, focus) 
+            val isAutomatic = prefs.getString("selected_mode", "rbBalance") == "rbAutomatic"
+            if (isAutomatic) {
+                if (!isPerAppActive && activePerAppMergedConfig == null) {
+                    val focus = prefs.getString("selected_focus", "rbFocusDaily") ?: "rbFocusDaily"
+                    val targetPkg = if (lastForegroundApp.isNotBlank()) lastForegroundApp else packageName
+                    val load = calculateAppAiLoad(targetPkg)
+                    applyAiTweak(load, focus) 
+                }
                 aiTickerHandler?.post { startAiTicker() }
             } else {
                 prefs.edit().remove("active_ai_label").apply()
@@ -1121,6 +1124,7 @@ class AutoTweakService : Service() {
                         val focus = prefs.getString("selected_focus", "rbFocusDaily") ?: "rbFocusDaily"
                         val load = calculateAppAiLoad(foregroundPkg)
                         applyAiTweak(load, focus)
+                        aiTickerHandler?.post { startAiTicker() }
                     }
                     else -> if (wasPerApp) TweakManager.applyGlobalMode("Balance")
                 }
