@@ -612,9 +612,10 @@ class AutoTweakService : Service() {
             }
             recentsFreezeRunnable?.let { equalizerFreezeHandler?.removeCallbacks(it) }
             recentsFreezeRunnable = Runnable {
+                RecentTasksManager.processRecentsChange(this@AutoTweakService, lastForegroundApp)
                 triggerFreezerDispatch(lastForegroundApp, forceRecentsSweep = true)
             }
-            equalizerFreezeHandler?.postDelayed(recentsFreezeRunnable!!, 300)
+            equalizerFreezeHandler?.postDelayed(recentsFreezeRunnable!!, 200)
             return START_STICKY
         }
 
@@ -746,8 +747,14 @@ class AutoTweakService : Service() {
                 val isAudio = FreezerManager.getActivePlayingAudioPackages(this@AutoTweakService).contains(pkg)
                 val allSafeApps = MultitaskingManager.getUserWhitelist(this@AutoTweakService) + MultitaskingManager.protectedApps
 
+                // 🛡️ RECENT TASKS IMMUNITY: If user still has the app in Recents (multitasking), do NOT kill it!
+                if (RecentTasksManager.isAppInRecents(pkg)) {
+                    Log.d("AutoTweak", "🛡️ Multitasking Guard: $pkg is alive in Recents -> Skipping background freeze")
+                    return@execute
+                }
+
                 if (!isStillForeground && !isVisible && !isAudio && !allSafeApps.contains(pkg)) {
-                    Log.d("AutoTweak", "❄️ Autonomous Background Freeze -> Hibernating $pkg after ${delayMs}ms settling")
+                    Log.d("AutoTweak", "❄️ Autonomous Background Freeze -> Hibernating orphan process $pkg after ${delayMs}ms settling")
                     FreezerManager.removeActiveSession(pkg)
                     FreezerManager.freezeApp(this@AutoTweakService, pkg, force = true)
                     SpecialFreezerWidgetProvider.updateAllWidgets(this@AutoTweakService)
@@ -1560,13 +1567,19 @@ class AutoTweakService : Service() {
             val frozenApps = FreezerManager.getFrozenApps(this@AutoTweakService) + FreezerManager.getSpecialFreezeApps(this@AutoTweakService)
             val activeAudioApps = FreezerManager.getActivePlayingAudioPackages(this@AutoTweakService)
 
-            // Screen is OFF: Clear active session apps so they don't block deep sleep
-            FreezerManager.activeSessionApps.clear()
+            // Screen is OFF: Retain apps that are active in Recents, remove closed ones
+            FreezerManager.activeSessionApps.retainAll(RecentTasksManager.getLiveRecentPackages(forceRefresh = false))
 
             for (pkg in frozenApps) {
+                // If app is currently alive in Recents, do NOT kill it! Restrict standby bucket for battery savings only.
+                if (RecentTasksManager.isAppInRecents(pkg)) {
+                    ShellUtils.fastCmd("am set-standby-bucket '$pkg' restricted 2>/dev/null")
+                    continue
+                }
+
                 // EXEMPT ONLY the active music player; hibernate all other apps immediately!
                 if (!allSafeApps.contains(pkg) && !activeAudioApps.contains(pkg)) {
-                    FreezerManager.freezeApp(this@AutoTweakService, pkg, force = true)
+                    FreezerManager.freezeApp(this@AutoTweakService, pkg, force = true, isExplicitDismiss = true)
                 } else if (activeAudioApps.contains(pkg)) {
                     Log.d("AutoTweak", "🎵 Smart Media Guard: Exempting active music app '$pkg' from Screen-Off freeze")
                 }

@@ -24,6 +24,7 @@ object FreezerManager {
     fun registerAppOpen(packageName: String) {
         if (packageName.isBlank()) return
         activeSessionApps.add(packageName)
+        RecentTasksManager.onAppOpened(packageName)
         lastLaunchedPackage = packageName
         val now = System.currentTimeMillis()
         lastLaunchTime = now
@@ -52,11 +53,24 @@ object FreezerManager {
      * Hibernates a single app immediately.
      * @param force If true, bypasses session and recent-launch grace checks (for Screen-Off, Recents dismiss, or manual freeze).
      */
-    fun freezeApp(context: Context, packageName: String, force: Boolean = false) {
+    fun freezeApp(
+        context: Context,
+        packageName: String,
+        force: Boolean = false,
+        isExplicitDismiss: Boolean = false
+    ) {
         if (packageName.isBlank() || packageName == context.packageName) return
         
         // Never freeze the app if it is currently visible on screen (bypass when force is true, e.g. Screen-Off)
         if (!force && isAppCurrentlyVisible(packageName)) return
+
+        // 🛡️ RECENT TASKS IMMUNITY GUARD:
+        // As long as the app is open/alive in Recents (Multitasking), NEVER stop or kill it!
+        // It can ONLY be frozen if the user explicitly swiped it away from Recents (isExplicitDismiss == true).
+        if (!isExplicitDismiss && RecentTasksManager.isAppInRecents(packageName)) {
+            android.util.Log.d("FreezerManager", "🛡️ Recents Guard: $packageName is active in Recents -> Freeze BLOCKED!")
+            return
+        }
 
         if (!force) {
             if (isAppActiveSession(packageName)) return
@@ -214,7 +228,7 @@ object FreezerManager {
 
             if (allConfigured.contains(pkg) && !allSafeApps.contains(pkg) && !activeAudio.contains(pkg)) {
                 android.util.Log.d("FreezerManager", "❄️ Recents Dismissed / Background Idle -> Freeze for $pkg")
-                freezeApp(context, pkg, force = true)
+                freezeApp(context, pkg, force = true, isExplicitDismiss = true)
             }
         }
     }
@@ -362,46 +376,11 @@ object FreezerManager {
      * Includes in-memory caching with graceful timeout fallback to prevent dropouts.
      */
     fun getRecentPackages(forceRefresh: Boolean = false): Set<String> {
-        val now = System.currentTimeMillis()
-        if (!forceRefresh && now - lastRecentPackagesTimestamp < 600 && cachedRecentPackages.isNotEmpty()) {
-            return cachedRecentPackages
+        val pkgs = RecentTasksManager.getLiveRecentPackages(forceRefresh)
+        if (pkgs.isNotEmpty()) {
+            activeSessionApps.retainAll(pkgs)
         }
-
-        return try {
-            val output = ShellUtils.fastCmdResult("dumpsys activity recents | grep -m 40 -E 'RecentTaskInfo #|Recent #[0-9]+:|realActivity=|baseActivity=|topActivity=|cmp=|I=' 2>/dev/null", 2000)
-            if (output.isBlank()) {
-                return if (now - lastRecentPackagesTimestamp < 5000) cachedRecentPackages else emptySet()
-            }
-
-            val pkgs = mutableSetOf<String>()
-            val regexes = listOf(
-                Regex("(?:realActivity=|baseActivity=|topActivity=|cmp=|I=)\\{?([a-zA-Z0-9_.]+)/"),
-                Regex("(?:RecentTaskInfo #[0-9]+:|Recent #[0-9]+:).*Task\\{[a-f0-9]+ #[0-9]+ [^}]*(?:I=|A=[0-9]+:)([a-zA-Z0-9_.]+)")
-            )
-            for (line in output.lineSequence()) {
-                for (r in regexes) {
-                    val m = r.find(line)
-                    if (m != null) {
-                        val p = m.groupValues[1]
-                        if (p.isNotBlank() && !p.contains("launcher", ignoreCase = true) && p != "com.android.systemui") {
-                            pkgs.add(p)
-                        }
-                        break
-                    }
-                }
-            }
-            cachedRecentPackages = pkgs
-            lastRecentPackagesTimestamp = now
-            if (pkgs.isNotEmpty()) {
-                // Prune closed apps from activeSessionApps
-                activeSessionApps.retainAll { pkg ->
-                    pkgs.contains(pkg)
-                }
-            }
-            pkgs
-        } catch (e: Exception) {
-            if (now - lastRecentPackagesTimestamp < 5000) cachedRecentPackages else emptySet()
-        }
+        return pkgs
     }
 
 
