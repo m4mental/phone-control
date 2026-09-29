@@ -753,6 +753,12 @@ class AutoTweakService : Service() {
                     return@execute
                 }
 
+                // 🛡️ SMART ACTIVE TASK / DOWNLOAD GUARD:
+                if (RecentTasksManager.hasActiveForegroundTask(pkg)) {
+                    Log.d("AutoTweak", "🛡️ Smart FGS Guard: $pkg is actively downloading/syncing -> Skipping background freeze")
+                    return@execute
+                }
+
                 if (!isStillForeground && !isVisible && !isAudio && !allSafeApps.contains(pkg)) {
                     Log.d("AutoTweak", "❄️ Autonomous Background Freeze -> Hibernating orphan process $pkg after ${delayMs}ms settling")
                     FreezerManager.removeActiveSession(pkg)
@@ -1574,6 +1580,12 @@ class AutoTweakService : Service() {
                 // If app is currently alive in Recents, do NOT kill it! Restrict standby bucket for battery savings only.
                 if (RecentTasksManager.isAppInRecents(pkg)) {
                     ShellUtils.fastCmd("am set-standby-bucket '$pkg' restricted 2>/dev/null")
+                    continue
+                }
+
+                // 🛡️ Smart FGS Guard: If app is actively downloading in background with screen OFF, NEVER kill it!
+                if (RecentTasksManager.hasActiveForegroundTask(pkg)) {
+                    Log.d("AutoTweak", "🛡️ Smart FGS Guard: Exempting active downloader '$pkg' from Screen-Off freeze")
                     continue
                 }
 

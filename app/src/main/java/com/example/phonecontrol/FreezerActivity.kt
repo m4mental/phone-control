@@ -19,6 +19,11 @@ class FreezerActivity : AppCompatActivity() {
             startActivity(Intent(this, AppFreezerListActivity::class.java))
         }
 
+        // Card: Live Running Services Monitor
+        findViewById<View>(R.id.cardRunningServices)?.setOnClickListener {
+            startActivity(Intent(this, RunningServicesActivity::class.java))
+        }
+
         // Card 2: Carrier Bloatware Remover
         findViewById<View>(R.id.cardBloatware).setOnClickListener {
             startActivity(Intent(this, BloatwareActivity::class.java))

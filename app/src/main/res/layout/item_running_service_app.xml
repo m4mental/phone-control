@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="10dp"
+    app:cardCornerRadius="14dp"
+    app:cardBackgroundColor="#161616"
+    app:strokeWidth="1dp"
+    app:strokeColor="#282828"
+    android:clickable="true"
+    android:focusable="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="12dp">
+
+        <!-- Top Row: App Icon + App Label + Package + Stop Button -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <ImageView
+                android:id="@+id/ivServiceAppIcon"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:contentDescription="App Icon" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="12dp"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tvServiceAppName"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="App Name"
+                    android:textColor="@android:color/white"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+
+                <TextView
+                    android:id="@+id/tvServiceAppPackage"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="com.example.app"
+                    android:textColor="#777777"
+                    android:textSize="11sp"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+            </LinearLayout>
+
+            <!-- Quick Action: Stop / Freeze Button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnQuickStopService"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:minWidth="0dp"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
+                android:text="STOP"
+                android:textColor="#FF5252"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                app:strokeColor="#FF5252"
+                app:strokeWidth="1dp"
+                app:cornerRadius="8dp" />
+        </LinearLayout>
+
+        <!-- Middle Row: Badges (OOM Score, Status Tag, Service Count) -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginTop="8dp">
+
+            <!-- Status Tag (🟢 FGS / 🟡 BG / 🎵 MEDIA) -->
+            <TextView
+                android:id="@+id/tvServiceStateBadge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🟢 FOREGROUND"
+                android:textColor="#00E676"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:background="#1B3322"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:paddingTop="3dp"
+                android:paddingBottom="3dp"
+                android:layout_marginEnd="6dp" />
+
+            <!-- OOM Adj & PID Badge -->
+            <TextView
+                android:id="@+id/tvServiceOomBadge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="PID: 14553 • ADJ: 200"
+                android:textColor="#AAAAAA"
+                android:textSize="10sp"
+                android:background="#222222"
+                android:paddingStart="6dp"
+                android:paddingEnd="6dp"
+                android:paddingTop="3dp"
+                android:paddingBottom="3dp"
+                android:layout_marginEnd="6dp" />
+
+            <!-- Service Count Badge -->
+            <TextView
+                android:id="@+id/tvServiceCountBadge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="2 Services"
+                android:textColor="#00E5FF"
+                android:textSize="10sp"
+                android:background="#0A2A33"
+                android:paddingStart="6dp"
+                android:paddingEnd="6dp"
+                android:paddingTop="3dp"
+                android:paddingBottom="3dp" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <!-- Expand / Collapse Arrow -->
+            <ImageView
+                android:id="@+id/ivExpandChevron"
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:src="@android:drawable/arrow_down_float"
+                app:tint="#666666"
+                android:contentDescription="Expand" />
+        </LinearLayout>
+
+        <!-- Expandable Details Container: Specific Services Running -->
+        <LinearLayout
+            android:id="@+id/llServicesDetailList"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="8dp"
+            android:background="#0F0F0F"
+            android:padding="8dp"
+            android:visibility="gone">
+
+            <!-- Individual services dynamically injected here -->
+        </LinearLayout>
+
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>

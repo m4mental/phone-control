@@ -2,6 +2,7 @@ package com.example.phonecontrol
 
 import android.app.ProgressDialog
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -13,12 +14,15 @@ import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.BaseAdapter
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ListView
+import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -50,6 +54,20 @@ class AppFreezerListActivity : AppCompatActivity() {
         var cachedDisplayItems: List<FrozenDisplayItem>? = null
         var cachedInstalledApps: List<AppItem>? = null
         val appInfoCache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, Drawable?>>()
+
+        val CRITICAL_SYSTEM_PACKAGES = setOf(
+            "android",
+            "com.android.systemui",
+            "com.android.phone",
+            "com.android.server.telecom",
+            "com.android.providers.media",
+            "com.android.providers.media.module",
+            "com.android.providers.settings",
+            "com.android.settings",
+            "com.google.android.inputmethod.latin",
+            "com.google.android.permissioncontroller",
+            "com.google.android.packageinstaller"
+        )
     }
 
     data class AppItem(val info: ApplicationInfo, val label: String, var isChecked: Boolean = false)
@@ -59,7 +77,8 @@ class AppFreezerListActivity : AppCompatActivity() {
         val icon: Drawable?,
         val isSpecial: Boolean,
         val isActive: Boolean,
-        val isCustomWidget: Boolean = false
+        val isCustomWidget: Boolean = false,
+        val isSystem: Boolean = false
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -67,7 +86,15 @@ class AppFreezerListActivity : AppCompatActivity() {
         setContentView(R.layout.activity_app_freezer_list)
 
         pm = packageManager
-        findViewById<MaterialToolbar>(R.id.toolbarAppFreezerList).setNavigationOnClickListener { finish() }
+        val toolbar = findViewById<MaterialToolbar>(R.id.toolbarAppFreezerList)
+        toolbar.setNavigationOnClickListener { finish() }
+        toolbar.inflateMenu(R.menu.menu_app_freezer_list)
+        toolbar.setOnMenuItemClickListener { menuItem ->
+            if (menuItem.itemId == R.id.action_live_services) {
+                startActivity(Intent(this, RunningServicesActivity::class.java))
+                true
+            } else false
+        }
 
         autoFreezeEnabled = FreezerManager.isAutoFreezeEnabled(this)
 
@@ -80,6 +107,7 @@ class AppFreezerListActivity : AppCompatActivity() {
         rvFrozenAppsList.adapter = adapter
 
         // Background Pre-warming for 0ms instant app picker dialogs
+        cachedInstalledApps = null
         thread {
             if (cachedInstalledApps == null) {
                 cachedInstalledApps = getInstalledAppsList()
@@ -238,7 +266,8 @@ class AppFreezerListActivity : AppCompatActivity() {
                     val isSpecial = FreezerManager.isSpecialFreeze(this, pkg)
                     val isActive = activeSet.contains(pkg)
                     val isCustomWidget = customWidgetSet.contains(pkg)
-                    FrozenDisplayItem(pkg, name, icon, isSpecial, isActive, isCustomWidget)
+                    val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                    FrozenDisplayItem(pkg, name, icon, isSpecial, isActive, isCustomWidget, isSystem)
                 } catch (e: Exception) {
                     null
                 }
@@ -420,7 +449,12 @@ class AppFreezerListActivity : AppCompatActivity() {
         val etSearch = dialogView.findViewById<EditText>(R.id.etSearchApp)
         val lvApps = dialogView.findViewById<ListView>(R.id.lvApps)
         val cbSelectAll = dialogView.findViewById<CheckBox>(R.id.cbSelectAll)
-        dialogView.findViewById<View>(R.id.spinnerFilter)?.visibility = View.GONE
+        val spinnerFilter = dialogView.findViewById<Spinner>(R.id.spinnerFilter)
+
+        spinnerFilter.visibility = View.VISIBLE
+        val filterOptions = arrayOf("👤 User Apps", "⚙️ System Apps", "All Apps")
+        val spinnerAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, filterOptions)
+        spinnerFilter.adapter = spinnerAdapter
 
         // ⚡ Cache-First: Instant population from memory
         var allApps: List<AppItem> = (cachedInstalledApps ?: emptyList())
@@ -434,14 +468,32 @@ class AppFreezerListActivity : AppCompatActivity() {
 
         fun updateList() {
             val query = etSearch.text.toString().trim().lowercase()
-            filteredApps = if (query.isEmpty()) {
-                allApps
-            } else {
-                allApps.filter { it.label.lowercase().contains(query) || it.info.packageName.lowercase().contains(query) }
+            val filterMode = spinnerFilter.selectedItemPosition // 0 = User Apps, 1 = System Apps, 2 = All
+            filteredApps = allApps.filter { item ->
+                val isSystem = (item.info.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                val matchesCategory = when (filterMode) {
+                    0 -> !isSystem
+                    1 -> isSystem
+                    else -> true
+                }
+                val matchesQuery = query.isEmpty() ||
+                        item.label.lowercase().contains(query) ||
+                        item.info.packageName.lowercase().contains(query)
+                matchesCategory && matchesQuery
             }
             pickerAdapter.items = filteredApps
             pickerAdapter.notifyDataSetChanged()
         }
+
+        spinnerFilter.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                updateList()
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+
+        // Apply initial filter (User Apps)
+        updateList()
 
         etSearch.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -598,7 +650,11 @@ class AppFreezerListActivity : AppCompatActivity() {
         if (!cached.isNullOrEmpty()) return cached
 
         val list = pm.getInstalledApplications(0)
-            .filter { (it.flags and ApplicationInfo.FLAG_SYSTEM == 0) && it.packageName != packageName && it.enabled }
+            .filter {
+                it.packageName != packageName &&
+                it.enabled &&
+                !CRITICAL_SYSTEM_PACKAGES.contains(it.packageName)
+            }
             .map {
                 val label = pm.getApplicationLabel(it).toString()
                 if (!appInfoCache.containsKey(it.packageName)) {
@@ -779,16 +835,17 @@ class AppFreezerListActivity : AppCompatActivity() {
             tvPkg.text = item.pkg
             tvPkg.visibility = View.VISIBLE
 
+            val systemTag = if (item.isSystem) " • ⚙️ System" else ""
             val widgetTag = if (item.isCustomWidget) " • 📱 Widget" else ""
 
             if (item.isSpecial) {
-                tvStatus.text = "Special Freeze (Suspended)$widgetTag"
+                tvStatus.text = "Special Freeze (Suspended)$systemTag$widgetTag"
                 tvStatus.setTextColor(Color.parseColor("#FF5252"))
             } else if (item.isActive) {
-                tvStatus.text = "Active in Memory$widgetTag"
+                tvStatus.text = "Active in Memory$systemTag$widgetTag"
                 tvStatus.setTextColor(Color.parseColor("#00E676"))
             } else {
-                tvStatus.text = "Hibernated (0% CPU)$widgetTag"
+                tvStatus.text = "Hibernated (0% CPU)$systemTag$widgetTag"
                 tvStatus.setTextColor(Color.parseColor("#00E5FF"))
             }
 
@@ -828,7 +885,15 @@ class AppFreezerListActivity : AppCompatActivity() {
             tvPkg.text = item.info.packageName
             cbSelect.visibility = View.VISIBLE
             cbSelect.isChecked = item.isChecked
-            tvStatus.visibility = View.GONE
+
+            val isSystem = (item.info.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+            if (isSystem) {
+                tvStatus.text = "SYSTEM"
+                tvStatus.setTextColor(Color.parseColor("#888888"))
+                tvStatus.visibility = View.VISIBLE
+            } else {
+                tvStatus.visibility = View.GONE
+            }
 
             val pkgName = item.info.packageName
             ivIcon.tag = pkgName

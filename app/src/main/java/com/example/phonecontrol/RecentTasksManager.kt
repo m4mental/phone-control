@@ -104,6 +104,61 @@ object RecentTasksManager {
         }
     }
 
+    // Cache for hasActiveForegroundTask to eliminate redundant shell queries within short windows
+    private val activeForegroundTaskCache = ConcurrentHashMap<String, Pair<Long, Boolean>>()
+
+    /**
+     * Smart Active Download & Foreground Service Guard:
+     * Checks if the package is actively running a Foreground Service (FGS),
+     * background download/upload (e.g. SpeedDown, 1DM), active sync, or holding a CPU WakeLock.
+     *
+     * In Android/Linux kernel:
+     * - Processes with active Foreground Services have oom_score_adj <= 250
+     *   (PERCEPTIBLE_APP_ADJ = 200, PERCEPTIBLE_LOW_APP_ADJ = 250).
+     * - Idle/cached background processes have oom_score_adj >= 800 (900-999).
+     *
+     * Returns true if the app is actively performing foreground/download work,
+     * guaranteeing dynamic immunity from freeze/kill even if not in Recents.
+     */
+    fun hasActiveForegroundTask(packageName: String, maxCacheAgeMs: Long = 800L): Boolean {
+        if (packageName.isBlank() || isIgnoredSystemPackage(packageName)) return false
+
+        val now = System.currentTimeMillis()
+        val cached = activeForegroundTaskCache[packageName]
+        if (cached != null && (now - cached.first < maxCacheAgeMs)) {
+            return cached.second
+        }
+
+        return try {
+            val script = """
+                active=0
+                pids=${'$'}(pgrep -f "^$packageName" 2>/dev/null || pidof "$packageName" 2>/dev/null)
+                for p in ${'$'}pids; do
+                    adj=${'$'}(cat /proc/${'$'}p/oom_score_adj 2>/dev/null)
+                    if [ -n "${'$'}adj" ] && [ "${'$'}adj" -le 250 ]; then
+                        active=1
+                        break
+                    fi
+                done
+                if [ "${'$'}active" -eq 0 ] && [ -n "${'$'}pids" ]; then
+                    wl=${'$'}(dumpsys power 2>/dev/null | grep -E "PARTIAL_WAKE_LOCK.*$packageName" | head -n 1)
+                    if [ -n "${'$'}wl" ]; then
+                        active=1
+                    fi
+                fi
+                echo "${'$'}active"
+            """.trimIndent()
+
+            val result = ShellUtils.fastCmdResult(script, 1500).trim()
+            val isActive = (result == "1")
+            activeForegroundTaskCache[packageName] = Pair(now, isActive)
+            isActive
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking active foreground task for $packageName: ${e.message}")
+            false
+        }
+    }
+
     /**
      * Event-Driven Recents Dismissal Detector:
      * Compares previous Recents snapshot with current Recents.
@@ -142,9 +197,12 @@ object RecentTasksManager {
                     val isAudio = FreezerManager.getActivePlayingAudioPackages(context).contains(pkg)
                     val isSafe = MultitaskingManager.getUserWhitelist(context).contains(pkg) ||
                                  MultitaskingManager.protectedApps.contains(pkg)
-                    if (!isAudio && !isSafe) {
+                    val isDownloading = hasActiveForegroundTask(pkg)
+                    if (!isAudio && !isSafe && !isDownloading) {
                         Log.d(TAG, "❄️ Freezing swiped away app: $pkg")
                         FreezerManager.freezeApp(context, pkg, force = true, isExplicitDismiss = true)
+                    } else if (isDownloading) {
+                        Log.d(TAG, "🛡️ Smart FGS Guard: App $pkg swiped away but has active foreground task/download -> Freeze BLOCKED!")
                     }
                 }
             }
@@ -161,9 +219,12 @@ object RecentTasksManager {
                 val isAudio = FreezerManager.getActivePlayingAudioPackages(context).contains(pkg)
                 val isSafe = MultitaskingManager.getUserWhitelist(context).contains(pkg) ||
                              MultitaskingManager.protectedApps.contains(pkg)
-                if (!isAudio && !isSafe) {
+                val isDownloading = hasActiveForegroundTask(pkg)
+                if (!isAudio && !isSafe && !isDownloading) {
                     Log.d(TAG, "❄️ Freezing orphan background process not in Recents: $pkg")
                     FreezerManager.freezeApp(context, pkg, force = true, isExplicitDismiss = true)
+                } else if (isDownloading) {
+                    Log.d(TAG, "🛡️ Smart FGS Guard: Skipping orphan sweep for $pkg (active foreground service/download in progress)")
                 }
             }
         }

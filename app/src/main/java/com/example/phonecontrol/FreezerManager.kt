@@ -72,6 +72,14 @@ object FreezerManager {
             return
         }
 
+        // 🛡️ SMART ACTIVE TASK & FOREGROUND SERVICE GUARD:
+        // If the app is actively performing a foreground service, download (e.g. SpeedDown),
+        // or holding a wake lock, NEVER kill or freeze it!
+        if (!isExplicitDismiss && RecentTasksManager.hasActiveForegroundTask(packageName)) {
+            android.util.Log.d("FreezerManager", "🛡️ Smart FGS Guard: $packageName is actively running a foreground service / download -> Freeze BLOCKED!")
+            return
+        }
+
         if (!force) {
             if (isAppActiveSession(packageName)) return
             if (isRecentlyLaunched(packageName, 10000L)) return
@@ -84,21 +92,24 @@ object FreezerManager {
         if (activeAudio.contains(packageName)) return
 
         if (isSpecialFreeze(context, packageName)) {
-            val forceFlag = if (force) 1 else 0
             val specialScript = """
                 am set-standby-bucket "$packageName" restricted 2>/dev/null
                 cmd appops set "$packageName" RUN_IN_BACKGROUND ignore 2>/dev/null
                 cmd appops set "$packageName" RUN_ANY_IN_BACKGROUND ignore 2>/dev/null
                 pids=${'$'}(pgrep -f "^$packageName" 2>/dev/null || pidof "$packageName" 2>/dev/null)
                 is_safe=0
-                if [ "$forceFlag" -eq 0 ] && [ -n "${'$'}pids" ]; then
+                if [ -n "${'$'}pids" ]; then
                     for p in ${'$'}pids; do
                         adj=${'$'}(cat /proc/${'$'}p/oom_score_adj 2>/dev/null)
-                        if [ -n "${'$'}adj" ] && [ "${'$'}adj" -le 200 ]; then
+                        if [ -n "${'$'}adj" ] && [ "${'$'}adj" -le 250 ]; then
                             is_safe=1
                             break
                         fi
                     done
+                fi
+                if [ "${'$'}is_safe" -eq 0 ]; then
+                    wl=${'$'}(dumpsys power 2>/dev/null | grep -E "PARTIAL_WAKE_LOCK.*$packageName" | head -n 1)
+                    [ -n "${'$'}wl" ] && is_safe=1
                 fi
                 if [ "${'$'}is_safe" -eq 0 ]; then
                     am force-stop "$packageName" 2>/dev/null
@@ -109,21 +120,24 @@ object FreezerManager {
         }
 
         // Standard Freeze: Restrict standby bucket, block background execution, and cleanly stop background processes (0ms ANRs)
-        val forceFlag = if (force) 1 else 0
         val script = """
             am set-standby-bucket "$packageName" restricted 2>/dev/null
             cmd appops set "$packageName" RUN_IN_BACKGROUND ignore 2>/dev/null
             cmd appops set "$packageName" RUN_ANY_IN_BACKGROUND ignore 2>/dev/null
             pids=${'$'}(pgrep -f "^$packageName" 2>/dev/null || pidof "$packageName" 2>/dev/null)
             is_safe=0
-            if [ "$forceFlag" -eq 0 ] && [ -n "${'$'}pids" ]; then
+            if [ -n "${'$'}pids" ]; then
                 for p in ${'$'}pids; do
                     adj=${'$'}(cat /proc/${'$'}p/oom_score_adj 2>/dev/null)
-                    if [ -n "${'$'}adj" ] && [ "${'$'}adj" -le 200 ]; then
+                    if [ -n "${'$'}adj" ] && [ "${'$'}adj" -le 250 ]; then
                         is_safe=1
                         break
                     fi
                 done
+            fi
+            if [ "${'$'}is_safe" -eq 0 ]; then
+                wl=${'$'}(dumpsys power 2>/dev/null | grep -E "PARTIAL_WAKE_LOCK.*$packageName" | head -n 1)
+                [ -n "${'$'}wl" ] && is_safe=1
             fi
             if [ "${'$'}is_safe" -eq 0 ]; then
                 am stop-app "$packageName" 2>/dev/null || am kill "$packageName" 2>/dev/null
@@ -144,6 +158,7 @@ object FreezerManager {
         val pkgList = packages.filter { pkg ->
             !allSafeApps.contains(pkg) &&
             !activeAudio.contains(pkg) &&
+            !RecentTasksManager.hasActiveForegroundTask(pkg) &&
             (currentFocus.isBlank() || !currentFocus.contains(pkg)) &&
             (force || (!isRecentlyLaunched(pkg, 10000L) && !isAppActiveSession(pkg)))
         }
@@ -202,7 +217,7 @@ object FreezerManager {
         // 1. Apps tracked in activeSessionApps that have been dismissed from Recents and left foreground
         val sessionCopy = HashSet(activeSessionApps)
         for (pkg in sessionCopy) {
-            if (!currentRecents.contains(pkg) && pkg != currentForeground && !isAppCurrentlyVisible(pkg)) {
+            if (!currentRecents.contains(pkg) && pkg != currentForeground && !isAppCurrentlyVisible(pkg) && !RecentTasksManager.hasActiveForegroundTask(pkg)) {
                 toFreeze.add(pkg)
             }
         }
@@ -211,7 +226,7 @@ object FreezerManager {
         // but has active running background processes (e.g. after background wakeup/broadcast)
         val runningConfigured = getRunningConfiguredApps(allConfigured)
         for (pkg in runningConfigured) {
-            if (pkg != currentForeground && !currentRecents.contains(pkg) && !isAppCurrentlyVisible(pkg)) {
+            if (pkg != currentForeground && !currentRecents.contains(pkg) && !isAppCurrentlyVisible(pkg) && !RecentTasksManager.hasActiveForegroundTask(pkg)) {
                 toFreeze.add(pkg)
             }
         }
@@ -226,7 +241,7 @@ object FreezerManager {
                 lastLaunchedPackage = null
             }
 
-            if (allConfigured.contains(pkg) && !allSafeApps.contains(pkg) && !activeAudio.contains(pkg)) {
+            if (allConfigured.contains(pkg) && !allSafeApps.contains(pkg) && !activeAudio.contains(pkg) && !RecentTasksManager.hasActiveForegroundTask(pkg)) {
                 android.util.Log.d("FreezerManager", "❄️ Recents Dismissed / Background Idle -> Freeze for $pkg")
                 freezeApp(context, pkg, force = true, isExplicitDismiss = true)
             }

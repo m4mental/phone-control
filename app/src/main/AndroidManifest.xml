@@ -48,7 +48,12 @@
 
         <activity
             android:name=".FreezerActivity"
-            android:exported="false"
+            android:exported="true"
+            android:theme="@style/Theme.PhoneControl" />
+
+        <activity
+            android:name=".RunningServicesActivity"
+            android:exported="true"
             android:theme="@style/Theme.PhoneControl" />
 
         <activity
@@ -93,7 +98,7 @@
 
         <activity
             android:name=".AppFreezerListActivity"
-            android:exported="false"
+            android:exported="true"
             android:theme="@style/Theme.PhoneControl" />
 
         <activity
