@@ -39,6 +39,7 @@ class AutoTweakService : Service() {
     companion object {
         const val ACTION_FOREGROUND_APP_CHANGED = "com.example.phonecontrol.ACTION_FOREGROUND_APP_CHANGED"
         const val ACTION_RECENTS_CHANGED = "com.example.phonecontrol.ACTION_RECENTS_CHANGED"
+        const val ACTION_STOP_AI_TICKER = "com.example.phonecontrol.ACTION_STOP_AI_TICKER"
         const val EXTRA_PACKAGE_NAME = "extra_package_name"
 
         @Volatile var isPerAppActive = false
@@ -484,7 +485,10 @@ class AutoTweakService : Service() {
         }
 
         aiTickerHandler = Handler(Looper.getMainLooper())
-        startAiTicker()
+        val initialPrefs = getSharedPreferences("prefs", MODE_PRIVATE)
+        if (initialPrefs.getString("selected_mode", "rbBalance") == "rbAutomatic") {
+            startAiTicker()
+        }
     }
 
     private fun handleAudioPlaybackStateChanged(configs: List<AudioPlaybackConfiguration>?) {
@@ -637,10 +641,17 @@ class AutoTweakService : Service() {
             tweakExecutor.execute {
                 checkAndApplyDynamicAiTweak()
             }
+            aiTickerHandler?.post { startAiTicker() }
             return START_STICKY
         }
 
-        // 3. Service Startup Checks
+        // 4. Stop AI Ticker Signal (when switching to manual modes)
+        if (action == ACTION_STOP_AI_TICKER) {
+            aiTickerHandler?.post { stopAiTicker() }
+            return START_STICKY
+        }
+
+        // 5. Service Startup & Mode Adaptation Checks
         tweakExecutor.execute {
             val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
             prefs.edit().remove("user_saved_auto_rotate").apply()
@@ -656,8 +667,10 @@ class AutoTweakService : Service() {
                 val targetPkg = if (lastForegroundApp.isNotBlank()) lastForegroundApp else packageName
                 val load = calculateAppAiLoad(targetPkg)
                 applyAiTweak(load, focus) 
+                aiTickerHandler?.post { startAiTicker() }
             } else {
                 prefs.edit().remove("active_ai_label").apply()
+                aiTickerHandler?.post { stopAiTicker() }
             }
         }
 
@@ -1288,6 +1301,9 @@ class AutoTweakService : Service() {
     private fun startAiTicker() {
         stopAiTicker()
         if (!isScreenOn) return
+        val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+        if (prefs.getString("selected_mode", "rbBalance") != "rbAutomatic") return
+
         aiTickerRunnable = object : Runnable {
             override fun run() {
                 if (isScreenOn) {
@@ -1308,7 +1324,10 @@ class AutoTweakService : Service() {
 
     private fun checkAndApplyDynamicAiTweak() {
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
-        if (prefs.getString("selected_mode", "rbBalance") != "rbAutomatic") return
+        if (prefs.getString("selected_mode", "rbBalance") != "rbAutomatic") {
+            aiTickerHandler?.post { stopAiTicker() }
+            return
+        }
         if (isPerAppActive || activePerAppMergedConfig != null) return
         if (prefs.getInt("manual_stage_override", 0) != 0 || TweakManager.manualStageOverride != 0) return
         if (TweakManager.isPostBootTurboActive) return

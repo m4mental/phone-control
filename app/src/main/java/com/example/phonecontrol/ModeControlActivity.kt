@@ -69,6 +69,12 @@ class ModeControlActivity : AppCompatActivity() {
                 // Trigger AI logic immediately
                 startService(Intent(this, AutoTweakService::class.java))
             } else {
+                // Stop AI ticker immediately when switching to manual
+                val stopAiIntent = Intent(this, AutoTweakService::class.java).apply {
+                    action = AutoTweakService.ACTION_STOP_AI_TICKER
+                }
+                startService(stopAiIntent)
+
                 // Clear AI label when switching to manual
                 prefs.edit().remove("active_ai_label").apply()
 
@@ -84,6 +90,9 @@ class ModeControlActivity : AppCompatActivity() {
                     runOnUiThread { updateRefreshSummary() }
                 }
             }
+
+            // Broadcast UI update so open activities and dashboard sync immediately
+            sendBroadcast(Intent("com.example.phonecontrol.UPDATE_UI").setPackage(packageName))
 
             // Sync with Notification Shade Quick Settings Tile
             ModeControlTileService.updateTile(this)
@@ -123,8 +132,13 @@ class ModeControlActivity : AppCompatActivity() {
 
             thread {
                 if (modeKey == "rbAutomatic") {
-                    startService(Intent(this, AutoTweakService::class.java))
+                    startService(Intent(this@ModeControlActivity, AutoTweakService::class.java))
                 } else {
+                    val stopAiIntent = Intent(this@ModeControlActivity, AutoTweakService::class.java).apply {
+                        action = AutoTweakService.ACTION_STOP_AI_TICKER
+                    }
+                    startService(stopAiIntent)
+
                     prefs.edit().remove("active_ai_label").apply()
                     val displayMode = when (modeKey) {
                         "rbPowerSaver" -> "Power Saver"
@@ -134,6 +148,8 @@ class ModeControlActivity : AppCompatActivity() {
                     }
                     TweakManager.applyGlobalMode(displayMode)
                 }
+
+                sendBroadcast(Intent("com.example.phonecontrol.UPDATE_UI").setPackage(packageName))
 
                 runOnUiThread {
                     Toast.makeText(this, "⚡ Mode Applied Successfully", Toast.LENGTH_SHORT).show()

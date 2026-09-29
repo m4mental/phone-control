@@ -142,6 +142,11 @@ class ModeControlTileService : TileService() {
             if (nextMode == "rbAutomatic") {
                 startService(Intent(this, AutoTweakService::class.java))
             } else {
+                val stopAiIntent = Intent(this, AutoTweakService::class.java).apply {
+                    action = AutoTweakService.ACTION_STOP_AI_TICKER
+                }
+                startService(stopAiIntent)
+
                 prefs.edit().remove("active_ai_label").apply()
                 val displayMode = when (nextMode) {
                     "rbPowerSaver" -> "Power Saver"
