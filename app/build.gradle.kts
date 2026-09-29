@@ -23,7 +23,7 @@ android {
             val keyPass = System.getenv("KEY_PASSWORD") ?: "PhoneControl2026Key"
             val alias = System.getenv("KEY_ALIAS") ?: "phonecontrol"
 
-            if (keystoreFile.exists()) {
+            if (keystoreFile.exists() && keystoreFile.length() > 0L) {
                 storeFile = keystoreFile
                 storePassword = storePass
                 keyAlias = alias
@@ -43,7 +43,7 @@ android {
         }
         debug {
             val releaseKeystore = rootProject.file("keystore/phonecontrol-release.jks")
-            if (releaseKeystore.exists()) {
+            if (releaseKeystore.exists() && releaseKeystore.length() > 0L) {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
