@@ -25,6 +25,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.util.Log
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import java.util.Collections
 import java.util.concurrent.Executors
@@ -222,12 +223,90 @@ class AutoTweakService : Service() {
         }
     }
 
+    @Volatile private var isServiceDestroyed = false
+    private var lastNotifiedAdbIp: String? = null
+    private var adbAutoSleepRunnable: Runnable? = null
+    private val adbAutoSleepHandler by lazy { Handler(Looper.getMainLooper()) }
+
+    private fun handleWirelessAdbSmartPort() {
+        if (isServiceDestroyed) return
+        tweakExecutor.execute {
+            if (isServiceDestroyed) return@execute
+            val isEnabled = WirelessAdbManager.isEnabled(this@AutoTweakService)
+            val isAutoSleep = WirelessAdbManager.isAutoSleepEnabled(this@AutoTweakService)
+            if (!isEnabled || !isAutoSleep) {
+                adbAutoSleepRunnable?.let { adbAutoSleepHandler.removeCallbacks(it) }
+                adbAutoSleepRunnable = null
+                return@execute
+            }
+
+            val port = WirelessAdbManager.getPort(this@AutoTweakService)
+            val isNetActive = WirelessAdbManager.isLocalNetworkActive(this@AutoTweakService)
+            if (isNetActive) {
+                // Cancel pending sleep runnable if connection returned
+                adbAutoSleepRunnable?.let { adbAutoSleepHandler.removeCallbacks(it) }
+                adbAutoSleepRunnable = null
+
+                val currentIp = WirelessAdbManager.getDeviceIpAddress()
+                val isSuspended = WirelessAdbManager.isSuspended(this@AutoTweakService)
+                val isPortOpen = WirelessAdbManager.isPortOpen(this@AutoTweakService)
+
+                // If port was suspended or closed, restore it immediately
+                if (isSuspended || !isPortOpen) {
+                    Log.d("AutoTweak", "⚡ Wi-Fi / Hotspot Active -> Reopening Wireless ADB Port $port")
+                    WirelessAdbManager.reopenPort(this@AutoTweakService)
+                    lastNotifiedAdbIp = currentIp
+                    sendSafeUiUpdate()
+                    WirelessAdbTileService.updateTile(this@AutoTweakService)
+                    Handler(Looper.getMainLooper()).post {
+                        Toast.makeText(applicationContext, "⚡ Wireless ADB: Reconnected at $currentIp:$port", Toast.LENGTH_SHORT).show()
+                    }
+                } else if (lastNotifiedAdbIp != null && lastNotifiedAdbIp != currentIp && currentIp != "127.0.0.1") {
+                    Log.d("AutoTweak", "🔄 Wireless ADB: IP changed from $lastNotifiedAdbIp to $currentIp:$port")
+                    lastNotifiedAdbIp = currentIp
+                    sendSafeUiUpdate()
+                    WirelessAdbTileService.updateTile(this@AutoTweakService)
+                    Handler(Looper.getMainLooper()).post {
+                        Toast.makeText(applicationContext, "🔄 Wireless ADB: IP changed to $currentIp:$port", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    lastNotifiedAdbIp = currentIp
+                }
+            } else {
+                // Network lost: Debounce 15 seconds before sleeping port to avoid flapping
+                if (!isServiceDestroyed && adbAutoSleepRunnable == null && (WirelessAdbManager.isPortOpen(this@AutoTweakService) || !WirelessAdbManager.isSuspended(this@AutoTweakService))) {
+                    val runnable = Runnable {
+                        if (isServiceDestroyed) return@Runnable
+                        tweakExecutor.execute {
+                            if (isServiceDestroyed) return@execute
+                            if (WirelessAdbManager.isEnabled(this@AutoTweakService) &&
+                                WirelessAdbManager.isAutoSleepEnabled(this@AutoTweakService) &&
+                                !WirelessAdbManager.isLocalNetworkActive(this@AutoTweakService)) {
+                                Log.d("AutoTweak", "🌙 Wi-Fi & Hotspot Disconnected -> Sleeping Wireless ADB Port $port (Battery Save)")
+                                WirelessAdbManager.suspendPort(this@AutoTweakService)
+                                sendSafeUiUpdate()
+                                WirelessAdbTileService.updateTile(this@AutoTweakService)
+                                Handler(Looper.getMainLooper()).post {
+                                    Toast.makeText(applicationContext, "💤 Wireless ADB: Port $port suspended (Offline)", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                            adbAutoSleepRunnable = null
+                        }
+                    }
+                    adbAutoSleepRunnable = runnable
+                    adbAutoSleepHandler.postDelayed(runnable, 15_000)
+                }
+            }
+        }
+    }
+
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             val caps = connectivityManager.getNetworkCapabilities(network)
             if (caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true) {
                 handleSmartNetworkSwitch(true)
             }
+            handleWirelessAdbSmartPort()
         }
 
         override fun onLost(network: Network) {
@@ -235,6 +314,7 @@ class AutoTweakService : Service() {
             if (!stillConnected) {
                 handleSmartNetworkSwitch(false)
             }
+            handleWirelessAdbSmartPort()
         }
     }
 
@@ -242,6 +322,7 @@ class AutoTweakService : Service() {
         override fun onReceive(context: Context, intent: Intent) {
             val isConnected = isWifiActive()
             handleSmartNetworkSwitch(isConnected)
+            handleWirelessAdbSmartPort()
         }
     }
 
@@ -375,6 +456,8 @@ class AutoTweakService : Service() {
             addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION)
             addAction(WifiManager.WIFI_STATE_CHANGED_ACTION)
             addAction(ConnectivityManager.CONNECTIVITY_ACTION)
+            addAction("android.net.wifi.WIFI_AP_STATE_CHANGED")
+            addAction("android.net.conn.TETHER_STATE_CHANGED")
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(wifiStateReceiver, wifiFilter, RECEIVER_NOT_EXPORTED)
@@ -675,6 +758,8 @@ class AutoTweakService : Service() {
                 prefs.edit().remove("active_ai_label").apply()
                 aiTickerHandler?.post { stopAiTicker() }
             }
+
+            handleWirelessAdbSmartPort()
         }
 
         return START_STICKY
@@ -1705,6 +1790,7 @@ class AutoTweakService : Service() {
     }
 
     override fun onDestroy() {
+        isServiceDestroyed = true
         stopAiTicker()
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && audioManager != null && audioPlaybackCallback != null) {
@@ -1730,6 +1816,8 @@ class AutoTweakService : Service() {
             dnsObserver = null
         } catch (e: Exception) {}
         try {
+            adbAutoSleepRunnable?.let { adbAutoSleepHandler.removeCallbacks(it) }
+            adbAutoSleepRunnable = null
             equalizerFreezeHandler?.removeCallbacksAndMessages(null)
             screenOffHandler.removeCallbacksAndMessages(null)
         } catch (e: Exception) {}

@@ -304,9 +304,10 @@
                             android:layout_marginStart="12dp">
 
                             <TextView
+                                android:id="@+id/tvWirelessAdbTitle"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Wireless ADB (Port 5555)"
+                                android:text="Wireless ADB"
                                 android:textColor="#00E5FF"
                                 android:textSize="15sp"
                                 android:textStyle="bold" />
@@ -359,6 +360,130 @@
                             android:textColor="@android:color/white"
                             app:backgroundTint="#263238"
                             app:cornerRadius="8dp" />
+                    </LinearLayout>
+
+                    <!-- Smart Auto-Port Divider -->
+                    <View
+                        android:id="@+id/dividerWirelessAdbAutoSleep"
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="#222222"
+                        android:layout_marginTop="12dp"
+                        android:visibility="gone" />
+
+                    <!-- Smart Auto-Port Sub-Toggle -->
+                    <LinearLayout
+                        android:id="@+id/layoutWirelessAdbAutoSleep"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="10dp"
+                        android:visibility="gone">
+
+                        <ImageView
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:src="@drawable/ic_sub_network"
+                            app:tint="#00E5FF" />
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:layout_marginStart="12dp">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Smart Port Auto-Sleep"
+                                android:textColor="@android:color/white"
+                                android:textSize="13sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:id="@+id/tvWirelessAdbAutoSleepDesc"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Auto-closes Port when Wi-Fi &amp; Hotspot are disconnected to stop battery drain."
+                                android:textColor="#B0BEC5"
+                                android:textSize="11sp"
+                                android:layout_marginTop="2dp" />
+                        </LinearLayout>
+
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchWirelessAdbAutoSleep"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="8dp" />
+                    </LinearLayout>
+
+                    <!-- Custom Port Divider -->
+                    <View
+                        android:id="@+id/dividerWirelessAdbPort"
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="#222222"
+                        android:layout_marginTop="12dp"
+                        android:visibility="gone" />
+
+                    <!-- Custom Port Sub-Option -->
+                    <LinearLayout
+                        android:id="@+id/layoutWirelessAdbPort"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="10dp"
+                        android:background="?attr/selectableItemBackground"
+                        android:paddingVertical="4dp"
+                        android:visibility="gone">
+
+                        <ImageView
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:src="@drawable/ic_sub_terminal"
+                            app:tint="#00E5FF" />
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:layout_marginStart="12dp">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Custom ADB Port"
+                                android:textColor="@android:color/white"
+                                android:textSize="13sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:id="@+id/tvWirelessAdbPortDesc"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="TCP/IP debug port (Default: 5555). Tap to edit."
+                                android:textColor="#B0BEC5"
+                                android:textSize="11sp"
+                                android:layout_marginTop="2dp" />
+                        </LinearLayout>
+
+                        <TextView
+                            android:id="@+id/tvWirelessAdbPortValue"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text=":5555"
+                            android:textColor="#00E5FF"
+                            android:textSize="13sp"
+                            android:textStyle="bold"
+                            android:fontFamily="monospace"
+                            android:background="@drawable/bg_badge_pill"
+                            android:paddingHorizontal="10dp"
+                            android:paddingVertical="4dp"
+                            android:layout_marginStart="8dp" />
                     </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>

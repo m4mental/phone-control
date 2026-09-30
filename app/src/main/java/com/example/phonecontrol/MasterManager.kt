@@ -182,6 +182,8 @@ object MasterManager {
         editor.putBoolean("update_shield_enabled", false)
         editor.putBoolean("default_installer_enabled", false)
         editor.putBoolean("wireless_adb_enabled", false)
+        editor.putBoolean("wireless_adb_auto_sleep", false)
+        editor.remove("wireless_adb_port")
         editor.putBoolean("vault_enabled", false)
         editor.putBoolean("adb_enabled", false)
 

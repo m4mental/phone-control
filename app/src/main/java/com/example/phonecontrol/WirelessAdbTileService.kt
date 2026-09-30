@@ -40,8 +40,12 @@ class WirelessAdbTileService : TileService() {
 
     private fun refreshTileState() {
         thread {
-            val isEnabled = WirelessAdbManager.isEnabled(this) && WirelessAdbManager.isPortOpen()
-            val ip = if (isEnabled) WirelessAdbManager.getDeviceIpAddress() else ""
+            val isConfigured = WirelessAdbManager.isEnabled(this)
+            val isSuspended = WirelessAdbManager.isSuspended(this)
+            val isPortOpen = WirelessAdbManager.isPortOpen(this)
+            val isOnline = isConfigured && isPortOpen
+            val port = WirelessAdbManager.getPort(this)
+            val ip = if (isOnline) WirelessAdbManager.getDeviceIpAddress() else ""
 
             Handler(Looper.getMainLooper()).post {
                 val tile = qsTile ?: return@post
@@ -51,11 +55,17 @@ class WirelessAdbTileService : TileService() {
                     Log.w(TAG, "Icon load failed: ${e.message}")
                 }
 
-                if (isEnabled) {
+                if (isOnline) {
                     tile.state = Tile.STATE_ACTIVE
                     tile.label = "Wireless ADB"
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        tile.subtitle = if (ip.isNotEmpty()) "$ip:5555" else "Port 5555 Active"
+                        tile.subtitle = if (ip.isNotEmpty()) "$ip:$port" else "Port $port Active"
+                    }
+                } else if (isConfigured && isSuspended) {
+                    tile.state = Tile.STATE_INACTIVE
+                    tile.label = "Wireless ADB"
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        tile.subtitle = "Auto-Sleep (Offline)"
                     }
                 } else {
                     tile.state = Tile.STATE_INACTIVE
@@ -72,31 +82,44 @@ class WirelessAdbTileService : TileService() {
     override fun onClick() {
         super.onClick()
         thread {
-            val currentlyEnabled = WirelessAdbManager.isEnabled(this) && WirelessAdbManager.isPortOpen()
+            val currentlyConfigured = WirelessAdbManager.isEnabled(this)
+            val port = WirelessAdbManager.getPort(this)
 
-            if (currentlyEnabled) {
+            if (currentlyConfigured) {
                 WirelessAdbManager.disable(this)
                 Handler(Looper.getMainLooper()).post {
-                    Toast.makeText(applicationContext, "🛑 Wireless ADB: Disabled (Port 5555 Closed)", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(applicationContext, "🛑 Wireless ADB: Disabled (Port $port Closed)", Toast.LENGTH_SHORT).show()
                     refreshTileState()
                 }
             } else {
-                val cmd = WirelessAdbManager.enable(this)
-                val isSuccess = WirelessAdbManager.isPortOpen()
+                val isAutoSleep = WirelessAdbManager.isAutoSleepEnabled(this)
+                val isNetActive = WirelessAdbManager.isLocalNetworkActive(this)
 
-                Handler(Looper.getMainLooper()).post {
-                    if (isSuccess) {
-                        try {
-                            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newPlainText("ADB Command", cmd))
-                            Toast.makeText(applicationContext, "🚀 Wireless ADB: Port 5555 Active!\nCopied: $cmd", Toast.LENGTH_LONG).show()
-                        } catch (e: Exception) {
-                            Toast.makeText(applicationContext, "🚀 Wireless ADB: Port 5555 Active!", Toast.LENGTH_SHORT).show()
-                        }
-                    } else {
-                        Toast.makeText(applicationContext, "⚠️ Failed to open Port 5555 (Root required)", Toast.LENGTH_SHORT).show()
+                if (isAutoSleep && !isNetActive) {
+                    WirelessAdbManager.suspendPort(this)
+                    getSharedPreferences("prefs", MODE_PRIVATE).edit().putBoolean("wireless_adb_enabled", true).apply()
+                    Handler(Looper.getMainLooper()).post {
+                        Toast.makeText(applicationContext, "🌙 Wireless ADB: Standby (Offline, Port $port)", Toast.LENGTH_LONG).show()
+                        refreshTileState()
                     }
-                    refreshTileState()
+                } else {
+                    val cmd = WirelessAdbManager.enable(this)
+                    val isSuccess = WirelessAdbManager.isPortOpen(this)
+
+                    Handler(Looper.getMainLooper()).post {
+                        if (isSuccess) {
+                            try {
+                                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("ADB Command", cmd))
+                                Toast.makeText(applicationContext, "🚀 Wireless ADB: Port $port Active!\nCopied: $cmd", Toast.LENGTH_LONG).show()
+                            } catch (e: Exception) {
+                                Toast.makeText(applicationContext, "🚀 Wireless ADB: Port $port Active!", Toast.LENGTH_SHORT).show()
+                            }
+                        } else {
+                            Toast.makeText(applicationContext, "⚠️ Failed to open Port $port (Root required)", Toast.LENGTH_SHORT).show()
+                        }
+                        refreshTileState()
+                    }
                 }
             }
         }

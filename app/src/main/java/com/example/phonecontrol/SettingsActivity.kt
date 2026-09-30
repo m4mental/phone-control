@@ -41,6 +41,7 @@ class SettingsActivity : AppCompatActivity() {
     private val expandedCategoryKeys = mutableSetOf<String>()
     private var hasInitializedExpansion = false
     private val categoryHolders = mutableListOf<CategoryViewHolder>()
+    private var refreshWirelessAdbUiCallback: ((Boolean) -> Unit)? = null
 
     data class SubFeature(
         val title: String,
@@ -164,6 +165,27 @@ class SettingsActivity : AppCompatActivity() {
         refreshToggles()
     }
 
+    private val adbUiReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+            refreshWirelessAdbUiCallback?.invoke(WirelessAdbManager.isEnabled(this@SettingsActivity))
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        val filter = android.content.IntentFilter("com.example.phonecontrol.UPDATE_UI")
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(adbUiReceiver, filter, android.content.Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(adbUiReceiver, filter)
+        }
+    }
+
+    override fun onStop() {
+        try { unregisterReceiver(adbUiReceiver) } catch (e: Exception) {}
+        super.onStop()
+    }
+
     override fun onResume() {
         super.onResume()
         if (categoryHolders.isEmpty()) {
@@ -173,6 +195,7 @@ class SettingsActivity : AppCompatActivity() {
         } else {
             syncToggleStates()
         }
+        refreshWirelessAdbUiCallback?.invoke(WirelessAdbManager.isEnabled(this))
     }
 
     private fun setupAboutCard() {
@@ -464,6 +487,7 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
+
     private fun setupIndependentWirelessAdbCard() {
         val cardWirelessAdb = findViewById<MaterialCardView>(R.id.cardWirelessAdb) ?: return
         val sw = findViewById<SwitchMaterial>(R.id.switchWirelessAdbIndependent) ?: return
@@ -472,35 +496,65 @@ class SettingsActivity : AppCompatActivity() {
         val layoutCmd = findViewById<LinearLayout>(R.id.layoutWirelessAdbCommand) ?: return
         val btnCopy = findViewById<MaterialButton>(R.id.btnCopyAdbCmd) ?: return
         val tvSubtitle = findViewById<TextView>(R.id.tvWirelessAdbSubtitle) ?: return
+        val dividerAutoSleep = findViewById<View>(R.id.dividerWirelessAdbAutoSleep)
+        val layoutAutoSleep = findViewById<LinearLayout>(R.id.layoutWirelessAdbAutoSleep)
+        val switchAutoSleep = findViewById<SwitchMaterial>(R.id.switchWirelessAdbAutoSleep)
+        val dividerPort = findViewById<View>(R.id.dividerWirelessAdbPort)
+        val layoutPort = findViewById<LinearLayout>(R.id.layoutWirelessAdbPort)
+        val tvPortValue = findViewById<TextView>(R.id.tvWirelessAdbPortValue)
 
         fun refreshUi(enabled: Boolean) {
             sw.setOnCheckedChangeListener(null)
             sw.isChecked = enabled
 
+            val currentPort = WirelessAdbManager.getPort(this@SettingsActivity)
+            val isSuspended = WirelessAdbManager.isSuspended(this@SettingsActivity)
+            tvPortValue?.text = ":$currentPort"
+
             if (enabled) {
-                badge.text = "ONLINE : 5555"
-                badge.setBackgroundResource(R.drawable.bg_badge_pill)
-                badge.setTextColor(Color.parseColor("#00E676"))
-                cardWirelessAdb.strokeColor = Color.parseColor("#00E5FF")
-                layoutCmd.visibility = View.VISIBLE
-                tvSubtitle.text = "Active on Port 5555. Auto-starts on boot."
+                dividerAutoSleep?.visibility = View.VISIBLE
+                layoutAutoSleep?.visibility = View.VISIBLE
+                dividerPort?.visibility = View.VISIBLE
+                layoutPort?.visibility = View.VISIBLE
+                switchAutoSleep?.setOnCheckedChangeListener(null)
+                switchAutoSleep?.isChecked = WirelessAdbManager.isAutoSleepEnabled(this@SettingsActivity)
+
+                if (isSuspended) {
+                    badge.text = "STANDBY"
+                    badge.setBackgroundResource(R.drawable.bg_badge_pill_off)
+                    badge.setTextColor(Color.parseColor("#FFA000"))
+                    cardWirelessAdb.strokeColor = Color.parseColor("#FFA000")
+                    layoutCmd.visibility = View.GONE
+                    tvSubtitle.text = "Port $currentPort suspended (Wi-Fi/Hotspot offline). Auto-resumes on connect."
+                } else {
+                    badge.text = "ONLINE : $currentPort"
+                    badge.setBackgroundResource(R.drawable.bg_badge_pill)
+                    badge.setTextColor(Color.parseColor("#00E676"))
+                    cardWirelessAdb.strokeColor = Color.parseColor("#00E5FF")
+                    layoutCmd.visibility = View.VISIBLE
+                    tvSubtitle.text = "Active on Port $currentPort. Auto-starts on boot."
+                }
             } else {
+                dividerAutoSleep?.visibility = View.GONE
+                layoutAutoSleep?.visibility = View.GONE
+                dividerPort?.visibility = View.GONE
+                layoutPort?.visibility = View.GONE
                 badge.text = "OFFLINE"
                 badge.setBackgroundResource(R.drawable.bg_badge_pill_off)
                 badge.setTextColor(Color.parseColor("#888888"))
                 cardWirelessAdb.strokeColor = Color.parseColor("#333333")
                 layoutCmd.visibility = View.GONE
-                tvSubtitle.text = "Direct Wi-Fi & Hotspot debugging. Auto-starts on boot."
+                tvSubtitle.text = "Direct Wi-Fi & Hotspot debugging (Port $currentPort). Auto-starts on boot."
             }
 
             thread {
                 val ip = WirelessAdbManager.getDeviceIpAddress()
                 runOnUiThread {
                     if (isFinishing || isDestroyed) return@runOnUiThread
-                    val cmd = "adb connect $ip:${WirelessAdbManager.ADB_PORT}"
+                    val cmd = WirelessAdbManager.getConnectCommand(this@SettingsActivity)
                     tvCmd.text = cmd
-                    if (enabled) {
-                        tvSubtitle.text = "Active on IP $ip (Port 5555). Auto-starts on boot."
+                    if (enabled && !isSuspended) {
+                        tvSubtitle.text = "Active on IP $ip (Port $currentPort). Auto-starts on boot."
                     }
                 }
             }
@@ -508,7 +562,13 @@ class SettingsActivity : AppCompatActivity() {
             sw.setOnCheckedChangeListener { _, isChecked ->
                 thread {
                     val newCmd = if (isChecked) {
-                        WirelessAdbManager.enable(this@SettingsActivity)
+                        if (WirelessAdbManager.isAutoSleepEnabled(this@SettingsActivity) && !WirelessAdbManager.isLocalNetworkActive(this@SettingsActivity)) {
+                            WirelessAdbManager.suspendPort(this@SettingsActivity)
+                            getSharedPreferences("prefs", MODE_PRIVATE).edit().putBoolean("wireless_adb_enabled", true).apply()
+                            ""
+                        } else {
+                            WirelessAdbManager.enable(this@SettingsActivity)
+                        }
                     } else {
                         WirelessAdbManager.disable(this@SettingsActivity)
                         ""
@@ -519,13 +579,90 @@ class SettingsActivity : AppCompatActivity() {
                             val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                             val clip = android.content.ClipData.newPlainText("ADB Connect", newCmd)
                             clipboard.setPrimaryClip(clip)
-                            Toast.makeText(this@SettingsActivity, "⚡ Wireless ADB Active (Port 5555)!\nCopied: $newCmd", Toast.LENGTH_LONG).show()
+                            val port = WirelessAdbManager.getPort(this@SettingsActivity)
+                            Toast.makeText(this@SettingsActivity, "⚡ Wireless ADB Active (Port $port)!\nCopied: $newCmd", Toast.LENGTH_LONG).show()
                         }
+                    }
+                }
+            }
+
+            switchAutoSleep?.setOnCheckedChangeListener { _, isAutoSleepChecked ->
+                WirelessAdbManager.setAutoSleepEnabled(this@SettingsActivity, isAutoSleepChecked)
+                thread {
+                    if (isAutoSleepChecked) {
+                        val isNetActive = WirelessAdbManager.isLocalNetworkActive(this@SettingsActivity)
+                        if (!isNetActive) {
+                            WirelessAdbManager.suspendPort(this@SettingsActivity)
+                        }
+                    } else {
+                        if (WirelessAdbManager.isSuspended(this@SettingsActivity)) {
+                            WirelessAdbManager.reopenPort(this@SettingsActivity)
+                        }
+                    }
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+                        refreshUi(WirelessAdbManager.isEnabled(this@SettingsActivity))
+                        val port = WirelessAdbManager.getPort(this@SettingsActivity)
+                        val msg = if (isAutoSleepChecked) {
+                            "💤 Smart Port Auto-Sleep: Enabled (Closes Port $port when offline)"
+                        } else {
+                            "⚡ Smart Port Auto-Sleep: Disabled (Port $port stays always active)"
+                        }
+                        Toast.makeText(this@SettingsActivity, msg, Toast.LENGTH_SHORT).show()
                     }
                 }
             }
         }
 
+        layoutPort?.setOnClickListener {
+            val currentPort = WirelessAdbManager.getPort(this@SettingsActivity)
+            val container = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(50, 24, 50, 10)
+            }
+            val input = android.widget.EditText(this).apply {
+                inputType = android.text.InputType.TYPE_CLASS_NUMBER
+                setText(currentPort.toString())
+                setSelection(text.length)
+                setTextColor(Color.WHITE)
+                setHintTextColor(Color.GRAY)
+                hint = "1024 - 65535"
+            }
+            container.addView(input)
+
+            AlertDialog.Builder(this)
+                .setTitle("⚙️ Custom ADB Port")
+                .setMessage("Configure TCP/IP port for Wireless ADB (1024 - 65535).\nDefault is 5555.")
+                .setView(container)
+                .setPositiveButton("Save") { _, _ ->
+                    val raw = input.text.toString().trim()
+                    val portNum = raw.toIntOrNull()
+                    if (portNum != null && portNum in 1024..65535) {
+                        thread {
+                            WirelessAdbManager.setPort(this@SettingsActivity, portNum)
+                            runOnUiThread {
+                                refreshUi(WirelessAdbManager.isEnabled(this@SettingsActivity))
+                                Toast.makeText(this@SettingsActivity, "⚡ Wireless ADB Port set to $portNum", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    } else {
+                        Toast.makeText(this@SettingsActivity, "⚠️ Invalid Port! Enter a number between 1024 and 65535.", Toast.LENGTH_LONG).show()
+                    }
+                }
+                .setNeutralButton("Reset (5555)") { _, _ ->
+                    thread {
+                        WirelessAdbManager.setPort(this@SettingsActivity, WirelessAdbManager.DEFAULT_ADB_PORT)
+                        runOnUiThread {
+                            refreshUi(WirelessAdbManager.isEnabled(this@SettingsActivity))
+                            Toast.makeText(this@SettingsActivity, "⚡ Reset to default port 5555", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+
+        refreshWirelessAdbUiCallback = { enabled -> refreshUi(enabled) }
         val isEnabled = WirelessAdbManager.isEnabled(this)
         refreshUi(isEnabled)
 

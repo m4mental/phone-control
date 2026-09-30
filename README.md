@@ -169,6 +169,12 @@ Provides granular control over network modems and system telemetry:
     * 🔍 **Google DNS (`dns.google`):** High-reliability global recursive DNS.
     * 🌐 **Off / Automatic:** Restores standard ISP DNS configuration.
   * **Quick Settings (QS) Tile Integration:** Includes a custom `PrivateDnsTileService` allowing users to cycle through DNS profiles directly from the Android notification shade with real-time status badges.
+* 📶 **Root Wireless ADB Suite & Smart Port Auto-Sleep:**
+  * **One-Tap Wireless Debugging:** Enables high-speed wireless ADB (`setprop service.adb.tcp.port`) with elevated root permissions without requiring physical USB tethering or PC pairing prompts.
+  * **Custom Port Configuration:** Flexible port selection across non-privileged ranges (`1024..65535`) with instant 1-tap reset to default port `5555`.
+  * **Smart Port Auto-Sleep Engine (Anti-Drain & Security Guard):** Event-driven monitor in `AutoTweakService` that automatically suspends the listening ADB daemon port when disconnected from trusted Wi-Fi or Hotspot networks, protected by a 15-second anti-flapping debounce delay.
+  * **Instant Auto-Reopen on Network Recovery:** Reopens listening ports immediately when rejoining a Wi-Fi network or starting a Mobile Hotspot, broadcasting real-time network roaming alerts and IP/port status toasts.
+  * **Quick Settings (QS) Tile Integration:** Custom `WirelessAdbTileService` displays live `<ip>:<port>` status and provides 1-tap toggling directly from the Android Quick Settings shade.
 
 ---
 
