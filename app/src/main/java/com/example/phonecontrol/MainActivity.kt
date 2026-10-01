@@ -40,6 +40,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvLiveBattTemp: TextView
     private lateinit var tvLiveCurrentMa: TextView
 
+    private val statsExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private val isStatsUpdating = java.util.concurrent.atomic.AtomicBoolean(false)
+    private var statsWorkerFuture: java.util.concurrent.Future<*>? = null
+
     private val uiReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             updateDisplayStatus()
@@ -225,7 +229,7 @@ class MainActivity : AppCompatActivity() {
         checkRootAsync()
 
         // Periodic 7-Day Auto-Backup Check
-        BackupManager.checkAndRunScheduledAutoBackup(this)
+        BackupManager.checkAndRunScheduledAutoBackup(applicationContext)
 
         updateDisplayStatus()
     }
@@ -233,6 +237,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         try { unregisterReceiver(uiReceiver) } catch (e: Exception) {}
+        statsWorkerFuture?.cancel(true)
+        statsExecutor.shutdownNow()
         super.onDestroy()
     }
 
@@ -337,6 +343,7 @@ class MainActivity : AppCompatActivity() {
     
     override fun onPause() {
         liveHandler.removeCallbacks(liveRunnable)
+        statsWorkerFuture?.cancel(true)
         super.onPause()
     }
 
@@ -439,28 +446,34 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateLiveStats() {
-        kotlin.concurrent.thread {
-            val batteryInfo = BatteryManager.getBatteryStats()
-            val freeGb = readKernelMemAvailableGb()
-            val cpuUsage = readKernelCpuUsage()
-            val littleFreqKhz = readLittleCoreFreqKhz()
-            val bigFreqKhz = readBigCoreFreqKhz()
-            val socTemp = readSocTempCelsius()
-            val currentMa = readBatteryCurrentMa()
+        if (isFinishing || isDestroyed) return
+        if (!isStatsUpdating.compareAndSet(false, true)) {
+            return
+        }
+        statsWorkerFuture = statsExecutor.submit {
+            try {
+                if (isFinishing || isDestroyed) return@submit
+                val batteryInfo = BatteryManager.getBatteryStats()
+                val freeGb = readKernelMemAvailableGb()
+                val cpuUsage = readKernelCpuUsage()
+                val littleFreqKhz = readLittleCoreFreqKhz()
+                val bigFreqKhz = readBigCoreFreqKhz()
+                val socTemp = readSocTempCelsius()
+                val currentMa = readBatteryCurrentMa()
 
-            val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
-            if (prefs.getString("selected_mode", "rbBalance") == "rbAutomatic" && !prefs.contains("active_per_app_mode")) {
-                val intentAi = Intent(this@MainActivity, AutoTweakService::class.java).apply {
-                    action = "com.example.phonecontrol.ACTION_AI_TICK"
-                    putExtra("load", cpuUsage)
+                val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
+                if (prefs.getString("selected_mode", "rbBalance") == "rbAutomatic" && !prefs.contains("active_per_app_mode")) {
+                    val intentAi = Intent(this@MainActivity, AutoTweakService::class.java).apply {
+                        action = "com.example.phonecontrol.ACTION_AI_TICK"
+                        putExtra("load", cpuUsage)
+                    }
+                    try {
+                        startService(intentAi)
+                    } catch (e: Exception) {}
                 }
-                try {
-                    startService(intentAi)
-                } catch (e: Exception) {}
-            }
 
-            runOnUiThread {
-                if (isFinishing) return@runOnUiThread
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
                 tvLiveWatts.text = batteryInfo.wattage
                 tvLiveVolt.text = batteryInfo.voltage
                 tvLiveCycles.text = if (batteryInfo.cycles.isNotBlank() && batteryInfo.cycles != "0") "${batteryInfo.cycles} cyc" else "Good"
@@ -557,6 +570,9 @@ class MainActivity : AppCompatActivity() {
 
                 tvLiveCpuUsage.text = android.text.Html.fromHtml("<font color='#FFFFFF'>$cpuUsage%</font> ($stageHtml<font color='#B0BEC5'>$freqSuffix</font>)", android.text.Html.FROM_HTML_MODE_LEGACY)
             }
+        } finally {
+            isStatsUpdating.set(false)
+        }
         }
     }
 
@@ -569,8 +585,8 @@ class MainActivity : AppCompatActivity() {
         val activePerAppPkg = prefs.getString("active_per_app_pkg", null)
         val manualStage = prefs.getInt("manual_stage_override", 0)
 
-        val statusText = if (manualStage != 0) {
-            when (manualStage) {
+        if (manualStage != 0) {
+            val text = when (manualStage) {
                 13 -> "TEST LAB // S1 (480M FLOOR)"
                 12 -> "TEST LAB // S1 (550M DEEP)"
                 11 -> "TEST LAB // S1 (650M ULTRA)"
@@ -581,35 +597,50 @@ class MainActivity : AppCompatActivity() {
                 4 -> "TEST LAB // STAGE 4 (TURBO)"
                 else -> "TEST LAB // STAGE LOCK"
             }
+            applyDisplayStatus(text)
         } else if (!activePerAppMode.isNullOrBlank()) {
-            val appLabel = activePerAppPkg?.let { pkgs ->
-                val first = pkgs.split(",").firstOrNull()?.trim() ?: ""
-                try {
-                    val appInfo = packageManager.getApplicationInfo(first, 0)
-                    packageManager.getApplicationLabel(appInfo).toString()
-                } catch (e: Exception) { first }
-            } ?: "RECENTS"
-            "PER-APP // $activePerAppMode (${appLabel.uppercase()})"
-        } else when (savedMode) {
-            "rbPowerSaver" -> "MANUAL // POWER SAVER"
-            "rbBalance" -> "MANUAL // BALANCED EAS"
-            "rbPerformance" -> "MANUAL // TURBO PERFORMANCE"
-            "rbStreaming" -> "MANUAL // STREAMING ECO"
-            "rbAutomatic" -> (activeAiLabel ?: "AUTOMATIC (AI)").uppercase()
-            else -> "STANDBY"
+            val first = activePerAppPkg?.split(",")?.firstOrNull()?.trim()
+            if (first.isNullOrBlank()) {
+                applyDisplayStatus("PER-APP // $activePerAppMode (RECENTS)")
+            } else {
+                if (isFinishing || isDestroyed || statsExecutor.isShutdown) return
+                statsExecutor.execute {
+                    val appLabel = try {
+                        val appInfo = packageManager.getApplicationInfo(first, 0)
+                        packageManager.getApplicationLabel(appInfo).toString()
+                    } catch (e: Exception) { first }
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+                        applyDisplayStatus("PER-APP // $activePerAppMode (${appLabel.uppercase()})")
+                    }
+                }
+            }
+        } else {
+            val text = when (savedMode) {
+                "rbPowerSaver" -> "MANUAL // POWER SAVER"
+                "rbBalance" -> "MANUAL // BALANCED EAS"
+                "rbPerformance" -> "MANUAL // TURBO PERFORMANCE"
+                "rbStreaming" -> "MANUAL // STREAMING ECO"
+                "rbAutomatic" -> (activeAiLabel ?: "AUTOMATIC (AI)").uppercase()
+                else -> "STANDBY"
+            }
+            applyDisplayStatus(text)
         }
+    }
+
+    private fun applyDisplayStatus(statusText: String) {
+        if (isFinishing || isDestroyed) return
         tvStatus.text = statusText
-        
-        // Nothing OS Dynamic Status Accent (Signature Red Glyph):
         tvStatus.setTextColor(Color.WHITE)
         ivStatusIcon.setColorFilter(Color.parseColor("#D71921"))
-        
-        // Ensure service is running and recents hierarchy is evaluated
+
         val serviceIntent = Intent(this, AutoTweakService::class.java).apply {
             action = AutoTweakService.ACTION_FOREGROUND_APP_CHANGED
             putExtra(AutoTweakService.EXTRA_PACKAGE_NAME, packageName)
         }
-        startService(serviceIntent)
+        try {
+            startService(serviceIntent)
+        } catch (e: Exception) {}
     }
 
     private fun updateCardVisibility() {

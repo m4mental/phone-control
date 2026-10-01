@@ -79,6 +79,8 @@ class AutoTweakService : Service() {
     private val backgroundFreezeJobs = java.util.concurrent.ConcurrentHashMap<String, Runnable>()
     private var aiTickerHandler: Handler? = null
     private var aiTickerRunnable: Runnable? = null
+    private val dnsObserverLock = Any()
+    private val bootTurboHandler = Handler(Looper.getMainLooper())
     private var lastServiceCpuTotal = 0L
     private var dnsObserver: android.database.ContentObserver? = null
     private var lastServiceCpuIdle = 0L
@@ -532,12 +534,20 @@ class AutoTweakService : Service() {
         }
 
         tweakExecutor.execute {
+            if (isServiceDestroyed) return@execute
             handleVideoCallStateChanged()
+            if (isServiceDestroyed) return@execute
             AppEventService.enableViaRoot(packageName)
+            if (isServiceDestroyed) return@execute
             ShellUtils.fastCmd("dumpsys deviceidle whitelist +$packageName; am set-standby-bucket $packageName active 2>/dev/null")
+            if (isServiceDestroyed) return@execute
             ThermalManager.checkAndRecoverCooldown(this)
+            checkAndRecoverBootTurbo(this@AutoTweakService)
+            if (isServiceDestroyed) return@execute
             FreezerManager.cleanLegacySuspendedApps(this@AutoTweakService)
+            if (isServiceDestroyed) return@execute
             FreezerManager.pruneUninstalledPackages(this@AutoTweakService)
+            if (isServiceDestroyed) return@execute
             UpdateShieldManager.enforceAllShields(this@AutoTweakService)
 
             // Auto-initialize Studio Equalizer DSP in background on service startup
@@ -545,31 +555,35 @@ class AutoTweakService : Service() {
                 StudioDspManager.init(this@AutoTweakService)
             }
 
-            try {
-                dnsObserver = object : android.database.ContentObserver(Handler(Looper.getMainLooper())) {
-                    override fun onChange(selfChange: Boolean) {
-                        PrivateDnsTileService.updateTile(applicationContext)
+            synchronized(dnsObserverLock) {
+                if (!isServiceDestroyed) {
+                    try {
+                        dnsObserver = object : android.database.ContentObserver(Handler(Looper.getMainLooper())) {
+                            override fun onChange(selfChange: Boolean) {
+                                PrivateDnsTileService.updateTile(applicationContext)
+                            }
+                        }
+                        contentResolver.registerContentObserver(
+                            android.provider.Settings.Global.getUriFor("private_dns_mode"),
+                            false,
+                            dnsObserver!!
+                        )
+                        contentResolver.registerContentObserver(
+                            android.provider.Settings.Global.getUriFor("private_dns_specifier"),
+                            false,
+                            dnsObserver!!
+                        )
+                        PrivateDnsTileService.updateTile(this@AutoTweakService)
+                    } catch (e: Exception) {
+                        Log.w("AutoTweak", "Failed to register DNS observer: ${e.message}")
                     }
                 }
-                contentResolver.registerContentObserver(
-                    android.provider.Settings.Global.getUriFor("private_dns_mode"),
-                    false,
-                    dnsObserver!!
-                )
-                contentResolver.registerContentObserver(
-                    android.provider.Settings.Global.getUriFor("private_dns_specifier"),
-                    false,
-                    dnsObserver!!
-                )
-                PrivateDnsTileService.updateTile(this@AutoTweakService)
-            } catch (e: Exception) {
-                Log.w("AutoTweak", "Failed to register DNS observer: ${e.message}")
             }
         }
 
         aiTickerHandler = Handler(Looper.getMainLooper())
         val initialPrefs = getSharedPreferences("prefs", MODE_PRIVATE)
-        if (initialPrefs.getString("selected_mode", "rbBalance") == "rbAutomatic") {
+        if (initialPrefs.getString("selected_mode", "rbBalance") == "rbAutomatic" && !isServiceDestroyed) {
             startAiTicker()
         }
     }
@@ -724,7 +738,7 @@ class AutoTweakService : Service() {
             tweakExecutor.execute {
                 checkAndApplyDynamicAiTweak()
             }
-            aiTickerHandler?.post { startAiTicker() }
+            aiTickerHandler?.post { if (!isServiceDestroyed) startAiTicker() }
             return START_STICKY
         }
 
@@ -753,7 +767,7 @@ class AutoTweakService : Service() {
                     val load = calculateAppAiLoad(targetPkg)
                     applyAiTweak(load, focus) 
                 }
-                aiTickerHandler?.post { startAiTicker() }
+                aiTickerHandler?.post { if (!isServiceDestroyed) startAiTicker() }
             } else {
                 prefs.edit().remove("active_ai_label").apply()
                 aiTickerHandler?.post { stopAiTicker() }
@@ -1209,7 +1223,7 @@ class AutoTweakService : Service() {
                         val focus = prefs.getString("selected_focus", "rbFocusDaily") ?: "rbFocusDaily"
                         val load = calculateAppAiLoad(foregroundPkg)
                         applyAiTweak(load, focus)
-                        aiTickerHandler?.post { startAiTicker() }
+                        aiTickerHandler?.post { if (!isServiceDestroyed) startAiTicker() }
                     }
                     else -> if (wasPerApp) TweakManager.applyGlobalMode("Balance")
                 }
@@ -1388,27 +1402,91 @@ class AutoTweakService : Service() {
     }
 
     private fun startAiTicker() {
+        if (isServiceDestroyed) return
         stopAiTicker()
-        if (!isScreenOn) return
+        if (isServiceDestroyed || !isScreenOn) return
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
         if (prefs.getString("selected_mode", "rbBalance") != "rbAutomatic") return
 
         aiTickerRunnable = object : Runnable {
             override fun run() {
+                if (isServiceDestroyed) return
                 if (isScreenOn) {
                     tweakExecutor.execute {
-                        checkAndApplyDynamicAiTweak()
+                        if (!isServiceDestroyed) {
+                            checkAndApplyDynamicAiTweak()
+                        }
                     }
                 }
-                aiTickerHandler?.postDelayed(this, 1500)
+                if (!isServiceDestroyed) {
+                    aiTickerHandler?.postDelayed(this, 1500)
+                }
             }
         }
-        aiTickerHandler?.postDelayed(aiTickerRunnable!!, 1500)
+        if (!isServiceDestroyed) {
+            aiTickerHandler?.postDelayed(aiTickerRunnable!!, 1500)
+        }
     }
 
     private fun stopAiTicker() {
         aiTickerRunnable?.let { aiTickerHandler?.removeCallbacks(it) }
         aiTickerRunnable = null
+    }
+
+    fun checkAndRecoverBootTurbo(context: Context) {
+        val prefs = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
+        val wasActive = prefs.getBoolean("is_post_boot_turbo_active", false)
+        val expiryTime = prefs.getLong("post_boot_turbo_expiry", 0L)
+        if (wasActive) {
+            val now = System.currentTimeMillis()
+            if (now >= expiryTime) {
+                revertBootTurbo(context)
+            } else {
+                val remaining = expiryTime - now
+                bootTurboHandler.postDelayed({
+                    if (!isServiceDestroyed) {
+                        revertBootTurbo(context)
+                    }
+                }, remaining)
+            }
+        }
+    }
+
+    fun revertBootTurbo(context: Context) {
+        val prefs = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
+        prefs.edit()
+            .putBoolean("is_post_boot_turbo_active", false)
+            .remove("post_boot_turbo_expiry")
+            .apply()
+
+        TweakManager.isPostBootTurboActive = false
+        val savedModeKey = prefs.getString("post_boot_saved_mode", null)
+            ?: prefs.getString("selected_mode", "rbAutomatic")
+            ?: "rbAutomatic"
+        prefs.edit().remove("post_boot_saved_mode").apply()
+
+        Log.d("AutoTweak", "Post-Boot Turbo expired. Reverting to saved mode: $savedModeKey")
+        if (savedModeKey == "rbAutomatic") {
+            val focus = prefs.getString("selected_focus", "rbFocusDaily") ?: "rbFocusDaily"
+            TweakManager.applyGlobalMode("AI_Daily")
+            val intentAi = Intent(context, AutoTweakService::class.java).apply {
+                action = "com.example.phonecontrol.ACTION_AI_TICK"
+                putExtra("load", 10)
+            }
+            try { context.startService(intentAi) } catch (_: Exception) {}
+        } else {
+            val activeMode = when (savedModeKey) {
+                "rbPowerSaver" -> "Power Saver"
+                "rbPerformance" -> "Performance"
+                "rbStreaming" -> "Streaming"
+                else -> "Balance"
+            }
+            TweakManager.applyGlobalMode(activeMode)
+        }
+        ModeControlTileService.updateTile(context)
+        QuickFreezeTileService.updateTile(context)
+        BackupManager.checkAndRunScheduledAutoBackup(context)
+        context.sendBroadcast(Intent("com.example.phonecontrol.UPDATE_UI").setPackage(context.packageName))
     }
 
     private fun checkAndApplyDynamicAiTweak() {
@@ -1601,7 +1679,7 @@ class AutoTweakService : Service() {
         // 4. Sensor Logic
         val killSensorsActive = prefs.getBoolean("battery_kill_sensors", false)
         val privacySensorsActive = prefs.getBoolean("battery_privacy_sensors", false)
-        val indivBlockActive = prefs.getBoolean("block_gyro", false) || 
+        val indivBlockActive = prefs.getBoolean(DaemonManager.PREF_BLOCK_GYRO, false) || 
                               prefs.getBoolean("block_mag", false) || 
                               prefs.getBoolean("block_light", false) || 
                               prefs.getBoolean("block_motion", false)
@@ -1773,7 +1851,7 @@ class AutoTweakService : Service() {
             }
         }
 
-        val indivBlockActive = prefs.getBoolean("block_gyro", false) || 
+        val indivBlockActive = prefs.getBoolean(DaemonManager.PREF_BLOCK_GYRO, false) || 
                               prefs.getBoolean("block_mag", false) || 
                               prefs.getBoolean("block_light", false) || 
                               prefs.getBoolean("block_motion", false)
@@ -1811,11 +1889,17 @@ class AutoTweakService : Service() {
                 appOpsManager.stopWatchingActive(opActiveListener)
             }
         } catch (e: Exception) {}
+        synchronized(dnsObserverLock) {
+            try {
+                dnsObserver?.let { contentResolver.unregisterContentObserver(it) }
+                dnsObserver = null
+            } catch (e: Exception) {}
+        }
         try {
-            dnsObserver?.let { contentResolver.unregisterContentObserver(it) }
-            dnsObserver = null
-        } catch (e: Exception) {}
-        try {
+            isServiceDestroyed = true
+            stopAiTicker()
+            aiTickerHandler?.removeCallbacksAndMessages(null)
+            bootTurboHandler.removeCallbacksAndMessages(null)
             adbAutoSleepRunnable?.let { adbAutoSleepHandler.removeCallbacks(it) }
             adbAutoSleepRunnable = null
             equalizerFreezeHandler?.removeCallbacksAndMessages(null)

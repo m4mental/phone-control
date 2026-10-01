@@ -3,4 +3,5 @@
     <string name="widget_freezer_name">Freezer (All Apps)</string>
     <string name="widget_special_freezer_name">Special Freezer (Custom Choice)</string>
     <string name="widget_special_freezer_desc">Displays only your custom selected Special Freeze apps</string>
+    <string name="accessibility_service_description">Monitors window state transitions, home launcher app clicks, and task scroll events to automatically apply per-app performance modes, optimize CPU frequencies, and safely unfreeze hibernated apps on launch.</string>
 </resources>

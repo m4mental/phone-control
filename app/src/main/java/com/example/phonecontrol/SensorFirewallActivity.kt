@@ -30,7 +30,7 @@ class SensorFirewallActivity : AppCompatActivity() {
 
         // Bind initial states
         swNfc.isChecked = prefs.getBoolean("block_nfc", false)
-        swGyro.isChecked = prefs.getBoolean("block_gyro", false)
+        swGyro.isChecked = prefs.getBoolean(DaemonManager.PREF_BLOCK_GYRO, false)
         swMag.isChecked = prefs.getBoolean("block_mag", false)
         swMotion.isChecked = prefs.getBoolean("block_motion", false)
         swLight.isChecked = prefs.getBoolean("block_light", false)
@@ -46,7 +46,7 @@ class SensorFirewallActivity : AppCompatActivity() {
         }
 
         swGyro.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit().putBoolean("block_gyro", isChecked).apply()
+            prefs.edit().putBoolean(DaemonManager.PREF_BLOCK_GYRO, isChecked).apply()
             thread { SensorManager.applySensorShield(this) }
             AppToast.show(this, if (isChecked) "Gyroscope Blocked (OFF)" else "Gyroscope Enabled")
         }

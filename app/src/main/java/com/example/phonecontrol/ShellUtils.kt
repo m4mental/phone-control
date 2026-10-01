@@ -21,13 +21,116 @@ object ShellUtils {
 
     @Volatile var isRootGrantedCached: Boolean? = null
 
+    private val PACKAGE_NAME_REGEX = Regex("^[A-Za-z0-9._]+$")
+    private val HOSTNAME_LABEL_REGEX = Regex("^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
+
+    /**
+     * Safely quotes a value for POSIX shell execution using single-quote wrapping
+     * and embedded-apostrophe escaping: 'foo'\''bar'
+     */
+    fun shellQuote(value: String): String {
+        return "'" + value.replace("'", "'\\''") + "'"
+    }
+
+    /**
+     * Validates an Android package name against `^[A-Za-z0-9._]+$` and segment checks.
+     * Rejects invalid input without repairing.
+     */
+    fun isValidPackageName(packageName: String?): Boolean {
+        if (packageName.isNullOrEmpty()) return false
+        if (!PACKAGE_NAME_REGEX.matches(packageName)) return false
+        val segments = packageName.split('.')
+        if (segments.size < 2) return false
+        return segments.all { segment ->
+            segment.isNotEmpty() && (segment[0].isLetter() || segment[0] == '_')
+        }
+    }
+
+    /**
+     * Validates a DNS hostname against RFC 1035 / RFC 1123 label constraints.
+     * Rejects invalid input without repairing.
+     */
+    fun isValidHostname(hostname: String?): Boolean {
+        if (hostname.isNullOrBlank() || hostname.length > 253) return false
+        val labels = hostname.split('.')
+        if (labels.isEmpty()) return false
+        return labels.all { label ->
+            label.isNotEmpty() && label.length <= 63 && HOSTNAME_LABEL_REGEX.matches(label)
+        }
+    }
+
+    /**
+     * Validates that target path is strictly contained within baseDir, preventing path traversal.
+     */
+    fun isPathContained(path: String?, baseDir: String?): Boolean {
+        if (path.isNullOrBlank() || baseDir.isNullOrBlank()) return false
+        return try {
+            val target = java.io.File(path).canonicalFile
+            val base = java.io.File(baseDir).canonicalFile
+            val basePath = base.path
+            val targetPath = target.path
+            targetPath == basePath || targetPath.startsWith(basePath + java.io.File.separator)
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    fun validatePathInBaseDir(path: String?, baseDir: String?): Boolean {
+        return isPathContained(path, baseDir)
+    }
+
+    /**
+     * Validates that a string is a numeric positive PID.
+     */
+    fun isValidPid(pid: String?): Boolean {
+        if (pid.isNullOrBlank()) return false
+        val numeric = pid.toLongOrNull() ?: return false
+        return numeric > 0
+    }
+
+    private fun waitForProcess(process: Process, timeoutMs: Long): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            process.waitFor(timeoutMs, TimeUnit.MILLISECONDS)
+        } else {
+            val t = kotlin.concurrent.thread {
+                try { process.waitFor() } catch (_: InterruptedException) {}
+            }
+            t.join(timeoutMs)
+            if (t.isAlive) {
+                t.interrupt()
+                false
+            } else {
+                true
+            }
+        }
+    }
+
+    private fun destroyProcess(process: Process?) {
+        if (process == null) return
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                process.destroyForcibly()
+            } else {
+                process.destroy()
+            }
+        } catch (_: Exception) {}
+    }
+
     /**
      * Executes a fast root command and returns output string.
+     * Distinguishes errors and "Shell Busy" from successful output and does not return empty string on failures.
      */
     fun fastCmdResult(command: String, timeoutMs: Long = 3000): String {
         return try {
-            runAsRoot(command, timeoutMs).output
-        } catch (e: Exception) { "" }
+            val res = runAsRoot(command, timeoutMs)
+            if (res.exitCode == 0) {
+                res.output
+            } else {
+                "ERROR: ${res.output.ifBlank { "Exit code ${res.exitCode}" }}"
+            }
+        } catch (e: Exception) {
+            "ERROR: ${e.message ?: "Execution failed"}"
+        }
     }
 
     /**
@@ -39,33 +142,62 @@ object ShellUtils {
     /**
      * Standalone, isolated root checker.
      * Executes directly on an independent process so it never gets blocked by the single-thread shellExecutor queue.
+     * Reads output on a worker thread, enforces timeout, destroys timed-out processes, and closes streams.
      */
     fun checkRootStandalone(timeoutMs: Long = 4000, forceCheck: Boolean = false): Boolean {
         if (!forceCheck && isRootGrantedCached == true) return true
 
+        var proc: Process? = null
+        var inReader: BufferedReader? = null
+        var errReader: BufferedReader? = null
+
         return try {
             val p = Runtime.getRuntime().exec(arrayOf("su", "-c", "id"))
-            val r = BufferedReader(InputStreamReader(p.inputStream))
-            val out = r.readLine() ?: ""
-            val exited = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                p.waitFor(timeoutMs, TimeUnit.MILLISECONDS)
-            } else {
-                p.waitFor()
-                true
+            proc = p
+
+            var out = ""
+            val readThread = kotlin.concurrent.thread {
+                try {
+                    val r = BufferedReader(InputStreamReader(p.inputStream))
+                    inReader = r
+                    out = r.readLine() ?: ""
+                } catch (_: Exception) {}
             }
-            val isRoot = (out.contains("uid=0") || (exited && p.exitValue() == 0))
+
+            kotlin.concurrent.thread(isDaemon = true) {
+                try {
+                    val er = BufferedReader(InputStreamReader(p.errorStream))
+                    errReader = er
+                    while (er.readLine() != null) {}
+                } catch (_: Exception) {}
+            }
+
+            val exited = waitForProcess(p, timeoutMs)
+            if (!exited) {
+                Log.w("ShellUtils", "checkRootStandalone timed out after ${timeoutMs}ms, destroying process")
+                destroyProcess(p)
+                readThread.interrupt()
+                isRootGrantedCached = false
+                return false
+            }
+
+            readThread.join(minOf(timeoutMs, 1000L))
+
+            val isRoot = (out.contains("uid=0") || p.exitValue() == 0)
             isRootGrantedCached = isRoot
             isRoot
         } catch (e: Exception) {
             Log.e("ShellUtils", "checkRootStandalone direct exec error: ${e.message}")
-            try {
-                val res = runAsRoot("id", 2000)
-                val isRoot = (res.exitCode == 0 && res.output.contains("uid=0"))
-                isRootGrantedCached = isRoot
-                isRoot
-            } catch (ignored: Exception) {
-                isRootGrantedCached = false
-                false
+            isRootGrantedCached = false
+            false
+        } finally {
+            try { inReader?.close() } catch (_: Exception) {}
+            try { errReader?.close() } catch (_: Exception) {}
+            try { proc?.inputStream?.close() } catch (_: Exception) {}
+            try { proc?.errorStream?.close() } catch (_: Exception) {}
+            try { proc?.outputStream?.close() } catch (_: Exception) {}
+            if (proc != null && isProcessAlive(proc)) {
+                destroyProcess(proc)
             }
         }
     }
@@ -100,10 +232,17 @@ object ShellUtils {
                         val output = StringBuilder()
                         var exitCode = 0
                         var lineCount = 0
+                        var reachedDoneToken = false
 
                         while (true) {
-                            val line = reader?.readLine() ?: break
-                            if (line == DONE_TOKEN) break
+                            val line = reader?.readLine()
+                            if (line == null) {
+                                break
+                            }
+                            if (line == DONE_TOKEN) {
+                                reachedDoneToken = true
+                                break
+                            }
                             
                             if (line.startsWith("_EXIT_CODE_:")) {
                                 exitCode = line.substringAfter(":").toIntOrNull() ?: 0
@@ -115,7 +254,15 @@ object ShellUtils {
                             }
                         }
                         
-                        ShellResult(exitCode, output.toString().trim())
+                        if (!reachedDoneToken) {
+                            Log.e("ShellUtils", "Persistent shell stream reached EOF before DONE_TOKEN")
+                            synchronized(shellLock) {
+                                closePersistentShell()
+                            }
+                            ShellResult(-2, "Root shell process terminated unexpectedly before command completion (EOF)")
+                        } else {
+                            ShellResult(exitCode, output.toString().trim())
+                        }
                     } finally {
                         isBusy = false
                     }
@@ -152,7 +299,9 @@ object ShellUtils {
                     os?.flush()
                 } catch (e: Exception) {
                     Log.e("ShellUtils", "Error in fastCmd", e)
-                    closePersistentShell()
+                    synchronized(shellLock) {
+                        closePersistentShell()
+                    }
                 }
             }
         }
@@ -168,34 +317,78 @@ object ShellUtils {
     }
 
     /**
-     * Executes command directly with su -mm (Mount Master / Global Namespace)
-     * Bypasses mount namespace isolation for access to other app packages (/data/data).
+     * Executes command directly with su -mm (Mount Master / Global Namespace).
+     * Drains stdout and stderr concurrently, enforces timeout, destroys timed-out processes,
+     * and returns explicit failure instead of silently falling back to runAsRoot.
      */
     fun runAsRootMm(command: String, timeoutMs: Long = 5000): ShellResult {
+        var proc: Process? = null
+        var inReader: BufferedReader? = null
+        var errReader: BufferedReader? = null
+        val stdoutBuilder = StringBuilder()
+        val stderrBuilder = StringBuilder()
+
         return try {
             val p = Runtime.getRuntime().exec(arrayOf("su", "-mm", "-c", command))
-            val output = StringBuilder()
-            val r = BufferedReader(InputStreamReader(p.inputStream))
-            val er = BufferedReader(InputStreamReader(p.errorStream))
-            var l: String?
-            while (r.readLine().also { l = it } != null) { output.append(l).append("\n") }
-            while (er.readLine().also { l = it } != null) { output.append(l).append("\n") }
-            val exited = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                p.waitFor(timeoutMs, TimeUnit.MILLISECONDS)
-            } else {
-                p.waitFor()
-                true
+            proc = p
+
+            val stdoutThread = kotlin.concurrent.thread {
+                try {
+                    val r = BufferedReader(InputStreamReader(p.inputStream))
+                    inReader = r
+                    var l: String?
+                    while (r.readLine().also { l = it } != null) {
+                        stdoutBuilder.append(l).append("\n")
+                    }
+                } catch (_: Exception) {}
             }
-            val code = if (exited) p.exitValue() else -1
-            ShellResult(code, output.toString().trim())
+
+            val stderrThread = kotlin.concurrent.thread {
+                try {
+                    val er = BufferedReader(InputStreamReader(p.errorStream))
+                    errReader = er
+                    var l: String?
+                    while (er.readLine().also { l = it } != null) {
+                        stderrBuilder.append(l).append("\n")
+                    }
+                } catch (_: Exception) {}
+            }
+
+            val exited = waitForProcess(p, timeoutMs)
+            if (!exited) {
+                Log.w("ShellUtils", "runAsRootMm timed out after ${timeoutMs}ms: $command")
+                destroyProcess(p)
+                stdoutThread.interrupt()
+                stderrThread.interrupt()
+                return ShellResult(-1, "Command Timed Out (su -mm)")
+            }
+
+            stdoutThread.join(1000)
+            stderrThread.join(1000)
+
+            val code = p.exitValue()
+            val combined = (stdoutBuilder.toString() + stderrBuilder.toString()).trim()
+            ShellResult(code, combined)
         } catch (e: Exception) {
-            runAsRoot(command, timeoutMs)
+            Log.e("ShellUtils", "runAsRootMm execution failed: ${e.message}", e)
+            ShellResult(-1, "su -mm failed: ${e.message ?: "Execution error"}")
+        } finally {
+            try { inReader?.close() } catch (_: Exception) {}
+            try { errReader?.close() } catch (_: Exception) {}
+            try { proc?.inputStream?.close() } catch (_: Exception) {}
+            try { proc?.errorStream?.close() } catch (_: Exception) {}
+            try { proc?.outputStream?.close() } catch (_: Exception) {}
+            if (proc != null && isProcessAlive(proc)) {
+                destroyProcess(proc)
+            }
         }
     }
 
     private fun ensureShell() {
         if (persistentProcess == null || !isProcessAlive(persistentProcess)) {
-            closePersistentShell()
+            synchronized(shellLock) {
+                closePersistentShell()
+            }
             val proc = try {
                 Runtime.getRuntime().exec(arrayOf("su", "-mm"))
             } catch (e: Exception) {
@@ -225,24 +418,22 @@ object ShellUtils {
     }
 
     fun closePersistentShell() {
-        try {
-            os?.writeBytes("exit\n")
-            os?.flush()
-        } catch (e: Exception) {}
-        
-        try { os?.close() } catch (e: Exception) {}
-        try { reader?.close() } catch (e: Exception) {}
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                persistentProcess?.destroyForcibly()
-            } else {
-                persistentProcess?.destroy()
-            }
-        } catch (e: Exception) {}
-        
-        os = null
-        reader = null
-        persistentProcess = null
+        synchronized(shellLock) {
+            try {
+                os?.writeBytes("exit\n")
+                os?.flush()
+            } catch (_: Exception) {}
+            
+            try { os?.close() } catch (_: Exception) {}
+            try { reader?.close() } catch (_: Exception) {}
+            try {
+                destroyProcess(persistentProcess)
+            } catch (_: Exception) {}
+            
+            os = null
+            reader = null
+            persistentProcess = null
+        }
     }
 
     fun runCommandsAsRoot(commands: List<String>): ShellResult {

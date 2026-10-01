@@ -62,7 +62,7 @@ object SensorManager {
         ShellUtils.fastCmd(if (blockNfc) "svc nfc disable" else "svc nfc enable")
 
         // 2. Motion, Gyro, Mag, Light
-        val needsPrivacy = prefs.getBoolean("block_gyro", false) || 
+        val needsPrivacy = prefs.getBoolean(DaemonManager.PREF_BLOCK_GYRO, false) || 
                           prefs.getBoolean("block_mag", false) || 
                           prefs.getBoolean("block_light", false) || 
                           prefs.getBoolean("block_motion", false)

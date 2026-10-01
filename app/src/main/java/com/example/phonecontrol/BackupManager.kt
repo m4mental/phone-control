@@ -1,12 +1,17 @@
 package com.example.phonecontrol
 
 import android.content.Context
+import android.util.Log
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
 object BackupManager {
 
-    private val PREF_FILES = listOf(
+    private const val TAG = "BackupManager"
+    const val FORMAT_VERSION = 2
+
+    val PREF_FILES = listOf(
         "prefs",
         "freezer_prefs",
         "multitasking_prefs",
@@ -21,10 +26,14 @@ object BackupManager {
         "per_app_eq_prefs",
         "poweramp_presets"
     )
-    
+
+    private val KNOWN_NAMESPACES = PREF_FILES.toSet()
+
     private const val ROOT_DIR = "/sdcard/PHONE_CONTROL"
     private const val CONFIG_DIR = "$ROOT_DIR/Config_Backups"
     private const val VAULT_DIR = "$ROOT_DIR/App_Vault"
+
+    private data class TypedPref(val type: String, val value: Any)
 
     /**
      * Ensures the folder structure exists on internal storage using root.
@@ -32,7 +41,6 @@ object BackupManager {
     fun ensureStorageStructure() {
         ShellUtils.runAsRoot("mkdir -p $CONFIG_DIR")
         ShellUtils.runAsRoot("mkdir -p $VAULT_DIR")
-        ShellUtils.runAsRoot("chmod -R 777 $ROOT_DIR")
     }
 
     fun getAutoConfigPath(): String = CONFIG_DIR
@@ -45,96 +53,228 @@ object BackupManager {
         ensureStorageStructure()
         val json = generateBackupJson(context) ?: return false
         val fileName = "Config_Backup_${System.currentTimeMillis()}.json"
+        val destPath = "$CONFIG_DIR/$fileName"
+        if (!ShellUtils.validatePathInBaseDir(destPath, CONFIG_DIR)) return false
+
         val tempFile = File(context.cacheDir, fileName)
-        tempFile.writeText(json)
-        
-        val result = ShellUtils.runAsRoot("cp ${tempFile.absolutePath} $CONFIG_DIR/$fileName && chmod 666 $CONFIG_DIR/$fileName")
-        tempFile.delete()
-        return result.exitCode == 0
+        try {
+            tempFile.writeText(json)
+            val qTemp = ShellUtils.shellQuote(tempFile.absolutePath)
+            val qDest = ShellUtils.shellQuote(destPath)
+            val result = ShellUtils.runAsRoot("cp $qTemp $qDest")
+            return result.exitCode == 0
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save auto backup: ${e.message}", e)
+            return false
+        } finally {
+            if (tempFile.exists()) {
+                tempFile.delete()
+            }
+        }
     }
 
     /**
      * Restores the latest backup found in the Config_Backups folder.
      */
     fun restoreLatestAuto(context: Context): Boolean {
-        val result = ShellUtils.runAsRoot("ls -t $CONFIG_DIR/*.json | head -n 1")
+        val result = ShellUtils.runAsRoot("ls -t $CONFIG_DIR/*.json 2>/dev/null | head -n 1")
         if (result.exitCode != 0 || result.output.isBlank()) return false
-        
+
         val latestFile = result.output.trim()
-        val fileContent = ShellUtils.runAsRoot("cat $latestFile").output
-        return restoreFromJson(context, fileContent)
+        if (!ShellUtils.validatePathInBaseDir(latestFile, CONFIG_DIR) || !latestFile.endsWith(".json")) {
+            return false
+        }
+        val catRes = ShellUtils.runAsRoot("cat " + ShellUtils.shellQuote(latestFile))
+        if (catRes.exitCode != 0 || catRes.output.isBlank()) return false
+        return restoreFromJson(context, catRes.output)
     }
 
     /**
-     * Generates a JSON string containing all relevant SharedPreferences.
+     * Generates a typed JSON string containing all relevant SharedPreferences.
+     * Original types (Boolean, Int, Long, Float, String, Set<String>) are explicitly tagged.
      */
     fun generateBackupJson(context: Context): String? {
         return try {
             val masterJson = JSONObject()
+            masterJson.put("format_version", FORMAT_VERSION)
+            masterJson.put("created_at", System.currentTimeMillis())
+
+            val namespacesJson = JSONObject()
             for (prefName in PREF_FILES) {
                 val prefs = context.getSharedPreferences(prefName, Context.MODE_PRIVATE)
                 val allEntries = prefs.all
+                if (allEntries.isEmpty()) continue
+
                 val prefJson = JSONObject()
                 for ((key, value) in allEntries) {
-                    if (value is Set<*>) {
-                        val array = org.json.JSONArray()
-                        value.forEach { array.put(it) }
-                        prefJson.put(key, array)
-                    } else {
-                        prefJson.put(key, value)
+                    if (value == null) continue
+                    val entryObj = JSONObject()
+                    when (value) {
+                        is Boolean -> {
+                            entryObj.put("type", "boolean")
+                            entryObj.put("value", value)
+                        }
+                        is Int -> {
+                            entryObj.put("type", "int")
+                            entryObj.put("value", value)
+                        }
+                        is Long -> {
+                            entryObj.put("type", "long")
+                            entryObj.put("value", value)
+                        }
+                        is Float -> {
+                            entryObj.put("type", "float")
+                            entryObj.put("value", value.toDouble())
+                        }
+                        is String -> {
+                            entryObj.put("type", "string")
+                            entryObj.put("value", value)
+                        }
+                        is Set<*> -> {
+                            entryObj.put("type", "string_set")
+                            val array = JSONArray()
+                            for (item in value) {
+                                if (item != null) array.put(item.toString())
+                            }
+                            entryObj.put("value", array)
+                        }
+                        else -> continue
                     }
+                    prefJson.put(key, entryObj)
                 }
-                masterJson.put(prefName, prefJson)
+                if (prefJson.length() > 0) {
+                    namespacesJson.put(prefName, prefJson)
+                }
             }
+            masterJson.put("namespaces", namespacesJson)
             masterJson.toString(4)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Error generating backup JSON: ${e.message}", e)
             null
         }
     }
 
     /**
      * Restores SharedPreferences from a JSON string.
+     * All-or-nothing: parses and validates the entire document before clearing any preferences.
+     * Only accepts known namespaces. Preserves original Float and Long types.
+     * Rejects empty documents and does not start the daemon on failure.
      */
     fun restoreFromJson(context: Context, jsonString: String): Boolean {
+        if (jsonString.isBlank()) {
+            Log.w(TAG, "Restore rejected: empty input document")
+            return false
+        }
+
         return try {
-            if (jsonString.isBlank()) return false
-            
             val masterJson = JSONObject(jsonString)
-            for (prefName in PREF_FILES) {
-                if (!masterJson.has(prefName)) continue
-                
+            val namespacesObj = if (masterJson.has("namespaces")) {
+                masterJson.optJSONObject("namespaces") ?: return false
+            } else {
+                masterJson
+            }
+
+            val staged = mutableMapOf<String, MutableMap<String, TypedPref>>()
+            val nsKeys = namespacesObj.keys()
+            var totalEntryCount = 0
+
+            while (nsKeys.hasNext()) {
+                val ns = nsKeys.next()
+                if (ns == "format_version" || ns == "created_at" || ns == "version") {
+                    continue
+                }
+                if (!KNOWN_NAMESPACES.contains(ns)) {
+                    Log.w(TAG, "Restore rejected: unknown namespace '$ns'")
+                    return false
+                }
+
+                val nsObj = namespacesObj.optJSONObject(ns) ?: return false
+                val entriesMap = mutableMapOf<String, TypedPref>()
+                val entryKeys = nsObj.keys()
+
+                while (entryKeys.hasNext()) {
+                    val key = entryKeys.next()
+                    val rawVal = nsObj.get(key)
+                    val typedPref = if (rawVal is JSONObject && rawVal.has("type") && rawVal.has("value")) {
+                        when (rawVal.getString("type")) {
+                            "boolean" -> TypedPref("boolean", rawVal.getBoolean("value"))
+                            "int" -> TypedPref("int", rawVal.getInt("value"))
+                            "long" -> TypedPref("long", rawVal.getLong("value"))
+                            "float" -> TypedPref("float", rawVal.getDouble("value").toFloat())
+                            "string" -> TypedPref("string", rawVal.getString("value"))
+                            "string_set" -> {
+                                val arr = rawVal.getJSONArray("value")
+                                val set = mutableSetOf<String>()
+                                for (i in 0 until arr.length()) {
+                                    set.add(arr.getString(i))
+                                }
+                                TypedPref("string_set", set)
+                            }
+                            else -> {
+                                Log.w(TAG, "Restore rejected: invalid type tag '${rawVal.optString("type")}' for key '$key'")
+                                return false
+                            }
+                        }
+                    } else {
+                        // Backward-compatible fallback for legacy untagged backup documents
+                        when (rawVal) {
+                            is Boolean -> TypedPref("boolean", rawVal)
+                            is Int -> TypedPref("int", rawVal)
+                            is Long -> TypedPref("long", rawVal)
+                            is Double -> TypedPref("float", rawVal.toFloat())
+                            is String -> TypedPref("string", rawVal)
+                            is JSONArray -> {
+                                val set = mutableSetOf<String>()
+                                for (i in 0 until rawVal.length()) {
+                                    set.add(rawVal.getString(i))
+                                }
+                                TypedPref("string_set", set)
+                            }
+                            else -> {
+                                Log.w(TAG, "Restore rejected: unsupported raw type for key '$key'")
+                                return false
+                            }
+                        }
+                    }
+                    entriesMap[key] = typedPref
+                    totalEntryCount++
+                }
+
+                if (entriesMap.isNotEmpty()) {
+                    staged[ns] = entriesMap
+                }
+            }
+
+            // Reject empty documents
+            if (staged.isEmpty() || totalEntryCount == 0) {
+                Log.w(TAG, "Restore rejected: document contains no valid preference entries")
+                return false
+            }
+
+            // Document is valid: perform all-or-nothing preference overwrite
+            for ((prefName, entries) in staged) {
                 val prefs = context.getSharedPreferences(prefName, Context.MODE_PRIVATE)
                 val editor = prefs.edit()
                 editor.clear()
-                
-                val prefJson = masterJson.getJSONObject(prefName)
-                val keys = prefJson.keys()
-                while (keys.hasNext()) {
-                    val key = keys.next()
-                    val value = prefJson.get(key)
-                    
-                    when (value) {
-                        is Boolean -> editor.putBoolean(key, value)
-                        is Int -> editor.putInt(key, value)
-                        is Long -> editor.putLong(key, value)
-                        is String -> editor.putString(key, value)
-                        is org.json.JSONArray -> {
-                            val set = mutableSetOf<String>()
-                            for (i in 0 until value.length()) {
-                                set.add(value.getString(i))
-                            }
-                            editor.putStringSet(key, set)
-                        }
+                for ((key, typed) in entries) {
+                    when (typed.type) {
+                        "boolean" -> editor.putBoolean(key, typed.value as Boolean)
+                        "int" -> editor.putInt(key, typed.value as Int)
+                        "long" -> editor.putLong(key, typed.value as Long)
+                        "float" -> editor.putFloat(key, typed.value as Float)
+                        "string" -> editor.putString(key, typed.value as String)
+                        "string_set" -> @Suppress("UNCHECKED_CAST") editor.putStringSet(key, typed.value as Set<String>)
                     }
                 }
                 editor.apply()
             }
-            // Restart daemon and auto tweak service to apply restored configuration
+
+            // Restart daemon and auto tweak service to apply restored configuration only on success
             DaemonManager.startDaemon(context)
+            Log.d(TAG, "Configuration restored successfully ($totalEntryCount entries in ${staged.size} namespaces)")
             true
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Failed to restore configuration from JSON: ${e.message}", e)
             false
         }
     }
@@ -162,7 +302,9 @@ object BackupManager {
                 if (shouldBackup) {
                     saveBackupAuto(context)
                 }
-            } catch (ignored: Exception) {}
+            } catch (e: Exception) {
+                Log.e(TAG, "Scheduled auto backup failed: ${e.message}", e)
+            }
         }
     }
 }

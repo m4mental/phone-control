@@ -21,38 +21,52 @@ object ThermalManager {
         else ShellUtils.fastCmd("echo 0 > $THERMAL_CONFIG_PATH")
     }
 
-    fun getTemperature(): Int {
-        val result = ShellUtils.runAsRoot("cat /sys/class/power_supply/battery/temp")
+    /**
+     * Reads battery temperature in Celsius.
+     * Returns null (unknown) on failure rather than defaulting to 35°C to prevent
+     * dangerously lifting CPU frequency caps when temperature is unavailable.
+     */
+    fun getTemperature(): Int? {
+        val result = ShellUtils.runAsRoot("cat /sys/class/power_supply/battery/temp 2>/dev/null")
         return try {
-            val raw = result.output.trim().toInt()
-            if (raw > 1000) raw / 1000 else if (raw > 100) raw / 10 else raw
+            if (result.exitCode != 0 || result.output.isBlank()) null
+            else {
+                val raw = result.output.trim().toInt()
+                if (raw > 1000) raw / 1000 else if (raw > 100) raw / 10 else raw
+            }
         } catch (e: Exception) {
-            35
+            null
         }
     }
 
     /**
      * Adaptive Thermal Engine: Stepped throttling based on user-defined Temp Fuse & Charging state.
      */
-    fun applyAdaptiveThrottling(context: Context, temp: Int) {
+    fun applyAdaptiveThrottling(context: Context, temp: Int?) {
         if (isCooldownActive) return
         
         val prefs = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
-        val manualStage = prefs.getInt("manual_stage_override", 0)
-        if (manualStage != 0 || TweakManager.manualStageOverride != 0 || AutoTweakService.isPerAppActive || TweakManager.currentMode == "Streaming") {
-            // Strictly protect user's manual test lock in Test Lab and active Per-App / Streaming rules
-            return
-        }
 
-        // 1. Auto Emergency Cooldown Trigger Check
+        // 1. Auto Emergency Cooldown Trigger Check MUST be evaluated before manual/per-app/streaming overrides
         val isAutoCooldownEnabled = prefs.getBoolean("auto_cooldown_enabled", false)
         val autoCooldownThreshold = prefs.getInt("auto_cooldown_threshold", 50)
-        if (isAutoCooldownEnabled && temp >= autoCooldownThreshold) {
+        if (temp != null && isAutoCooldownEnabled && temp >= autoCooldownThreshold) {
             startEmergencyCooldown(context) {}
             return
         }
 
-        // 2. Ignore While Charging Check
+        // Strictly protect user's manual test lock in Test Lab and active Per-App / Streaming rules
+        val manualStage = prefs.getInt("manual_stage_override", 0)
+        if (manualStage != 0 || TweakManager.manualStageOverride != 0 || AutoTweakService.isPerAppActive || TweakManager.currentMode == "Streaming") {
+            return
+        }
+
+        // Unknown temperature: do not raise CPU limits. Preserve existing caps safely.
+        if (temp == null) {
+            return
+        }
+
+        // 2. Ignore While Charging Check (Charging Hysteresis)
         if (prefs.getBoolean("ignore_charging", false)) {
             val battStatus = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
             val plugged = battStatus?.getIntExtra(AndroidBatteryManager.EXTRA_PLUGGED, -1) ?: 0
@@ -98,8 +112,8 @@ object ThermalManager {
     /**
      * Preventive Thermal Guard: Slower throttling before emergency.
      */
-    fun applyPreventiveThrottling(temp: Int) {
-        if (isCooldownActive) return
+    fun applyPreventiveThrottling(temp: Int?) {
+        if (isCooldownActive || temp == null) return
         
         if (temp >= 48) {
             ShellUtils.fastCmd("echo 1 > /sys/devices/virtual/thermal/thermal_message/sconfig 2>/dev/null")
@@ -152,6 +166,7 @@ object ThermalManager {
         val startTime = prefs.getLong("cooldown_start_timestamp", 0L)
         
         if (wasActive) {
+            isCooldownActive = true
             val elapsed = System.currentTimeMillis() - startTime
             if (elapsed >= 120000) {
                 revertCooldown(context)
@@ -165,35 +180,37 @@ object ThermalManager {
     }
 
     private fun revertCooldown(context: Context) {
-        // 1. Restore Networks
-        ShellUtils.fastCmd("settings put global airplane_mode_on 0")
-        ShellUtils.fastCmd("am broadcast -a android.intent.action.AIRPLANE_MODE --ez state false")
-        ShellUtils.fastCmd("svc wifi enable")
-        ShellUtils.fastCmd("svc data enable")
-        
         val prefs = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
-        prefs.edit().putBoolean("is_cooldown_active", false).apply()
-        
-        val isThrottlingDisabled = prefs.getBoolean("disable_throttling", false)
-        setThrottlingEnabled(!isThrottlingDisabled)
-        
-        // 2. Restore User's Active System Mode (No longer stuck in Battery Saver)
-        val savedModeKey = prefs.getString("selected_mode", "rbBalance") ?: "rbBalance"
-        when (savedModeKey) {
-            "rbPowerSaver" -> TweakManager.applyGlobalMode("Power Saver")
-            "rbPerformance" -> TweakManager.applyGlobalMode("Performance")
-            "rbStreaming" -> TweakManager.applyGlobalMode("Streaming")
-            "rbAutomatic" -> {
-                val focus = prefs.getString("selected_focus", "rbFocusDaily") ?: "rbFocusDaily"
-                TweakManager.applyGlobalMode("AI_Daily")
+        try {
+            // 1. Restore Networks
+            ShellUtils.fastCmd("settings put global airplane_mode_on 0")
+            ShellUtils.fastCmd("am broadcast -a android.intent.action.AIRPLANE_MODE --ez state false")
+            ShellUtils.fastCmd("svc wifi enable")
+            ShellUtils.fastCmd("svc data enable")
+            
+            val isThrottlingDisabled = prefs.getBoolean("disable_throttling", false)
+            setThrottlingEnabled(!isThrottlingDisabled)
+            
+            // 2. Restore User's Active System Mode (No longer stuck in Battery Saver)
+            val savedModeKey = prefs.getString("selected_mode", "rbBalance") ?: "rbBalance"
+            when (savedModeKey) {
+                "rbPowerSaver" -> TweakManager.applyGlobalMode("Power Saver")
+                "rbPerformance" -> TweakManager.applyGlobalMode("Performance")
+                "rbStreaming" -> TweakManager.applyGlobalMode("Streaming")
+                "rbAutomatic" -> {
+                    val focus = prefs.getString("selected_focus", "rbFocusDaily") ?: "rbFocusDaily"
+                    TweakManager.applyGlobalMode("AI_Daily")
+                }
+                else -> TweakManager.applyGlobalMode("Balance")
             }
-            else -> TweakManager.applyGlobalMode("Balance")
-        }
-        TweakManager.limitCpuFrequency(100)
-        prefs.edit().putInt("active_cpu_cap", 100).apply()
+            TweakManager.limitCpuFrequency(100)
+            prefs.edit().putInt("active_cpu_cap", 100).apply()
 
-        isCooldownActive = false
-        val intent = Intent("com.example.phonecontrol.ACTION_COOLDOWN_END")
-        context.sendBroadcast(intent)
+            val intent = Intent("com.example.phonecontrol.ACTION_COOLDOWN_END")
+            context.sendBroadcast(intent)
+        } finally {
+            isCooldownActive = false
+            prefs.edit().putBoolean("is_cooldown_active", false).apply()
+        }
     }
 }

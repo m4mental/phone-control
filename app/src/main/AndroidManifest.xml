@@ -9,13 +9,12 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
+    <!-- Retained for HomeTowerLockActivity cell tower identification (TelephonyManager.allCellInfo) -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.CAMERA" />
-    <uses-feature android:name="android.hardware.camera" android:required="false" />
-    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <!-- Retained for StudioDspManager audio effects and global audio session capture -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.READ_SYNC_SETTINGS" />
@@ -24,6 +23,7 @@
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="ScopedStorage" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Retained for StudioDspManager and dumpsys service inspections -->
     <uses-permission android:name="android.permission.DUMP"
         tools:ignore="ProtectedPermissions" />
 
@@ -48,12 +48,12 @@
 
         <activity
             android:name=".FreezerActivity"
-            android:exported="true"
+            android:exported="false"
             android:theme="@style/Theme.PhoneControl" />
 
         <activity
             android:name=".RunningServicesActivity"
-            android:exported="true"
+            android:exported="false"
             android:theme="@style/Theme.PhoneControl" />
 
         <activity
@@ -98,7 +98,7 @@
 
         <activity
             android:name=".AppFreezerListActivity"
-            android:exported="true"
+            android:exported="false"
             android:theme="@style/Theme.PhoneControl" />
 
         <activity
@@ -207,9 +207,9 @@
                 <data android:pathPattern=".*\\..*\\.aab" />
             </intent-filter>
 
-            <!-- 5. Android Package Installer action -->
+            <!-- 5. Android Share Intent Action (ACTION_SEND) -->
             <intent-filter>
-                <action android:name="android.intent.action.INSTALL_PACKAGE" />
+                <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
 
                 <data android:scheme="content" />
@@ -248,7 +248,7 @@
 
         <activity
             android:name=".UpdateShieldActivity"
-            android:exported="true"
+            android:exported="false"
             android:theme="@style/Theme.PhoneControl" />
 
         <activity
@@ -342,6 +342,7 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
 
@@ -487,7 +488,6 @@
         <receiver android:name=".FreezerWidgetProvider" android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="com.example.phonecontrol.ACTION_LAUNCH_APP" />
             </intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/freezer_widget_info" />
         </receiver>
@@ -500,13 +500,17 @@
         <receiver android:name=".SpecialFreezerWidgetProvider" android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="com.example.phonecontrol.ACTION_LAUNCH_SPECIAL_APP" />
             </intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/special_freezer_widget_info" />
         </receiver>
 
         <service android:name=".SpecialFreezerWidgetService"
             android:permission="android.permission.BIND_REMOTEVIEWS"
+            android:exported="false" />
+
+        <!-- Non-exported launch receiver for widget clicks -->
+        <receiver
+            android:name=".FreezerLaunchReceiver"
             android:exported="false" />
 
         <!-- Auto Ghost Residue Cleaner for Uninstalled Apps -->

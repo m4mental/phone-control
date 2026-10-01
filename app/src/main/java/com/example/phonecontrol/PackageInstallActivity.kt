@@ -52,6 +52,13 @@ class PackageInstallActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        val action = intent.action
+        val isConflictReentry = intent.getBooleanExtra("extra_from_conflict", false)
+        if (!isConflictReentry && action != Intent.ACTION_VIEW && action != Intent.ACTION_SEND) {
+            finish()
+            return
+        }
+
         try {
             android.os.StrictMode.setVmPolicy(android.os.StrictMode.VmPolicy.Builder().build())
         } catch (e: Exception) {}
@@ -76,7 +83,15 @@ class PackageInstallActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (intent.getBooleanExtra("extra_from_conflict", false)) {
+
+        val action = intent.action
+        val isConflictReentry = intent.getBooleanExtra("extra_from_conflict", false)
+        if (!isConflictReentry && action != Intent.ACTION_VIEW && action != Intent.ACTION_SEND) {
+            finish()
+            return
+        }
+
+        if (isConflictReentry) {
             val res = pendingConflictResult
             val insp = currentInspection
             val uri = currentUri
@@ -352,10 +367,22 @@ class PackageInstallActivity : AppCompatActivity() {
         btnInstall.isEnabled = true
         btnInstall.text = if (inspection.isGhostPackage) "👻 Clean & Install with Root" else "⚡ Install with Root"
         btnInstall.setOnClickListener {
-            btnInstall.isEnabled = false
-            btnInstall.text = "⚡ Installing with Root..."
-            val force = inspection.isGhostPackage
-            executeInstallation(dialogView, uri, fileName, inspection, forceReinstall = force, selectedSplits = selectedSplits)
+            if (inspection.isGhostPackage) {
+                androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("👻 Residual Ghost Package Detected")
+                    .setMessage("Residual system cache records for '${inspection.packageName}' were detected from a previous uninstall. To proceed, leftovers must be uninstalled and cleared across all users.\n\nDo you want to proceed with cleanup and installation?")
+                    .setPositiveButton("Proceed & Install") { _, _ ->
+                        btnInstall.isEnabled = false
+                        btnInstall.text = "⚡ Installing with Root..."
+                        executeInstallation(dialogView, uri, fileName, inspection, forceReinstall = true, autoBackup = true, selectedSplits = selectedSplits)
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            } else {
+                btnInstall.isEnabled = false
+                btnInstall.text = "⚡ Installing with Root..."
+                executeInstallation(dialogView, uri, fileName, inspection, forceReinstall = false, autoBackup = true, selectedSplits = selectedSplits)
+            }
         }
     }
 
@@ -365,6 +392,7 @@ class PackageInstallActivity : AppCompatActivity() {
         fileName: String,
         inspection: PackageInstallerManager.ApkInspection,
         forceReinstall: Boolean,
+        autoBackup: Boolean = true,
         selectedSplits: Set<String>? = null
     ) {
         val tvInstallType = dialogView.findViewById<TextView>(R.id.tvInspectInstallType)
@@ -390,7 +418,9 @@ class PackageInstallActivity : AppCompatActivity() {
             moveToBackground(currentAppName)
         }
 
-        val statusMsg = if (forceReinstall) "⚡ Auto-backing up previous app data & force reinstalling..." else "⚡ Executing root install..."
+        val statusMsg = if (forceReinstall) {
+            if (autoBackup) "⚡ Auto-backing up previous app data & force reinstalling..." else "⚡ Clean force reinstalling..."
+        } else "⚡ Executing root install..."
         tvInstallType.text = statusMsg
         tvInstallType.setTextColor(Color.parseColor("#FFD54F"))
 
@@ -400,7 +430,7 @@ class PackageInstallActivity : AppCompatActivity() {
                 uri = uri,
                 fileName = fileName,
                 forceReinstall = forceReinstall,
-                autoBackup = true,
+                autoBackup = autoBackup,
                 selectedSplits = selectedSplits
             ) { progressText, progressPercent ->
                 runOnUiThread {
@@ -417,6 +447,25 @@ class PackageInstallActivity : AppCompatActivity() {
             runOnUiThread {
                 isInstalling = false
                 val currentDialog = installSheetDialog
+
+                if (!result.success && result.isBackupFailed) {
+                    androidx.appcompat.app.AlertDialog.Builder(this@PackageInstallActivity)
+                        .setTitle("⚠️ " + (result.failureTitle ?: "Data Backup Failed"))
+                        .setMessage("${result.failureExplanation}\n\nDo you want to continue with a clean install (all existing app data will be lost), or cancel?")
+                        .setPositiveButton("Continue Without Backup") { _, _ ->
+                            executeInstallation(dialogView, uri, fileName, inspection, forceReinstall = true, autoBackup = false, selectedSplits = selectedSplits)
+                        }
+                        .setNegativeButton("Cancel") { _, _ ->
+                            btnInstall.isEnabled = true
+                            btnInstall.text = if (inspection.isGhostPackage) "👻 Clean & Install with Root" else "⚡ Install with Root"
+                            btnCancel.isEnabled = true
+                            layoutProgress?.visibility = View.GONE
+                            tvInstallType.text = "Installation halted to protect app data."
+                        }
+                        .setCancelable(false)
+                        .show()
+                    return@runOnUiThread
+                }
 
                 if (isBackgroundInstall) {
                     showCompletionNotification(
@@ -597,6 +646,24 @@ class PackageInstallActivity : AppCompatActivity() {
                         }
                     } else {
                         if (isFinishing || isDestroyed) return@runOnUiThread
+
+                        if (!forceResult.success && forceResult.isBackupFailed) {
+                            androidx.appcompat.app.AlertDialog.Builder(this@PackageInstallActivity)
+                                .setTitle("⚠️ " + (forceResult.failureTitle ?: "Data Backup Failed"))
+                                .setMessage("${forceResult.failureExplanation}\n\nDo you want to continue with a clean install (all existing app data will be deleted), or cancel?")
+                                .setPositiveButton("Continue Without Backup") { _, _ ->
+                                    cbAutoBackup?.isChecked = false
+                                    btnProceed.performClick()
+                                }
+                                .setNegativeButton("Cancel") { _, _ ->
+                                    btnCancel.isEnabled = true
+                                    btnProceed.isEnabled = true
+                                    btnProceed.text = "⚡ Force Install (Clean)"
+                                }
+                                .setCancelable(false)
+                                .show()
+                            return@runOnUiThread
+                        }
 
                         if (forceResult.success) {
                             showPostInstallDialog(forceResult.installedPackage ?: inspection.packageName, forceResult.backupPath, fileName, dialog)

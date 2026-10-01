@@ -465,24 +465,27 @@ object FreezerManager {
     }
 
     fun launchApp(context: Context, packageName: String) {
-        if (packageName.isBlank()) return
+        if (!ShellUtils.isValidPackageName(packageName)) return
         
         // 1. Instantly register active session & grant 15-second absolute immunity
         registerAppOpen(packageName)
+
+        val qPkg = ShellUtils.shellQuote(packageName)
 
         // 2. Resolve target launcher activity component name if possible
         val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
         val componentName = launchIntent?.component?.flattenToShortString() ?: ""
 
         val startCmd = if (componentName.isNotBlank()) {
-            "am start -n '$componentName' -a android.intent.action.MAIN -c android.intent.category.LAUNCHER --activity-brought-to-front 2>/dev/null"
+            val qComp = ShellUtils.shellQuote(componentName)
+            "am start -n $qComp -a android.intent.action.MAIN -c android.intent.category.LAUNCHER --activity-brought-to-front"
         } else {
             """
-            comp=${'$'}(cmd package resolve-activity --brief "$packageName" 2>/dev/null | tail -n 1)
+            comp=${'$'}(cmd package resolve-activity --brief $qPkg 2>/dev/null | tail -n 1)
             if [ -n "${'$'}comp" ] && [ "${'$'}comp" != "No activity found" ]; then
-                am start -n "${'$'}comp" -a android.intent.action.MAIN -c android.intent.category.LAUNCHER --activity-brought-to-front 2>/dev/null
+                am start -n "${'$'}comp" -a android.intent.action.MAIN -c android.intent.category.LAUNCHER --activity-brought-to-front
             else
-                monkey -p "$packageName" -c android.intent.category.LAUNCHER 1 2>/dev/null
+                monkey -p $qPkg -c android.intent.category.LAUNCHER 1
             fi
             """.trimIndent()
         }
@@ -490,13 +493,13 @@ object FreezerManager {
         // 3. Atomically unsuspend, enable, unfreeze, and launch in root shell asynchronously with 0ms UI delay
         // Sequential shell execution guarantees pm unsuspend finishes BEFORE am start, preventing SuspendedAppActivity
         val launchScript = """
-            cmd package unsuspend --user 0 "$packageName" 2>/dev/null
-            pm unsuspend "$packageName" 2>/dev/null
-            pm enable "$packageName" 2>/dev/null
-            am unfreeze "$packageName" 2>/dev/null
-            cmd appops set "$packageName" RUN_IN_BACKGROUND allow 2>/dev/null
-            cmd appops set "$packageName" RUN_ANY_IN_BACKGROUND allow 2>/dev/null
-            am set-standby-bucket "$packageName" active 2>/dev/null
+            cmd package unsuspend --user 0 $qPkg 2>/dev/null
+            pm unsuspend $qPkg 2>/dev/null
+            pm enable $qPkg 2>/dev/null
+            am unfreeze $qPkg 2>/dev/null
+            cmd appops set $qPkg RUN_IN_BACKGROUND allow
+            cmd appops set $qPkg RUN_ANY_IN_BACKGROUND allow
+            am set-standby-bucket $qPkg active
             $startCmd
         """.trimIndent()
 

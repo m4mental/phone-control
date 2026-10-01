@@ -46,8 +46,30 @@ object RootNetCli {
         }
     }
 
+    private fun validateAndResolveRedirect(currentUrlStr: String, loc: String): String {
+        val nextUrlStr = if (loc.startsWith("http://") || loc.startsWith("https://")) {
+            loc
+        } else {
+            URL(URL(currentUrlStr), loc).toString()
+        }
+        val nextUrl = URL(nextUrlStr)
+        if (!nextUrl.protocol.equals("https", ignoreCase = true)) {
+            throw SecurityException("Insecure redirect rejected: Protocol changed to ${nextUrl.protocol}")
+        }
+        if (!RootNetManager.isAllowedGitHubHost(nextUrl.host)) {
+            throw SecurityException("Off-allowlist redirect rejected: Target host is not an authorized GitHub domain: ${nextUrl.host}")
+        }
+        return nextUrlStr
+    }
+
     private fun openConnection(urlStr: String): HttpURLConnection {
         val url = URL(urlStr)
+        if (!url.protocol.equals("https", ignoreCase = true)) {
+            throw SecurityException("Insecure request rejected: Must use HTTPS protocol")
+        }
+        if (!RootNetManager.isAllowedGitHubHost(url.host)) {
+            throw SecurityException("Off-allowlist host rejected: ${url.host}")
+        }
         val conn = url.openConnection() as HttpURLConnection
         conn.connectTimeout = 12000
         conn.readTimeout = 25000
@@ -65,8 +87,11 @@ object RootNetCli {
             if (code in 300..399) {
                 val loc = conn.getHeaderField("Location")
                 if (!loc.isNullOrBlank()) {
-                    currentUrl = if (loc.startsWith("http")) loc else URL(URL(currentUrl), loc).toString()
-                    conn.disconnect()
+                    try {
+                        currentUrl = validateAndResolveRedirect(currentUrl, loc)
+                    } finally {
+                        conn.disconnect()
+                    }
                     continue
                 }
             }
@@ -87,8 +112,11 @@ object RootNetCli {
             if (code in 300..399) {
                 val loc = conn.getHeaderField("Location")
                 if (!loc.isNullOrBlank()) {
-                    currentUrl = if (loc.startsWith("http")) loc else URL(URL(currentUrl), loc).toString()
-                    conn.disconnect()
+                    try {
+                        currentUrl = validateAndResolveRedirect(currentUrl, loc)
+                    } finally {
+                        conn.disconnect()
+                    }
                     continue
                 }
             }

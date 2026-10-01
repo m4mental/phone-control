@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
 }
@@ -19,11 +21,26 @@ android {
     signingConfigs {
         create("release") {
             val keystoreFile = rootProject.file("keystore/phonecontrol-release.jks")
-            val storePass = System.getenv("KEYSTORE_PASSWORD") ?: "PhoneControl2026Key"
-            val keyPass = System.getenv("KEY_PASSWORD") ?: "PhoneControl2026Key"
-            val alias = System.getenv("KEY_ALIAS") ?: "phonecontrol"
 
-            if (keystoreFile.exists() && keystoreFile.length() > 0L) {
+            val localProperties = Properties().apply {
+                val localPropertiesFile = rootProject.file("local.properties")
+                if (localPropertiesFile.exists()) {
+                    load(localPropertiesFile.inputStream())
+                }
+            }
+
+            fun getProp(name: String, envName: String): String? {
+                return System.getenv(envName)
+                    ?: (project.findProperty(name) as? String)
+                    ?: localProperties.getProperty(name)
+            }
+
+            val storePass = getProp("RELEASE_KEYSTORE_PASSWORD", "KEYSTORE_PASSWORD")
+            val keyPass = getProp("RELEASE_KEY_PASSWORD", "KEY_PASSWORD")
+            val alias = getProp("RELEASE_KEY_ALIAS", "KEY_ALIAS")
+
+            if (keystoreFile.exists() && keystoreFile.length() > 0L &&
+                !storePass.isNullOrBlank() && !keyPass.isNullOrBlank() && !alias.isNullOrBlank()) {
                 storeFile = keystoreFile
                 storePassword = storePass
                 keyAlias = alias
@@ -42,17 +59,25 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
         debug {
-            val releaseKeystore = rootProject.file("keystore/phonecontrol-release.jks")
-            if (releaseKeystore.exists() && releaseKeystore.length() > 0L) {
-                signingConfig = signingConfigs.getByName("release")
-            }
+            // Uses default debug signing configuration
         }
+    }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
 }
+
+androidComponents {
+    beforeVariants(selector().withBuildType("release")) { variant ->
+        variant.hostTests[com.android.build.api.variant.HostTestBuilder.UNIT_TEST_TYPE]?.enable = true
+    }
+}
+
 
 dependencies {
     implementation(libs.androidx.appcompat)
@@ -61,6 +86,7 @@ dependencies {
     implementation(libs.androidx.biometric)
     implementation(libs.androidx.swiperefreshlayout)
     testImplementation(libs.junit)
+    testImplementation("org.json:json:20240303")
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
 }
