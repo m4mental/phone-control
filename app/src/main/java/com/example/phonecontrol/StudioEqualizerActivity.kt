@@ -1151,11 +1151,12 @@ class StudioEqualizerActivity : AppCompatActivity() {
         super.onResume()
         try {
             val filter = IntentFilter("com.example.phonecontrol.UPDATE_UI")
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                registerReceiver(dspUiReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-            } else {
-                registerReceiver(dspUiReceiver, filter)
-            }
+            androidx.core.content.ContextCompat.registerReceiver(
+                this,
+                dspUiReceiver,
+                filter,
+                androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
+            )
         } catch (e: Exception) {}
         val isEnabled = PowerampPresetManager.isMasterEnabled(this)
         switchMasterDsp.isChecked = isEnabled

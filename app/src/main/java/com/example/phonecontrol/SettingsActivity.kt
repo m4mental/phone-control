@@ -2,8 +2,11 @@ package com.example.phonecontrol
 
 import android.app.ProgressDialog
 import android.content.Intent
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -174,11 +177,12 @@ class SettingsActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         val filter = android.content.IntentFilter("com.example.phonecontrol.UPDATE_UI")
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(adbUiReceiver, filter, android.content.Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            registerReceiver(adbUiReceiver, filter)
-        }
+        androidx.core.content.ContextCompat.registerReceiver(
+            this,
+            adbUiReceiver,
+            filter,
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
+        )
     }
 
     override fun onStop() {
@@ -394,11 +398,11 @@ class SettingsActivity : AppCompatActivity() {
 
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
             dialog.dismiss()
-            startDownloadAndInstallUpdate(downloadUrl, fileName)
+            startDownloadAndInstallUpdate(downloadUrl, fileName, fileSizeBytes)
         }
     }
 
-    private fun startDownloadAndInstallUpdate(downloadUrl: String, fileName: String) {
+    private fun startDownloadAndInstallUpdate(downloadUrl: String, fileName: String, fileSizeBytes: Long = 0L) {
         @Suppress("DEPRECATION")
         val progressDialog = ProgressDialog(this).apply {
             setTitle("📥 Downloading Update (via Root)")
@@ -409,8 +413,27 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         thread {
-            val destination = File(cacheDir, fileName)
-            val (downloadSuccess, downloadError) = RootNetManager.downloadFile(this@SettingsActivity, downloadUrl, destination)
+            val safeBaseName = File(fileName).name.ifBlank { "phonecontrol-update.apk" }
+            val destination = File(cacheDir, safeBaseName)
+
+            if (!ShellUtils.isPathContained(destination.absolutePath, cacheDir.absolutePath)) {
+                runOnUiThread {
+                    progressDialog.dismiss()
+                    AlertDialog.Builder(this@SettingsActivity)
+                        .setTitle("Security Error")
+                        .setMessage("Illegal file path detected: Update file must be contained within the cache directory.")
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+                return@thread
+            }
+
+            val (downloadSuccess, downloadError) = RootNetManager.downloadFile(
+                context = this@SettingsActivity,
+                url = downloadUrl,
+                destination = destination,
+                expectedSizeBytes = if (fileSizeBytes > 0L) fileSizeBytes else null
+            )
 
             if (!downloadSuccess) {
                 runOnUiThread {
@@ -429,6 +452,117 @@ class SettingsActivity : AppCompatActivity() {
                 return@thread
             }
 
+            // Verify package identity, signer certificates, and higher version code before root install
+            val archiveFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                PackageManager.GET_SIGNING_CERTIFICATES
+            } else {
+                @Suppress("DEPRECATION")
+                PackageManager.GET_SIGNATURES
+            }
+
+            val archiveInfo = try {
+                packageManager.getPackageArchiveInfo(destination.absolutePath, archiveFlags)
+            } catch (e: Exception) {
+                null
+            }
+
+            if (archiveInfo == null) {
+                destination.delete()
+                runOnUiThread {
+                    progressDialog.dismiss()
+                    AlertDialog.Builder(this@SettingsActivity)
+                        .setTitle("Invalid Update Package")
+                        .setMessage("Could not parse the downloaded APK file. The archive may be corrupt or invalid.")
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+                return@thread
+            }
+
+            if (archiveInfo.packageName != packageName) {
+                destination.delete()
+                runOnUiThread {
+                    progressDialog.dismiss()
+                    AlertDialog.Builder(this@SettingsActivity)
+                        .setTitle("Package Verification Failed")
+                        .setMessage("Downloaded update package name ('${archiveInfo.packageName}') does not match expected application ('$packageName'). Installation aborted.")
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+                return@thread
+            }
+
+            val installedPkgInfo = try {
+                packageManager.getPackageInfo(packageName, archiveFlags)
+            } catch (e: Exception) {
+                null
+            }
+
+            fun extractSignatures(pi: PackageInfo): List<ByteArray> {
+                return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    val signingInfo = pi.signingInfo
+                    if (signingInfo != null) {
+                        if (signingInfo.hasMultipleSigners()) {
+                            signingInfo.apkContentsSigners.map { it.toByteArray() }
+                        } else {
+                            signingInfo.signingCertificateHistory.map { it.toByteArray() }
+                        }
+                    } else emptyList()
+                } else {
+                    @Suppress("DEPRECATION")
+                    pi.signatures?.map { it.toByteArray() } ?: emptyList()
+                }
+            }
+
+            val archiveSigs = extractSignatures(archiveInfo)
+            val installedSigs = if (installedPkgInfo != null) extractSignatures(installedPkgInfo) else emptyList()
+
+            val signaturesMatch = installedSigs.isNotEmpty() && archiveSigs.isNotEmpty() && installedSigs.any { instSig ->
+                archiveSigs.any { archSig -> instSig.contentEquals(archSig) }
+            }
+
+            if (!signaturesMatch) {
+                destination.delete()
+                runOnUiThread {
+                    progressDialog.dismiss()
+                    AlertDialog.Builder(this@SettingsActivity)
+                        .setTitle("Signature Mismatch")
+                        .setMessage("Downloaded update is signed with an untrusted or mismatched certificate. To protect device security, installation was blocked.")
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+                return@thread
+            }
+
+            val incomingCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                archiveInfo.longVersionCode
+            } else {
+                @Suppress("DEPRECATION")
+                archiveInfo.versionCode.toLong()
+            }
+
+            val installedCode = if (installedPkgInfo != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    installedPkgInfo.longVersionCode
+                } else {
+                    @Suppress("DEPRECATION")
+                    installedPkgInfo.versionCode.toLong()
+                }
+            } else 0L
+
+            if (incomingCode <= installedCode) {
+                destination.delete()
+                runOnUiThread {
+                    progressDialog.dismiss()
+                    AlertDialog.Builder(this@SettingsActivity)
+                        .setTitle("Version Downgrade Blocked")
+                        .setMessage("Downloaded update version (code $incomingCode) is not higher than the currently installed version (code $installedCode). Installation aborted.")
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+                return@thread
+            }
+
             runOnUiThread {
                 progressDialog.setTitle("⚡ Root Installing Update")
                 progressDialog.setMessage("Invoking Universal Root Package Installer...")
@@ -437,7 +571,7 @@ class SettingsActivity : AppCompatActivity() {
             val installResult = PackageInstallerManager.installPackage(
                 context = this@SettingsActivity,
                 uri = Uri.fromFile(destination),
-                fileName = fileName,
+                fileName = safeBaseName,
                 forceReinstall = false,
                 autoBackup = true
             ) { progressText, _ ->
@@ -785,12 +919,17 @@ class SettingsActivity : AppCompatActivity() {
             .setPositiveButton("Apply") { _, _ ->
                 val json = input.text.toString().trim()
                 if (json.isNotEmpty()) {
-                    val success = BackupManager.restoreFromJson(this, json)
-                    if (success) {
-                        Toast.makeText(this, "Config Imported Successfully!", Toast.LENGTH_SHORT).show()
-                        refreshToggles()
-                    } else {
-                        Toast.makeText(this, "Invalid JSON format!", Toast.LENGTH_SHORT).show()
+                    kotlin.concurrent.thread {
+                        val success = BackupManager.restoreFromJson(this@SettingsActivity, json)
+                        runOnUiThread {
+                            if (isFinishing || isDestroyed) return@runOnUiThread
+                            if (success) {
+                                Toast.makeText(this@SettingsActivity, "Config Imported Successfully!", Toast.LENGTH_SHORT).show()
+                                refreshToggles()
+                            } else {
+                                Toast.makeText(this@SettingsActivity, "Invalid or Corrupted JSON Configuration!", Toast.LENGTH_SHORT).show()
+                            }
+                        }
                     }
                 }
             }
@@ -849,7 +988,7 @@ class SettingsActivity : AppCompatActivity() {
                 subFeatures = listOf(
                     SubFeature("Network Booster (TCP BBR)", "network_priority_enabled", "Enables TCP BBR congestion control and prioritizes low-latency traffic.", false, R.drawable.ic_sub_network),
                     SubFeature("Per-App Data Firewall", "firewall_enabled", "Restricts background network access for selected applications.", false, R.drawable.ic_sub_firewall),
-                    SubFeature("Home 5G Tower Lock", "tower_lock_enabled", "Locks modem to specific carrier frequency bands to stabilize 5G reception indoors.", false, R.drawable.ic_sub_tower)
+                    SubFeature("Home 5G Tower Lock", DaemonManager.PREF_TOWER_LOCK_ENABLED, "Locks modem to specific carrier frequency bands to stabilize 5G reception indoors.", false, R.drawable.ic_sub_tower)
                 )
             ),
             MasterCategory(
@@ -864,7 +1003,7 @@ class SettingsActivity : AppCompatActivity() {
                     SubFeature("App Freezer & Hibernation", "freezer_enabled", "Freeze unused applications with a single tap to reclaim 100% background RAM.", false, R.drawable.ic_sub_freezer),
                     SubFeature("Bloatware Remover", "bloatware_enabled", "Force-disable carrier-preinstalled bloatware and unnecessary background telemetry.", false, R.drawable.ic_sub_bloatware),
                     SubFeature("Installed App Extractor", "app_extractor_enabled", "Extract single APKs or split app bundles (.apks) to storage/share with 1-tap.", true, R.drawable.ic_sub_extractor),
-                    SubFeature("App & Data Vault", "vault_enabled", "⚠️ [BETA] Local offline encrypted backup and restore utility for apps.", false, R.drawable.ic_sub_vault),
+                    SubFeature("App & Data Vault", "vault_enabled", "⚠️ [BETA] Local offline compressed backup and restore utility for apps.", false, R.drawable.ic_sub_vault),
                     SubFeature("Root Shell Terminal", "adb_enabled", "Directly execute and test root Linux commands inside a secured terminal.", false, R.drawable.ic_sub_terminal)
                 )
             )
@@ -1234,7 +1373,7 @@ class SettingsActivity : AppCompatActivity() {
                     ShellUtils.runAsRoot("iptables -F OUTPUT 2>/dev/null")
                     getSharedPreferences("firewall_prefs", MODE_PRIVATE).edit().clear().apply()
                 }
-                "tower_lock_enabled" -> {
+                DaemonManager.PREF_TOWER_LOCK_ENABLED -> {
                     ShellUtils.runAsRoot("echo -e \"AT+ECELL=0\\r\\n\" > /dev/radio/pttycmd1 2>/dev/null")
                     ShellUtils.runAsRoot("echo -e \"AT+E5GSWITCH=0\\r\\n\" > /dev/radio/pttycmd1 2>/dev/null")
                     getSharedPreferences("tower_prefs", MODE_PRIVATE).edit().clear().apply()
@@ -1279,10 +1418,15 @@ class SettingsActivity : AppCompatActivity() {
                     show()
                 }
                 thread { 
-                    MasterManager.revertAll(this)
+                    val failed = MasterManager.revertAll(this)
                     runOnUiThread { 
                         progress.dismiss()
-                        Toast.makeText(this, "All modifications reverted & all toggles switched OFF!", Toast.LENGTH_LONG).show()
+                        val msg = if (failed.isEmpty()) {
+                            "All modifications reverted & all toggles switched OFF!"
+                        } else {
+                            "Revert completed with warnings: ${failed.joinToString(", ")}"
+                        }
+                        Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
                         refreshToggles() 
                     } 
                 }

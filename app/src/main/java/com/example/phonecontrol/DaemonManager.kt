@@ -5,21 +5,39 @@ import android.util.Log
 import java.io.File
 
 object DaemonManager {
+    const val PREF_TOWER_LOCK_ENABLED = "tower_lock_enabled"
+    const val PREF_BLOCK_GYRO = "block_gyro"
+    const val PREF_IS_TOWER_LOCKED = "is_tower_locked"
+
     private const val DAEMON_NAME = "phone_control_daemon.sh"
-    
+    private const val PID_FILE_NAME = "daemon.pid"
+    private var cachedPidFile: File? = null
+
     fun startDaemon(context: Context) {
         val daemonFile = File(context.filesDir, DAEMON_NAME)
+        val pidFile = File(context.filesDir, PID_FILE_NAME)
+        cachedPidFile = pidFile
+
         val prefsPath = "/data/data/${context.packageName}/shared_prefs/prefs.xml"
         val towerPrefsPath = "/data/data/${context.packageName}/shared_prefs/tower_prefs.xml"
         val logPath = "${context.filesDir.absolutePath}/daemon.log"
+        val trimFilePath = File(context.filesDir, "last_trim").absolutePath
+        val nightFilePath = File(context.filesDir, "last_night_opt").absolutePath
+        val pidFilePath = pidFile.absolutePath
 
         val script = """
             #!/system/bin/sh
             # Phone Control Event-Driven Native Daemon
             
+            PID_FILE="$pidFilePath"
+            echo "$$" > "${'$'}PID_FILE"
+            trap 'rm -f "${'$'}PID_FILE"; exit 0' EXIT TERM INT HUP
+
             PREFS="$prefsPath"
             TOWER_PREFS="$towerPrefsPath"
             LOG="$logPath"
+            TRIM_FILE="$trimFilePath"
+            NIGHT_FILE="$nightFilePath"
             
             echo "Event-Driven Daemon started at ${'$'}(date)" > "${'$'}LOG"
             
@@ -39,8 +57,8 @@ object DaemonManager {
             }
 
             apply_tower_lock() {
-                if [ ${'$'}(get_pref_bool "${'$'}PREFS" "tower_lock_enabled") -eq 0 ]; then
-                    if [ ${'$'}(get_pref_bool "${'$'}TOWER_PREFS" "is_tower_locked") -eq 0 ]; then
+                if [ ${'$'}(get_pref_bool "${'$'}PREFS" "$PREF_TOWER_LOCK_ENABLED") -eq 0 ]; then
+                    if [ ${'$'}(get_pref_bool "${'$'}TOWER_PREFS" "$PREF_IS_TOWER_LOCKED") -eq 0 ]; then
                         pci=${'$'}(get_pref_int "${'$'}TOWER_PREFS" "locked_pci")
                         earfcn=${'$'}(get_pref_int "${'$'}TOWER_PREFS" "locked_earfcn")
                         if [ "${'$'}pci" != "-1" ] && [ "${'$'}earfcn" != "-1" ]; then
@@ -59,7 +77,7 @@ object DaemonManager {
             }
 
             apply_sensors() {
-                [ ${'$'}(get_pref_bool "${'$'}PREFS" "block_gyro") -eq 0 ] || [ ${'$'}(get_pref_bool "${'$'}PREFS" "block_mag") -eq 0 ] || [ ${'$'}(get_pref_bool "${'$'}PREFS" "block_light") -eq 0 ] || [ ${'$'}(get_pref_bool "${'$'}PREFS" "block_motion") -eq 0 ]
+                [ ${'$'}(get_pref_bool "${'$'}PREFS" "$PREF_BLOCK_GYRO") -eq 0 ] || [ ${'$'}(get_pref_bool "${'$'}PREFS" "block_mag") -eq 0 ] || [ ${'$'}(get_pref_bool "${'$'}PREFS" "block_light") -eq 0 ] || [ ${'$'}(get_pref_bool "${'$'}PREFS" "block_motion") -eq 0 ]
                 indiv_block=${'$'}?
                 
                 if [ ${'$'}(get_pref_bool "${'$'}PREFS" "block_nfc") -eq 0 ]; then
@@ -77,7 +95,6 @@ object DaemonManager {
             sysctl -w net.ipv4.tcp_congestion_control=bbr 2>/dev/null
 
             # 2. Automated FSTRIM (Runs once a week)
-            TRIM_FILE="/data/local/tmp/last_trim"
             NOW=${'$'}(date +%s)
             LAST=${'$'}(cat "${'$'}TRIM_FILE" 2>/dev/null || echo 0)
             if [ ${'$'}((NOW - LAST)) -gt 604800 ]; then
@@ -87,7 +104,7 @@ object DaemonManager {
             fi
 
             # Initial apply
-            if [ ${'$'}(get_pref_bool "${'$'}TOWER_PREFS" "is_tower_locked") -eq 0 ]; then
+            if [ ${'$'}(get_pref_bool "${'$'}TOWER_PREFS" "$PREF_IS_TOWER_LOCKED") -eq 0 ]; then
                  apply_tower_lock
             fi
             apply_5g_antisleep
@@ -97,7 +114,7 @@ object DaemonManager {
             while true; do
                 sleep 60
                 
-                if [ ${'$'}(get_pref_bool "${'$'}TOWER_PREFS" "is_tower_locked") -eq 0 ]; then
+                if [ ${'$'}(get_pref_bool "${'$'}TOWER_PREFS" "$PREF_IS_TOWER_LOCKED") -eq 0 ]; then
                      apply_tower_lock
                 fi
                 apply_5g_antisleep
@@ -108,7 +125,6 @@ object DaemonManager {
                 # 4. Automated Night Deep Clean (Runs once per day at 03:00 AM)
                 CUR_HR=${'$'}(date +%H)
                 if [ "${'$'}CUR_HR" = "03" ]; then
-                    NIGHT_FILE="/data/local/tmp/last_night_opt"
                     TODAY=${'$'}(date +%Y%m%d)
                     LAST_OPT=${'$'}(cat "${'$'}NIGHT_FILE" 2>/dev/null)
                     if [ "${'$'}TODAY" != "${'$'}LAST_OPT" ]; then
@@ -123,17 +139,48 @@ object DaemonManager {
         """.trimIndent()
 
         try {
+            stopDaemon(context)
             daemonFile.writeText(script)
-            ShellUtils.runAsRoot("chmod 777 ${daemonFile.absolutePath}")
-            ShellUtils.runAsRoot("pkill -f $DAEMON_NAME")
-            ShellUtils.runAsRoot("sh -c '(${daemonFile.absolutePath} >/dev/null 2>&1 &)'")
+            val chmodRes = ShellUtils.runAsRoot("chmod 700 ${ShellUtils.shellQuote(daemonFile.absolutePath)}")
+            if (chmodRes.exitCode != 0) {
+                Log.e("DaemonManager", "chmod 700 failed with exit code ${chmodRes.exitCode}: ${chmodRes.output}")
+                return
+            }
+            val launchRes = ShellUtils.runAsRoot("sh -c '(${ShellUtils.shellQuote(daemonFile.absolutePath)} >/dev/null 2>&1 &)'")
+            if (launchRes.exitCode != 0) {
+                Log.e("DaemonManager", "Daemon launch failed with exit code ${launchRes.exitCode}: ${launchRes.output}")
+                return
+            }
             Log.d("DaemonManager", "Event-Driven Daemon started successfully")
         } catch (e: Exception) {
             Log.e("DaemonManager", "Error starting daemon", e)
         }
     }
 
-    fun stopDaemon() {
-        ShellUtils.runAsRoot("pkill -f $DAEMON_NAME")
+    fun stopDaemon(context: Context? = null) {
+        val pidFile = (context?.filesDir?.let { File(it, PID_FILE_NAME) })
+            ?: cachedPidFile
+            ?: File("/data/data/com.example.phonecontrol/files", PID_FILE_NAME)
+
+        try {
+            val pidPath = pidFile.absolutePath
+            val catRes = ShellUtils.runAsRoot("if [ -f ${ShellUtils.shellQuote(pidPath)} ]; then cat ${ShellUtils.shellQuote(pidPath)}; fi")
+            val pid = catRes.output.trim()
+            if (ShellUtils.isValidPid(pid)) {
+                val cmdlineRes = ShellUtils.runAsRoot("if [ -f /proc/$pid/cmdline ]; then cat /proc/$pid/cmdline; fi")
+                if (cmdlineRes.output.contains(DAEMON_NAME)) {
+                    ShellUtils.runAsRoot("kill -9 $pid")
+                } else {
+                    Log.w("DaemonManager", "PID $pid does not belong to $DAEMON_NAME; skipping kill")
+                }
+                ShellUtils.runAsRoot("rm -f ${ShellUtils.shellQuote(pidPath)}")
+                try { pidFile.delete() } catch (_: Exception) {}
+            } else {
+                // Fallback to stop legacy daemon by matching phone_control_daemon.sh when no PID file exists
+                ShellUtils.runAsRoot("pkill -f $DAEMON_NAME 2>/dev/null")
+            }
+        } catch (e: Exception) {
+            Log.e("DaemonManager", "Error stopping daemon", e)
+        }
     }
 }

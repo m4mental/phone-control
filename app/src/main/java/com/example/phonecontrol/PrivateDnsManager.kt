@@ -144,12 +144,16 @@ object PrivateDnsManager {
         val cmd = if (provider == DnsProvider.OFF) {
             "settings put global private_dns_mode off && settings delete global private_dns_specifier"
         } else {
-            "settings put global private_dns_mode ${provider.mode} && settings put global private_dns_specifier ${provider.specifier}"
+            if (provider.specifier.isNotBlank() && !ShellUtils.isValidHostname(provider.specifier)) {
+                return false
+            }
+            val qSpecifier = ShellUtils.shellQuote(provider.specifier)
+            "settings put global private_dns_mode ${provider.mode} && settings put global private_dns_specifier $qSpecifier"
         }
 
         val res = ShellUtils.runAsRoot(cmd, 8000)
         Log.d(TAG, "Applied DNS provider ${provider.name}: exitCode=${res.exitCode}")
-        if (context != null) {
+        if (res.exitCode == 0 && context != null) {
             PrivateDnsTileService.updateTile(context)
         }
         return res.exitCode == 0
@@ -157,16 +161,18 @@ object PrivateDnsManager {
 
     /**
      * Sets a custom private DNS hostname (e.g. NextDNS ID, custom Pi-hole, AdGuard Home).
+     * Rejects invalid input without repairing.
      */
     fun setCustomHostname(hostname: String, context: Context? = null): Boolean {
-        val cleanHost = hostname.trim()
-        if (cleanHost.isBlank()) {
-            return setProvider(DnsProvider.OFF, context)
+        if (!ShellUtils.isValidHostname(hostname)) {
+            Log.w(TAG, "Rejected custom DNS hostname: invalid format '$hostname'")
+            return false
         }
-        val cmd = "settings put global private_dns_mode hostname && settings put global private_dns_specifier $cleanHost"
+        val qHost = ShellUtils.shellQuote(hostname)
+        val cmd = "settings put global private_dns_mode hostname && settings put global private_dns_specifier $qHost"
         val res = ShellUtils.runAsRoot(cmd, 8000)
-        Log.d(TAG, "Applied Custom DNS Hostname ($cleanHost): exitCode=${res.exitCode}")
-        if (context != null) {
+        Log.d(TAG, "Applied Custom DNS Hostname ($hostname): exitCode=${res.exitCode}")
+        if (res.exitCode == 0 && context != null) {
             PrivateDnsTileService.updateTile(context)
         }
         return res.exitCode == 0
@@ -200,7 +206,10 @@ object PrivateDnsManager {
      */
     fun measureDnsLatencyRoot(target: String? = null): Long {
         val host = when {
-            !target.isNullOrBlank() -> target
+            !target.isNullOrBlank() -> {
+                if (!ShellUtils.isValidHostname(target)) return -1L
+                target
+            }
             else -> {
                 val provider = getCurrentProvider()
                 when (provider) {
@@ -219,7 +228,9 @@ object PrivateDnsManager {
             }
         }
 
-        val res = ShellUtils.runAsRoot("ping -c 1 -W 2 $host", 3500)
+        if (!ShellUtils.isValidHostname(host)) return -1L
+        val qHost = ShellUtils.shellQuote(host)
+        val res = ShellUtils.runAsRoot("ping -c 1 -W 2 $qHost", 3500)
         if (res.exitCode != 0 || res.output.isBlank()) return -1L
 
         val timeMatch = Regex("time=([0-9.]+)\\s*ms").find(res.output)

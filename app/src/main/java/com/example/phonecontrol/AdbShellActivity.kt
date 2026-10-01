@@ -452,19 +452,21 @@ class AdbShellActivity : AppCompatActivity() {
 
         btnOpen.setOnClickListener {
             dialog.dismiss()
-            if (pkg.isNotBlank()) {
+            if (ShellUtils.isValidPackageName(pkg)) {
                 val launchIntent = packageManager.getLaunchIntentForPackage(pkg)
                 if (launchIntent != null) {
                     startActivity(launchIntent)
                 } else {
                     FreezerManager.unfreezeApp(pkg)
                     Toast.makeText(this, "Launching $pkg...", Toast.LENGTH_SHORT).show()
-                    val amResult = ShellUtils.runAsRoot("cmd package resolve-activity --brief $pkg", 5000)
+                    val qPkg = ShellUtils.shellQuote(pkg)
+                    val amResult = ShellUtils.runAsRoot("cmd package resolve-activity --brief $qPkg 2>/dev/null", 5000)
                     val activityLine = amResult.output.lines().find { it.contains("/") && !it.contains("priority=") }?.trim()
                     if (!activityLine.isNullOrBlank()) {
-                        ShellUtils.runAsRoot("am start --user 0 -n $activityLine")
+                        val qActivity = ShellUtils.shellQuote(activityLine)
+                        ShellUtils.runAsRoot("am start --user 0 -n $qActivity")
                     } else {
-                        ShellUtils.runAsRoot("am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER --user 0 $pkg")
+                        ShellUtils.runAsRoot("am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER --user 0 $qPkg")
                     }
                 }
             }

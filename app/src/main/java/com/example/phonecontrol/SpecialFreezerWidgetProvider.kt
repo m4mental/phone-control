@@ -23,9 +23,9 @@ class SpecialFreezerWidgetProvider : AppWidgetProvider() {
                 setEmptyView(R.id.widget_grid, R.id.widget_empty_view)
             }
 
-            // Click template to launch apps
-            val launchIntent = Intent(context, SpecialFreezerWidgetProvider::class.java).apply {
-                action = ACTION_LAUNCH_SPECIAL_APP
+            // Click template to launch apps safely via non-exported launch receiver
+            val launchIntent = Intent(context, FreezerLaunchReceiver::class.java).apply {
+                action = FreezerLaunchReceiver.ACTION_LAUNCH_APP
             }
             val pendingIntent = PendingIntent.getBroadcast(
                 context, 101, launchIntent,
@@ -39,18 +39,6 @@ class SpecialFreezerWidgetProvider : AppWidgetProvider() {
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        if (intent.action == ACTION_LAUNCH_SPECIAL_APP) {
-            val packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME)
-            packageName?.let {
-                kotlin.concurrent.thread {
-                    FreezerManager.launchApp(context, it)
-                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                        updateAllWidgets(context)
-                        FreezerWidgetProvider.updateAllWidgets(context)
-                    }, 500)
-                }
-            }
-        }
     }
 
     companion object {

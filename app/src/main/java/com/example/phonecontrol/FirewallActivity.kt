@@ -72,7 +72,7 @@ class FirewallActivity : AppCompatActivity() {
     private fun updateSubCardVisibility() {
         val masterPrefs = getSharedPreferences("prefs", MODE_PRIVATE)
         findViewById<View>(R.id.cardTowerLock).visibility = 
-            if (masterPrefs.getBoolean("tower_lock_enabled", true)) View.VISIBLE else View.GONE
+            if (masterPrefs.getBoolean(DaemonManager.PREF_TOWER_LOCK_ENABLED, true)) View.VISIBLE else View.GONE
         findViewById<View>(R.id.cardNetworkBooster).visibility = 
             if (masterPrefs.getBoolean("network_priority_enabled", true)) View.VISIBLE else View.GONE
         findViewById<View>(R.id.layoutFirewallSection).visibility = 
@@ -107,6 +107,7 @@ class FirewallActivity : AppCompatActivity() {
         }
 
         for (pkg in blockedApps) {
+            val storedUid = prefs.getInt("uid_$pkg", -1)
             val view = layoutInflater.inflate(R.layout.item_app_picker, layoutContainer, false)
             val ivIcon = view.findViewById<ImageView>(R.id.ivAppIcon)
             val tvName = view.findViewById<TextView>(R.id.tvAppName)
@@ -120,7 +121,7 @@ class FirewallActivity : AppCompatActivity() {
                 ivIcon.setImageDrawable(pm.getApplicationIcon(appInfo))
                 tvName.text = pm.getApplicationLabel(appInfo)
             } catch (e: Exception) {
-                tvName.text = "Unknown App"
+                tvName.text = if (storedUid != -1) "Uninstalled App ($pkg)" else "Unknown App"
             }
             
             tvPkg.text = pkg
@@ -133,7 +134,7 @@ class FirewallActivity : AppCompatActivity() {
                     .setTitle("Unblock App")
                     .setMessage("Restore internet access for $pkg?")
                     .setPositiveButton("Unblock") { _, _ ->
-                        unblockApp(pkg)
+                        unblockApp(pkg, storedUid)
                         refreshList()
                     }
                     .setNegativeButton("Cancel", null).show()
@@ -148,7 +149,12 @@ class FirewallActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("firewall_prefs", MODE_PRIVATE)
         val current = prefs.getStringSet("blocked_packages", emptySet())?.toMutableSet() ?: mutableSetOf()
         current.add(packageName)
-        prefs.edit().putStringSet("blocked_packages", current).apply()
+        val editor = prefs.edit().putStringSet("blocked_packages", current)
+        try {
+            val uid = pm.getApplicationInfo(packageName, 0).uid
+            editor.putInt("uid_$packageName", uid)
+        } catch (_: Exception) {}
+        editor.apply()
         
         thread {
             try {
@@ -158,16 +164,41 @@ class FirewallActivity : AppCompatActivity() {
         }
     }
 
-    private fun unblockApp(packageName: String) {
+    private fun unblockApp(packageName: String, storedUid: Int = -1) {
         val prefs = getSharedPreferences("firewall_prefs", MODE_PRIVATE)
+        val retainedUid = if (storedUid != -1) storedUid else prefs.getInt("uid_$packageName", -1)
         val current = prefs.getStringSet("blocked_packages", emptySet())?.toMutableSet() ?: mutableSetOf()
         current.remove(packageName)
         prefs.edit().putStringSet("blocked_packages", current).apply()
         
         thread {
             try {
-                val uid = pm.getApplicationInfo(packageName, 0).uid
-                TweakManager.setFirewallRule(uid, false)
+                val uid = try {
+                    pm.getApplicationInfo(packageName, 0).uid
+                } catch (e: Exception) {
+                    if (retainedUid != -1) retainedUid else null
+                }
+                if (uid != null) {
+                    var lastRes4: ShellUtils.ShellResult? = null
+                    for (i in 0 until MAX_RULE_DELETIONS) {
+                        val res = ShellUtils.runAsRoot("iptables -D OUTPUT -m owner --uid-owner $uid -j REJECT 2>/dev/null")
+                        lastRes4 = res
+                        if (res.exitCode != 0) break
+                    }
+
+                    var lastRes6: ShellUtils.ShellResult? = null
+                    for (i in 0 until MAX_RULE_DELETIONS) {
+                        val res = ShellUtils.runAsRoot("ip6tables -D OUTPUT -m owner --uid-owner $uid -j REJECT 2>/dev/null")
+                        lastRes6 = res
+                        if (res.exitCode != 0) break
+                    }
+
+                    val v4ConfirmedNoRule = lastRes4 != null && lastRes4.exitCode > 0
+                    val v6ConfirmedNoRule = lastRes6 != null && lastRes6.exitCode > 0
+                    if (v4ConfirmedNoRule && v6ConfirmedNoRule) {
+                        prefs.edit().remove("uid_$packageName").apply()
+                    }
+                }
             } catch (e: Exception) {}
         }
     }
@@ -212,5 +243,9 @@ class FirewallActivity : AppCompatActivity() {
         }
         dialog.show()
         dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, (resources.displayMetrics.heightPixels * 0.8).toInt())
+    }
+
+    companion object {
+        private const val MAX_RULE_DELETIONS = 20
     }
 }

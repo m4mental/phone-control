@@ -176,8 +176,10 @@ object TweakManager {
      * Gives a specific package higher CPU and Storage priority.
      */
     fun applyProcessPriority(packageName: String, high: Boolean) {
-        val result = ShellUtils.runAsRoot("pidof $packageName")
-        val pids = result.output.split(" ").filter { it.isNotBlank() }
+        if (!ShellUtils.isValidPackageName(packageName)) return
+        val qPkg = ShellUtils.shellQuote(packageName)
+        val result = ShellUtils.runAsRoot("pidof $qPkg")
+        val pids = result.output.split(Regex("\\s+")).mapNotNull { it.trim().toLongOrNull() }.filter { it > 0 }
         
         for (pid in pids) {
             if (high) {

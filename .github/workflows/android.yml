@@ -35,6 +35,13 @@ jobs:
       env:
         KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
 
+    - name: Run Lint and Release Unit Tests
+      run: ./gradlew lint testReleaseUnitTest
+      env:
+        KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
     - name: Build Release APK
       run: ./gradlew assembleRelease
       env:
@@ -86,21 +93,23 @@ jobs:
 
     - name: Format Automated Changelog and Release Notes
       id: commit_notes
+      env:
+        COMMIT_MSG: ${{ github.event.head_commit.message }}
+        BRANCH: ${{ github.ref_name }}
+        TAG: ${{ steps.channel.outputs.TAG }}
+        APK: ${{ steps.channel.outputs.APK_NAME }}
+        SHORT_SHA: ${{ github.sha }}
       run: |
-        BRANCH="${GITHUB_REF_NAME}"
-        TAG="${{ steps.channel.outputs.TAG }}"
-        APK="${{ steps.channel.outputs.APK_NAME }}"
-        COMMIT_MSG=$(git log -1 --pretty=format:"%B")
-        SHORT_SHA=$(git rev-parse --short HEAD)
+        SHORT_SHA_TRIMMED="${SHORT_SHA:0:7}"
         DATE_STR=$(date -u +"%Y-%m-%d %H:%M UTC")
 
         echo "RELEASE_BODY<<EOF" >> $GITHUB_ENV
         echo "## 📱 Phone Control Release — ${TAG}" >> $GITHUB_ENV
         echo "" >> $GITHUB_ENV
-        echo "**Channel:** \`${BRANCH}\` • **Commit:** \`${SHORT_SHA}\` • **Date:** \`${DATE_STR}\`" >> $GITHUB_ENV
+        echo "**Channel:** \`${BRANCH}\` • **Commit:** \`${SHORT_SHA_TRIMMED}\` • **Date:** \`${DATE_STR}\`" >> $GITHUB_ENV
         echo "" >> $GITHUB_ENV
         echo "### 📝 Changes in this Build" >> $GITHUB_ENV
-        echo "${COMMIT_MSG}" >> $GITHUB_ENV
+        printf '%s\n' "$COMMIT_MSG" >> $GITHUB_ENV
         echo "" >> $GITHUB_ENV
         echo "---" >> $GITHUB_ENV
         echo "### 📦 Package & Security Details" >> $GITHUB_ENV

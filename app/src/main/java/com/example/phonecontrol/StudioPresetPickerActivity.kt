@@ -126,32 +126,32 @@ class StudioPresetPickerActivity : AppCompatActivity() {
         val targetComponent = getTargetComponent()
         val className = targetComponent?.className ?: ""
 
-        if (className.contains("QuickFreezeTileService")) {
-            val intent = Intent(this, AppFreezerListActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        when (className) {
+            QuickFreezeTileService::class.java.name -> {
+                val intent = Intent(this, AppFreezerListActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                }
+                startActivity(intent)
+                finish()
+                return true
             }
-            startActivity(intent)
-            finish()
-            return true
-        }
-
-        if (className.contains("WirelessAdbTileService")) {
-            val intent = Intent(this, SettingsActivity::class.java).apply {
-                putExtra("target_section", "wireless_adb")
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            WirelessAdbTileService::class.java.name -> {
+                val intent = Intent(this, SettingsActivity::class.java).apply {
+                    putExtra("target_section", "wireless_adb")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                }
+                startActivity(intent)
+                finish()
+                return true
             }
-            startActivity(intent)
-            finish()
-            return true
-        }
-
-        if (className.contains("CooldownTileService")) {
-            val intent = Intent(this, ThrottlingActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            CooldownTileService::class.java.name -> {
+                val intent = Intent(this, ThrottlingActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                }
+                startActivity(intent)
+                finish()
+                return true
             }
-            startActivity(intent)
-            finish()
-            return true
         }
 
         return false
@@ -251,22 +251,33 @@ class StudioPresetPickerActivity : AppCompatActivity() {
         val className = targetComponent?.className ?: ""
         val targetSectionExtra = intent.getStringExtra("target_section") ?: ""
 
+        // Validate target component against known set of exact class names
+        if (className.isNotEmpty() && className !in EXACT_TARGET_CLASSES) {
+            finish()
+            return
+        }
+
         when {
-            className.contains("ModeControlTileService") || targetSectionExtra == "mode_control" -> {
+            className == ModeControlTileService::class.java.name || targetSectionExtra == "mode_control" -> {
                 showModeControlDialog()
             }
-            className.contains("PrivateDnsTileService") || targetSectionExtra == "private_dns" -> {
+            className == PrivateDnsTileService::class.java.name || targetSectionExtra == "private_dns" -> {
                 showPrivateDnsDialog()
             }
-            className.contains("HudTileService") || targetSectionExtra == "perf_hud" -> {
+            className == HudTileService::class.java.name || targetSectionExtra == "perf_hud" -> {
                 showPerfHudDialog()
             }
-            className.contains("StudioNightModeTileService") || targetSectionExtra == "night_mode" -> {
+            className == StudioNightModeTileService::class.java.name || targetSectionExtra == "night_mode" -> {
                 setupNightModeSection()
                 showNightModeTab()
             }
-            else -> {
+            className == StudioEqualizerTileService::class.java.name || className == StudioPresetTileService::class.java.name || className.isEmpty() -> {
                 // Default / StudioEqualizerTileService / StudioPresetTileService
+                setupPresetsSection()
+                setupNightModeSection()
+                showPresetsTab()
+            }
+            else -> {
                 setupPresetsSection()
                 setupNightModeSection()
                 showPresetsTab()
@@ -651,5 +662,19 @@ class StudioPresetPickerActivity : AppCompatActivity() {
             startActivity(intent)
             finish()
         }
+    }
+
+    companion object {
+        val EXACT_TARGET_CLASSES = setOf(
+            QuickFreezeTileService::class.java.name,
+            WirelessAdbTileService::class.java.name,
+            CooldownTileService::class.java.name,
+            ModeControlTileService::class.java.name,
+            PrivateDnsTileService::class.java.name,
+            HudTileService::class.java.name,
+            StudioNightModeTileService::class.java.name,
+            StudioEqualizerTileService::class.java.name,
+            StudioPresetTileService::class.java.name
+        )
     }
 }

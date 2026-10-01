@@ -243,7 +243,7 @@ class HomeTowerLockActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("tower_prefs", MODE_PRIVATE)
         val pci = prefs.getInt("home_pci", -1)
         val earfcn = prefs.getInt("home_earfcn", -1)
-        val isLocked = prefs.getBoolean("is_tower_locked", false)
+        val isLocked = prefs.getBoolean(DaemonManager.PREF_IS_TOWER_LOCKED, false)
         
         if (pci != -1) {
             tvSavedHomeInfo.text = "Saved Home Tower: PCI $pci | EARFCN $earfcn"
@@ -300,7 +300,7 @@ class HomeTowerLockActivity : AppCompatActivity() {
             ShellUtils.runAsRoot(refresh)
             
             getSharedPreferences("tower_prefs", MODE_PRIVATE).edit().apply {
-                putBoolean("is_tower_locked", false)
+                putBoolean(DaemonManager.PREF_IS_TOWER_LOCKED, false)
                 apply()
             }
 
@@ -332,7 +332,7 @@ class HomeTowerLockActivity : AppCompatActivity() {
             ShellUtils.runAsRoot(cmd2)
 
             getSharedPreferences("tower_prefs", MODE_PRIVATE).edit().apply {
-                putBoolean("is_tower_locked", true)
+                putBoolean(DaemonManager.PREF_IS_TOWER_LOCKED, true)
                 putInt("locked_pci", pci)
                 putInt("locked_earfcn", earfcn)
                 apply()

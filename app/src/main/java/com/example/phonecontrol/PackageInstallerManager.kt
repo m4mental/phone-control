@@ -18,6 +18,7 @@ object PackageInstallerManager {
         val rawOutput: String,
         val isSignatureConflict: Boolean = false,
         val isDowngradeConflict: Boolean = false,
+        val isBackupFailed: Boolean = false,
         val conflictPackage: String? = null,
         val installedPackage: String? = null,
         val backupPath: String? = null,
@@ -411,9 +412,10 @@ object PackageInstallerManager {
             }
 
             val isInstalled = installedPkgInfo != null
-            val isGhostPackage = if (!isInstalled) {
+            val isGhostPackage = if (!isInstalled && ShellUtils.isValidPackageName(packageName)) {
                 try {
-                    val res = ShellUtils.runAsRoot("pm list packages -u $packageName 2>/dev/null", 3000).output
+                    val qPkg = ShellUtils.shellQuote(packageName)
+                    val res = ShellUtils.runAsRoot("pm list packages -u $qPkg 2>/dev/null", 3000).output
                     res.lines().any { it.trim() == "package:$packageName" }
                 } catch (e: Exception) {
                     false
@@ -609,23 +611,34 @@ object PackageInstallerManager {
      * Returns the created archive path if successful, or null.
      */
     fun backupAppData(packageName: String): String? {
+        if (!ShellUtils.isValidPackageName(packageName)) return null
         try {
-            val backupDir = "/sdcard/PHONE_CONTROL/installer_backups/$packageName"
-            ShellUtils.runAsRoot("mkdir -p '$backupDir'", 10000)
-            ShellUtils.runAsRoot("am force-stop $packageName && sync", 10000)
+            val baseBackupDir = "/sdcard/PHONE_CONTROL/installer_backups"
+            val backupDir = "$baseBackupDir/$packageName"
+            if (!ShellUtils.isPathContained(backupDir, baseBackupDir)) return null
+            val qBackupDir = ShellUtils.shellQuote(backupDir)
+            val qPackageName = ShellUtils.shellQuote(packageName)
+            ShellUtils.runAsRoot("mkdir -p $qBackupDir", 10000)
+            ShellUtils.runAsRoot("am force-stop $qPackageName && sync", 10000)
 
             val dataPath = "/data/data/$packageName"
-            val checkData = ShellUtils.runAsRoot("ls -d '$dataPath' 2>/dev/null", 10000)
+            val qDataPath = ShellUtils.shellQuote(dataPath)
+            val checkData = ShellUtils.runAsRoot("ls -d $qDataPath 2>/dev/null", 10000)
             if (checkData.exitCode != 0) {
                 return null
             }
 
             val dataOutput = "$backupDir/data_${System.currentTimeMillis()}.tar.gz"
-            val tarCmd = "tar -czf '$dataOutput' -C '$dataPath' . --exclude='cache' --exclude='code_cache'"
+            if (!ShellUtils.isPathContained(dataOutput, backupDir)) return null
+            val qDataOutput = ShellUtils.shellQuote(dataOutput)
+            val tarCmd = "tar -czf $qDataOutput -C $qDataPath . --exclude='cache' --exclude='code_cache'"
             val res = ShellUtils.runAsRoot(tarCmd, 60000)
             if (res.exitCode == 0) {
-                ShellUtils.runAsRoot("cp '$dataOutput' '$backupDir/data_latest.tar.gz' && chmod 777 '$backupDir'/*", 15000)
-                return dataOutput
+                val qLatest = ShellUtils.shellQuote("$backupDir/data_latest.tar.gz")
+                val copyRes = ShellUtils.runAsRoot("cp $qDataOutput $qLatest && chmod 600 $qDataOutput $qLatest", 15000)
+                if (copyRes.exitCode == 0) {
+                    return dataOutput
+                }
             }
         } catch (e: Exception) {
             Log.e("PackageInstaller", "Backup app data failed for $packageName", e)
@@ -637,23 +650,32 @@ object PackageInstallerManager {
      * Restores backed up app data from archive back into /data/data/<pkg> and fixes UID and SELinux contexts.
      */
     fun restoreAppData(context: Context, packageName: String, backupPath: String): Boolean {
+        if (!ShellUtils.isValidPackageName(packageName)) return false
+        if (!ShellUtils.isPathContained(backupPath, "/sdcard/PHONE_CONTROL") || !backupPath.endsWith(".tar.gz")) {
+            return false
+        }
         try {
+            val qPackageName = ShellUtils.shellQuote(packageName)
             val dataPath = "/data/data/$packageName"
-            ShellUtils.runAsRoot("am force-stop $packageName && sync", 10000)
-            val checkData = ShellUtils.runAsRoot("ls -d '$dataPath' 2>/dev/null", 10000)
+            val qDataPath = ShellUtils.shellQuote(dataPath)
+            ShellUtils.runAsRoot("am force-stop $qPackageName && sync", 10000)
+            val checkData = ShellUtils.runAsRoot("ls -d $qDataPath 2>/dev/null", 10000)
             if (checkData.exitCode != 0) {
-                ShellUtils.runAsRoot("mkdir -p '$dataPath'", 10000)
+                val mkdirRes = ShellUtils.runAsRoot("mkdir -p $qDataPath", 10000)
+                if (mkdirRes.exitCode != 0) return false
             }
 
             // Extract backup
-            val extractCmd = "tar -xzf '$backupPath' -C '$dataPath'"
+            val qBackupPath = ShellUtils.shellQuote(backupPath)
+            val extractCmd = "tar -xzf $qBackupPath -C $qDataPath"
             val res = ShellUtils.runAsRoot(extractCmd, 60000)
             if (res.exitCode == 0) {
                 // Fix UID & SELinux Context
                 try {
                     val uid = context.packageManager.getApplicationInfo(packageName, 0).uid
-                    ShellUtils.runAsRoot("chown -R $uid:$uid '$dataPath'", 15000)
-                    ShellUtils.runAsRoot("restorecon -R '$dataPath'", 15000)
+                    val chownRes = ShellUtils.runAsRoot("chown -R $uid:$uid $qDataPath", 15000)
+                    val selinuxRes = ShellUtils.runAsRoot("restorecon -R $qDataPath", 15000)
+                    return chownRes.exitCode == 0 && selinuxRes.exitCode == 0
                 } catch (e: Exception) {
                     Log.e("PackageInstaller", "UID/SELinux fix failed", e)
                 }
@@ -693,8 +715,10 @@ object PackageInstallerManager {
         selectedSplits: Set<String>? = null,
         onProgress: (String, Int) -> Unit
     ): InstallResult {
-        val stagingDir = File("/data/local/tmp/pc_install_staging")
-        ShellUtils.runAsRoot("rm -rf ${stagingDir.absolutePath} && mkdir -p ${stagingDir.absolutePath} && chmod 777 ${stagingDir.absolutePath}", 10000)
+        val opId = "${System.currentTimeMillis()}_${java.util.UUID.randomUUID().toString().take(8)}"
+        val stagingDir = File("/data/local/tmp/pc_install_$opId")
+        val qStagingDir = ShellUtils.shellQuote(stagingDir.absolutePath)
+        ShellUtils.runAsRoot("mkdir -p $qStagingDir && chmod 755 $qStagingDir", 10000)
 
         val lowerName = fileName.lowercase()
         val tempInput = File(context.cacheDir, "temp_installer_input_${System.currentTimeMillis()}")
@@ -711,7 +735,9 @@ object PackageInstallerManager {
 
             val stagedInput = File(stagingDir, if (lowerName.endsWith(".apk")) "package_payload.apk" else "package_payload")
             onProgress("📦 Staging package in root partition...", 25)
-            ShellUtils.runAsRoot("cp '${tempInput.absolutePath}' '${stagedInput.absolutePath}' && chmod 777 '${stagedInput.absolutePath}'", 30000)
+            val qTempInput = ShellUtils.shellQuote(tempInput.absolutePath)
+            val qStagedInput = ShellUtils.shellQuote(stagedInput.absolutePath)
+            ShellUtils.runAsRoot("cp $qTempInput $qStagedInput && chmod 644 $qStagedInput", 30000)
 
             // Extract package name and version info for conflict auto-recovery
             val parsedPkgInfo = try {
@@ -751,7 +777,7 @@ object PackageInstallerManager {
             // 1. Single APK Direct Install
             if (lowerName.endsWith(".apk")) {
                 onProgress("⚡ Executing root force install (APK)...", 60)
-                val cmd = "pm install -r -d --bypass-low-target-sdk-block '${stagedInput.absolutePath}'"
+                val cmd = "pm install -r -d --bypass-low-target-sdk-block " + ShellUtils.shellQuote(stagedInput.absolutePath)
                 var result = ShellUtils.runAsRoot(cmd, 60000)
 
                 val isDupPermConflict = result.output.contains("INSTALL_FAILED_DUPLICATE_PERMISSION", ignoreCase = true)
@@ -767,12 +793,15 @@ object PackageInstallerManager {
 
                 val effectiveTarget = targetPkg ?: conflictPkg
 
-                // ⚡ Auto-healing for Ghost Packages (Uninstalled on active user, but leftover record in other profile/system cache causes signature conflict)
-                if (isSigConflict && installedPkgInfo == null && !effectiveTarget.isNullOrBlank()) {
-                    onProgress("🧹 Ghost signature conflict detected from system cache. Purging leftover across all users...", 70)
-                    ShellUtils.runAsRoot("pm uninstall --all-users $effectiveTarget 2>/dev/null; pm clear $effectiveTarget 2>/dev/null", 30000)
-                    onProgress("🔄 Cleanly re-installing requested package...", 85)
-                    result = ShellUtils.runAsRoot(cmd, 60000)
+                // ⚡ Auto-healing for Ghost Packages (Only with explicit user confirmation via forceReinstall)
+                if (isSigConflict && installedPkgInfo == null && !effectiveTarget.isNullOrBlank() && ShellUtils.isValidPackageName(effectiveTarget)) {
+                    if (forceReinstall) {
+                        onProgress("🧹 Ghost signature conflict detected from system cache. Purging leftover across all users...", 70)
+                        val qEffective = ShellUtils.shellQuote(effectiveTarget)
+                        ShellUtils.runAsRoot("pm uninstall --all-users $qEffective 2>/dev/null; pm clear $qEffective 2>/dev/null", 30000)
+                        onProgress("🔄 Cleanly re-installing requested package...", 85)
+                        result = ShellUtils.runAsRoot(cmd, 60000)
+                    }
                 }
 
                 val isStillSigConflict = result.output.contains("INSTALL_FAILED_UPDATE_INCOMPATIBLE", ignoreCase = true) ||
@@ -787,23 +816,33 @@ object PackageInstallerManager {
                         if (autoBackup && !effectiveTarget.isNullOrBlank() && installedPkgInfo != null) {
                             onProgress("🛡️ Auto-backing up app data before clean reinstall...", 70)
                             autoBackupPath = backupAppData(effectiveTarget)
-                            if (autoBackupPath != null) {
-                                onProgress("✅ App data safely backed up: $autoBackupPath", 75)
-                            } else {
-                                onProgress("ℹ️ No previous app data folder found to back up.", 75)
+                            if (autoBackupPath == null) {
+                                return InstallResult(
+                                    success = false,
+                                    message = "App data backup failed for $effectiveTarget. Re-installation stopped to prevent data loss.",
+                                    rawOutput = "Backup failed for $effectiveTarget",
+                                    isBackupFailed = true,
+                                    conflictPackage = effectiveTarget,
+                                    installedPackage = effectiveTarget,
+                                    failureTitle = "Data Backup Failed",
+                                    failureExplanation = "Automatic backup of previous app data failed. Forced re-installation was stopped to prevent permanent data loss. You can choose to continue without backup (clean install) or cancel."
+                                )
                             }
+                            onProgress("✅ App data safely backed up: $autoBackupPath", 75)
                         } else {
                             onProgress("⚡ Skipping backup (Clean install requested)...", 75)
                         }
 
-                        if (isDupPermConflict && !conflictPkg.isNullOrBlank()) {
+                        if (isDupPermConflict && !conflictPkg.isNullOrBlank() && ShellUtils.isValidPackageName(conflictPkg)) {
                             onProgress("⚠️ Auto-uninstalling conflicting package ($conflictPkg)...", 78)
-                            ShellUtils.runAsRoot("pm uninstall --all-users $conflictPkg 2>/dev/null", 30000)
+                            val qConflict = ShellUtils.shellQuote(conflictPkg)
+                            ShellUtils.runAsRoot("pm uninstall --all-users $qConflict 2>/dev/null", 30000)
                         }
 
-                        if (!effectiveTarget.isNullOrBlank() && effectiveTarget != conflictPkg) {
+                        if (!effectiveTarget.isNullOrBlank() && effectiveTarget != conflictPkg && ShellUtils.isValidPackageName(effectiveTarget)) {
                             onProgress("⚠️ Auto-uninstalling previous build ($effectiveTarget) for $reason...", 80)
-                            ShellUtils.runAsRoot("pm uninstall --all-users $effectiveTarget 2>/dev/null", 30000)
+                            val qEffective = ShellUtils.shellQuote(effectiveTarget)
+                            ShellUtils.runAsRoot("pm uninstall --all-users $qEffective 2>/dev/null", 30000)
                         }
                         onProgress("🔄 Cleanly re-installing requested package...", 85)
                         result = ShellUtils.runAsRoot(cmd, 60000)
@@ -824,7 +863,7 @@ object PackageInstallerManager {
                 }
 
                 onProgress("✅ Installation finished!", 100)
-                return handleInstallOutput(result, stagedInput.absolutePath, isSplit = false, installedPackage = detectedPkg, backupPath = autoBackupPath, incomingCode = incomingCode, installedCode = currentCode)
+                return handleInstallOutput(context, result, stagedInput.absolutePath, isSplit = false, installedPackage = detectedPkg, backupPath = autoBackupPath, incomingCode = incomingCode, installedCode = currentCode)
             }
 
             // 2. Split APKs / Bundles (.apks, .apkm, .xapk, .aab, .zip)
@@ -897,14 +936,17 @@ object PackageInstallerManager {
                     bundlePkg = detectedPkg
                 }
 
-                ShellUtils.runAsRoot("rm -rf '${extractDir.absolutePath}' && mkdir -p '${extractDir.absolutePath}'", 10000)
+                val qExtractDir = ShellUtils.shellQuote(extractDir.absolutePath)
+                val qLocalExtractDir = ShellUtils.shellQuote(localExtractDir.absolutePath)
+                ShellUtils.runAsRoot("rm -rf $qExtractDir && mkdir -p $qExtractDir", 10000)
                 onProgress("📦 Staging bundle in root partition...", 45)
-                ShellUtils.runAsRoot("cp -r '${localExtractDir.absolutePath}/.' '${extractDir.absolutePath}/' && chmod -R 777 '${extractDir.absolutePath}'", 30000)
+                ShellUtils.runAsRoot("cp -r $qLocalExtractDir/. $qExtractDir/ && chmod 755 $qExtractDir && chmod -R 644 $qExtractDir/*.apk 2>/dev/null", 30000)
             } finally {
                 localExtractDir.deleteRecursively()
             }
 
-            val apkFilesOutput = ShellUtils.runAsRoot("find '${extractDir.absolutePath}' -type f -name '*.apk'", 15000).output
+            val qExtractDir = ShellUtils.shellQuote(extractDir.absolutePath)
+            val apkFilesOutput = ShellUtils.runAsRoot("find $qExtractDir -type f -name '*.apk'", 15000).output
             val apkFiles = apkFilesOutput.split("\n").map { it.trim() }.filter { it.isNotBlank() }
 
             if (apkFiles.isEmpty()) {
@@ -914,7 +956,7 @@ object PackageInstallerManager {
             // If only 1 APK inside the bundle
             if (apkFiles.size == 1) {
                 onProgress("⚡ Installing single APK from bundle...", 70)
-                val cmd = "pm install -r -d --bypass-low-target-sdk-block '${apkFiles[0]}'"
+                val cmd = "pm install -r -d --bypass-low-target-sdk-block " + ShellUtils.shellQuote(apkFiles[0])
                 var result = ShellUtils.runAsRoot(cmd, 60000)
 
                 val singlePkg = bundlePkg ?: try {
@@ -925,12 +967,15 @@ object PackageInstallerManager {
                     result.output.contains("INSTALL_FAILED_SHARED_USER_INCOMPATIBLE", ignoreCase = true)
                 val isDowngrade = result.output.contains("INSTALL_FAILED_VERSION_DOWNGRADE", ignoreCase = true) || (isSigConflict && isVersionLower)
 
-                // ⚡ Auto-healing for Ghost Packages
-                if (isSigConflict && installedPkgInfo == null && singlePkg != "existing package") {
-                    onProgress("🧹 Ghost signature conflict detected. Purging leftover across all users...", 75)
-                    ShellUtils.runAsRoot("pm uninstall --all-users $singlePkg 2>/dev/null; pm clear $singlePkg 2>/dev/null", 30000)
-                    onProgress("🔄 Cleanly re-installing package...", 85)
-                    result = ShellUtils.runAsRoot(cmd, 60000)
+                // ⚡ Auto-healing for Ghost Packages (Only with explicit user confirmation via forceReinstall)
+                if (isSigConflict && installedPkgInfo == null && singlePkg != "existing package" && ShellUtils.isValidPackageName(singlePkg)) {
+                    if (forceReinstall) {
+                        onProgress("🧹 Ghost signature conflict detected. Purging leftover across all users...", 75)
+                        val qSingle = ShellUtils.shellQuote(singlePkg)
+                        ShellUtils.runAsRoot("pm uninstall --all-users $qSingle 2>/dev/null; pm clear $qSingle 2>/dev/null", 30000)
+                        onProgress("🔄 Cleanly re-installing package...", 85)
+                        result = ShellUtils.runAsRoot(cmd, 60000)
+                    }
                 }
 
                 val isStillSigConflict = result.output.contains("INSTALL_FAILED_UPDATE_INCOMPATIBLE", ignoreCase = true) ||
@@ -944,15 +989,28 @@ object PackageInstallerManager {
                         if (autoBackup && installedPkgInfo != null) {
                             onProgress("🛡️ Auto-backing up app data before clean reinstall...", 75)
                             autoBackupPath = backupAppData(singlePkg)
-                            if (autoBackupPath != null) {
-                                onProgress("✅ App data safely backed up: $autoBackupPath", 80)
+                            if (autoBackupPath == null) {
+                                return InstallResult(
+                                    success = false,
+                                    message = "App data backup failed for $singlePkg. Re-installation stopped to prevent data loss.",
+                                    rawOutput = "Backup failed for $singlePkg",
+                                    isBackupFailed = true,
+                                    conflictPackage = singlePkg,
+                                    installedPackage = singlePkg,
+                                    failureTitle = "Data Backup Failed",
+                                    failureExplanation = "Automatic backup of previous app data failed. Forced re-installation was stopped to prevent permanent data loss. You can choose to continue without backup (clean install) or cancel."
+                                )
                             }
+                            onProgress("✅ App data safely backed up: $autoBackupPath", 80)
                         } else {
                             onProgress("⚡ Skipping backup (Clean install requested)...", 80)
                         }
 
                         onProgress("⚠️ Auto-uninstalling previous build ($singlePkg) for $reason...", 85)
-                        ShellUtils.runAsRoot("pm uninstall --all-users $singlePkg 2>/dev/null", 30000)
+                        if (ShellUtils.isValidPackageName(singlePkg)) {
+                            val qSingle = ShellUtils.shellQuote(singlePkg)
+                            ShellUtils.runAsRoot("pm uninstall --all-users $qSingle 2>/dev/null", 30000)
+                        }
                         onProgress("🔄 Cleanly re-installing package...", 90)
                         result = ShellUtils.runAsRoot(cmd, 60000)
                     } else {
@@ -976,7 +1034,7 @@ object PackageInstallerManager {
                     setupObbFiles(extractDir, finalSinglePkg, onProgress)
                 }
                 onProgress("✅ Installation finished!", 100)
-                return handleInstallOutput(result, apkFiles[0], isSplit = false, installedPackage = finalSinglePkg, backupPath = autoBackupPath, incomingCode = bundleIncomingCode, installedCode = currentCode)
+                return handleInstallOutput(context, result, apkFiles[0], isSplit = false, installedPackage = finalSinglePkg, backupPath = autoBackupPath, incomingCode = bundleIncomingCode, installedCode = currentCode)
             }
 
             // Multiple Split APKs -> Use pm install-create session API
@@ -986,7 +1044,7 @@ object PackageInstallerManager {
 
             val sessionRegex = "\\[(\\d+)\\]".toRegex()
             val match = sessionRegex.find(sessionOutput)
-            val sessionId = match?.groupValues?.get(1)
+            val sessionId = match?.groupValues?.get(1)?.toLongOrNull()?.toString()
 
             if (sessionId == null) {
                 return InstallResult(false, "Failed to create install session: $sessionOutput", sessionOutput)
@@ -996,12 +1054,14 @@ object PackageInstallerManager {
             for ((index, apkPath) in apkFiles.withIndex()) {
                 val splitFile = File(apkPath)
                 val splitName = "split_${index}_" + splitFile.name.replace(Regex("[^a-zA-Z0-9._-]"), "_")
-                val sizeResult = ShellUtils.runAsRoot("stat -c%s '$apkPath' 2>/dev/null || wc -c < '$apkPath'", 10000).output.trim()
+                val qApkPath = ShellUtils.shellQuote(apkPath)
+                val qSplitName = ShellUtils.shellQuote(splitName)
+                val sizeResult = ShellUtils.runAsRoot("stat -c%s $qApkPath 2>/dev/null || wc -c < $qApkPath", 10000).output.trim()
                 val size = sizeResult.toLongOrNull() ?: splitFile.length()
 
                 val streamProgress = 60 + ((index + 1) * 30 / apkFiles.size)
                 onProgress("Writing split ${index + 1}/${apkFiles.size}: ${splitFile.name} (${size / 1024} KB)...", streamProgress)
-                val writeCmd = "pm install-write -S $size $sessionId '$splitName' '$apkPath'"
+                val writeCmd = "pm install-write -S $size $sessionId $qSplitName $qApkPath"
                 val writeResult = ShellUtils.runAsRoot(writeCmd, 60000)
 
                 if (writeResult.exitCode != 0 || writeResult.output.contains("Failure", ignoreCase = true)) {
@@ -1026,12 +1086,15 @@ object PackageInstallerManager {
 
             val splitTarget = splitPkg ?: splitConflictPkg
 
-            // ⚡ Auto-healing for ghost packages in split sessions
+            // ⚡ Auto-healing for ghost packages in split sessions (Only with explicit user confirmation via forceReinstall)
             var retryNeeded = false
-            if (isSplitSigConflict && installedPkgInfo == null && !splitTarget.isNullOrBlank()) {
-                onProgress("🧹 Ghost signature conflict detected in split install. Purging leftover across all users...", 90)
-                ShellUtils.runAsRoot("pm uninstall --all-users $splitTarget 2>/dev/null; pm clear $splitTarget 2>/dev/null", 30000)
-                retryNeeded = true
+            if (isSplitSigConflict && installedPkgInfo == null && !splitTarget.isNullOrBlank() && ShellUtils.isValidPackageName(splitTarget)) {
+                if (forceReinstall) {
+                    onProgress("🧹 Ghost signature conflict detected in split install. Purging leftover across all users...", 90)
+                    val qSplitTarget = ShellUtils.shellQuote(splitTarget)
+                    ShellUtils.runAsRoot("pm uninstall --all-users $qSplitTarget 2>/dev/null; pm clear $qSplitTarget 2>/dev/null", 30000)
+                    retryNeeded = true
+                }
             }
 
             if ((forceReinstall || retryNeeded) && (!splitPkg.isNullOrBlank() || !splitConflictPkg.isNullOrBlank())) {
@@ -1041,31 +1104,45 @@ object PackageInstallerManager {
                 if (!retryNeeded && autoBackup && !targetToBackup.isNullOrBlank() && installedPkgInfo != null) {
                     onProgress("🛡️ Auto-backing up app data before clean reinstall...", 93)
                     autoBackupPath = backupAppData(targetToBackup)
-                    if (autoBackupPath != null) {
-                        onProgress("✅ App data safely backed up: $autoBackupPath", 94)
+                    if (autoBackupPath == null) {
+                        return InstallResult(
+                            success = false,
+                            message = "App data backup failed for $targetToBackup. Re-installation stopped to prevent data loss.",
+                            rawOutput = "Backup failed for $targetToBackup",
+                            isBackupFailed = true,
+                            conflictPackage = targetToBackup,
+                            installedPackage = targetToBackup,
+                            failureTitle = "Data Backup Failed",
+                            failureExplanation = "Automatic backup of previous app data failed. Forced re-installation was stopped to prevent permanent data loss. You can choose to continue without backup (clean install) or cancel."
+                        )
                     }
+                    onProgress("✅ App data safely backed up: $autoBackupPath", 94)
                 } else {
                     onProgress("⚡ Skipping backup (Clean install requested)...", 94)
                 }
 
-                if (isSplitDupPermConflict && !splitConflictPkg.isNullOrBlank()) {
+                if (isSplitDupPermConflict && !splitConflictPkg.isNullOrBlank() && ShellUtils.isValidPackageName(splitConflictPkg)) {
                     onProgress("⚠️ Auto-uninstalling conflicting package ($splitConflictPkg)...", 94)
-                    ShellUtils.runAsRoot("pm uninstall --all-users $splitConflictPkg 2>/dev/null", 30000)
+                    val qConflict = ShellUtils.shellQuote(splitConflictPkg)
+                    ShellUtils.runAsRoot("pm uninstall --all-users $qConflict 2>/dev/null", 30000)
                 }
 
-                if (!splitPkg.isNullOrBlank() && splitPkg != splitConflictPkg) {
+                if (!splitPkg.isNullOrBlank() && splitPkg != splitConflictPkg && ShellUtils.isValidPackageName(splitPkg)) {
                     onProgress("⚠️ Auto-uninstalling previous build ($splitPkg) for $reason...", 95)
-                    ShellUtils.runAsRoot("pm uninstall --all-users $splitPkg 2>/dev/null", 30000)
+                    val qPkg = ShellUtils.shellQuote(splitPkg)
+                    ShellUtils.runAsRoot("pm uninstall --all-users $qPkg 2>/dev/null", 30000)
                 }
                 onProgress("🔄 Re-creating session for clean installation...", 96)
                 val retrySession = ShellUtils.runAsRoot("pm install-create -r -d --bypass-low-target-sdk-block --user 0", 20000).output.trim()
-                val retrySessionId = sessionRegex.find(retrySession)?.groupValues?.get(1)
+                val retrySessionId = sessionRegex.find(retrySession)?.groupValues?.get(1)?.toLongOrNull()?.toString()
                 if (retrySessionId != null) {
                     for ((index, apkPath) in apkFiles.withIndex()) {
                         val sFile = File(apkPath)
                         val sName = "split_${index}_" + sFile.name.replace(Regex("[^a-zA-Z0-9._-]"), "_")
-                        val sSize = ShellUtils.runAsRoot("stat -c%s '$apkPath' 2>/dev/null || wc -c < '$apkPath'", 10000).output.trim().toLongOrNull() ?: sFile.length()
-                        ShellUtils.runAsRoot("pm install-write -S $sSize $retrySessionId '$sName' '$apkPath'", 60000)
+                        val qApkPath = ShellUtils.shellQuote(apkPath)
+                        val qSName = ShellUtils.shellQuote(sName)
+                        val sSize = ShellUtils.runAsRoot("stat -c%s $qApkPath 2>/dev/null || wc -c < $qApkPath", 10000).output.trim().toLongOrNull() ?: sFile.length()
+                        ShellUtils.runAsRoot("pm install-write -S $sSize $retrySessionId $qSName $qApkPath", 60000)
                     }
                     commitResult = ShellUtils.runAsRoot("pm install-commit $retrySessionId", 60000)
                 }
@@ -1090,14 +1167,14 @@ object PackageInstallerManager {
             }
 
             onProgress("✅ Installation finished!", 100)
-            return handleInstallOutput(commitResult, "", isSplit = true, installedPackage = finalSplitPkg, backupPath = autoBackupPath, incomingCode = bundleIncomingCode, installedCode = currentCode)
+            return handleInstallOutput(context, commitResult, "", isSplit = true, installedPackage = finalSplitPkg, backupPath = autoBackupPath, incomingCode = bundleIncomingCode, installedCode = currentCode)
         } catch (e: Exception) {
             Log.e("PackageInstaller", "Install failed", e)
             return InstallResult(false, "Installation exception: ${e.message}", e.stackTraceToString())
         } finally {
             try { if (tempInput.exists()) tempInput.delete() } catch (_: Exception) {}
             try { localExtractDir?.deleteRecursively() } catch (_: Exception) {}
-            ShellUtils.runAsRoot("rm -rf ${stagingDir.absolutePath}", 10000)
+            ShellUtils.runAsRoot("rm -rf " + ShellUtils.shellQuote(stagingDir.absolutePath), 10000)
         }
     }
 
@@ -1106,7 +1183,8 @@ object PackageInstallerManager {
      */
     private fun setupObbFiles(extractDir: File, targetPkg: String?, onProgress: (String, Int) -> Unit) {
         try {
-            val obbFilesOutput = ShellUtils.runAsRoot("find '${extractDir.absolutePath}' -type f -name '*.obb'", 15000).output
+            val qExtractDir = ShellUtils.shellQuote(extractDir.absolutePath)
+            val obbFilesOutput = ShellUtils.runAsRoot("find $qExtractDir -type f -name '*.obb'", 15000).output
             val obbFiles = obbFilesOutput.split("\n").map { it.trim() }.filter { it.isNotBlank() }
             if (obbFiles.isEmpty()) return
 
@@ -1118,16 +1196,23 @@ object PackageInstallerManager {
                 regex.find(firstName)?.groupValues?.get(1) ?: ""
             }
 
-            if (pkg.isNotBlank()) {
+            if (ShellUtils.isValidPackageName(pkg)) {
                 onProgress("🎮 Setting up ${obbFiles.size} game OBB file(s) for $pkg...", 96)
-                val targetObbDir = "/sdcard/Android/obb/$pkg"
-                ShellUtils.runAsRoot("mkdir -p '$targetObbDir'", 10000)
+                val baseObbDir = "/sdcard/Android/obb"
+                val targetObbDir = "$baseObbDir/$pkg"
+                if (!ShellUtils.isPathContained(targetObbDir, baseObbDir)) return
+                val qTargetObbDir = ShellUtils.shellQuote(targetObbDir)
+                ShellUtils.runAsRoot("mkdir -p $qTargetObbDir", 10000)
                 for (obb in obbFiles) {
                     val obbName = File(obb).name
+                    val destObbFile = "$targetObbDir/$obbName"
+                    if (!ShellUtils.isPathContained(destObbFile, targetObbDir)) continue
                     onProgress("📦 Copying $obbName to /sdcard/Android/obb/$pkg/...", 98)
-                    ShellUtils.runAsRoot("cp '$obb' '$targetObbDir/' && chmod 666 '$targetObbDir/$obbName'", 60000)
+                    val qObb = ShellUtils.shellQuote(obb)
+                    val qDestObb = ShellUtils.shellQuote(destObbFile)
+                    ShellUtils.runAsRoot("cp $qObb $qTargetObbDir/ && chmod 644 $qDestObb", 60000)
                 }
-                ShellUtils.runAsRoot("chown -R media_rw:media_rw '$targetObbDir' 2>/dev/null; chmod 775 '$targetObbDir'", 15000)
+                ShellUtils.runAsRoot("chown -R media_rw:media_rw $qTargetObbDir 2>/dev/null; chmod 775 $qTargetObbDir", 15000)
                 onProgress("✅ Game OBB setup complete!", 99)
             }
         } catch (e: Exception) {
@@ -1136,6 +1221,7 @@ object PackageInstallerManager {
     }
 
     private fun handleInstallOutput(
+        context: Context,
         result: ShellUtils.ShellResult,
         path: String,
         isSplit: Boolean,
@@ -1145,31 +1231,85 @@ object PackageInstallerManager {
         installedCode: Long = 0L
     ): InstallResult {
         val output = result.output.trim()
-        val isSuccess = result.exitCode == 0 && (output.contains("Success", ignoreCase = true) || output.isBlank())
+        val hasSuccessKeyword = output.contains("Success", ignoreCase = true)
 
-        if (isSuccess) {
+        // Reject blank output as success. Must have exit code 0 AND explicit Success keyword.
+        if (result.exitCode != 0 || !hasSuccessKeyword || output.isBlank()) {
+            val diag = diagnoseStoppage(output, incomingCode, installedCode)
             return InstallResult(
-                success = true,
-                message = "Application installed successfully!",
+                success = false,
+                message = "${diag.title}: ${diag.explanation}",
                 rawOutput = output,
+                isSignatureConflict = diag.isSignatureConflict,
+                isDowngradeConflict = diag.isDowngradeConflict,
+                conflictPackage = if (diag.isSignatureConflict || diag.isDowngradeConflict) installedPackage else null,
                 installedPackage = installedPackage,
-                backupPath = backupPath
+                backupPath = backupPath,
+                failureTitle = diag.title,
+                failureExplanation = diag.explanation
             )
         }
 
-        val diag = diagnoseStoppage(output, incomingCode, installedCode)
+        // Query the installed package and version after pm install to confirm the result
+        var confirmedPkg: android.content.pm.PackageInfo? = null
+        if (!installedPackage.isNullOrBlank() && ShellUtils.isValidPackageName(installedPackage)) {
+            for (retry in 0..2) {
+                try {
+                    confirmedPkg = context.packageManager.getPackageInfo(installedPackage, 0)
+                    if (confirmedPkg != null) break
+                } catch (_: Exception) {
+                    try { Thread.sleep(150) } catch (_: Exception) {}
+                }
+            }
+
+            if (confirmedPkg == null) {
+                val qPkg = ShellUtils.shellQuote(installedPackage)
+                val pmPathRes = ShellUtils.runAsRoot("pm path $qPkg", 5000)
+                if (pmPathRes.exitCode == 0 && pmPathRes.output.contains("package:")) {
+                    val dumpsysRes = ShellUtils.runAsRoot("dumpsys package $qPkg | grep versionCode", 5000).output
+                    val verMatch = Regex("versionCode=(\\d+)").find(dumpsysRes)
+                    val parsedVer = verMatch?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                    if (incomingCode <= 0 || parsedVer >= incomingCode) {
+                        return InstallResult(
+                            success = true,
+                            message = "Application installed successfully!",
+                            rawOutput = output,
+                            installedPackage = installedPackage,
+                            backupPath = backupPath
+                        )
+                    }
+                }
+            }
+        }
+
+        val confirmedCode = confirmedPkg?.let { pi ->
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                pi.longVersionCode
+            } else {
+                @Suppress("DEPRECATION")
+                pi.versionCode.toLong()
+            }
+        } ?: 0L
+
+        if (confirmedPkg == null || (incomingCode > 0 && confirmedCode < incomingCode)) {
+            return InstallResult(
+                success = false,
+                message = "Installation verification failed: Package was not confirmed as installed with expected version.",
+                rawOutput = output,
+                conflictPackage = installedPackage,
+                installedPackage = installedPackage,
+                backupPath = backupPath,
+                failureTitle = "Verification Failed",
+                failureExplanation = "The installer completed without error, but the application was not confirmed in the system registry with the incoming build version."
+            )
+        }
 
         return InstallResult(
-            success = false,
-            message = "${diag.title}: ${diag.explanation}",
+            success = true,
+            message = "Application installed successfully!",
             rawOutput = output,
-            isSignatureConflict = diag.isSignatureConflict,
-            isDowngradeConflict = diag.isDowngradeConflict,
-            conflictPackage = installedPackage,
             installedPackage = installedPackage,
-            backupPath = backupPath,
-            failureTitle = diag.title,
-            failureExplanation = diag.explanation
+            backupPath = backupPath
         )
     }
 

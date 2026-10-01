@@ -30,26 +30,56 @@ class AppEventService : AccessibilityService() {
     private var lastForegroundDispatchTime = 0L
     private var lastLabelCacheTime = 0L
     private val appLabelToPackageMap = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val launcherPackages = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+    private var lastLauncherQueryTime = 0L
 
-    private fun getPackageForLabel(label: String): String? {
+    private fun getPackageForExactUniqueLabel(label: String): String? {
         val now = System.currentTimeMillis()
         if (now - lastLabelCacheTime > 60000 || appLabelToPackageMap.isEmpty()) {
             appLabelToPackageMap.clear()
             val allFrozen = FreezerManager.getSpecialFreezeApps(this) + FreezerManager.getFrozenApps(this)
+            val counts = mutableMapOf<String, MutableList<String>>()
             for (pkg in allFrozen) {
                 try {
                     val appInfo = packageManager.getApplicationInfo(pkg, 0)
                     val l = packageManager.getApplicationLabel(appInfo).toString().trim().lowercase()
-                    appLabelToPackageMap[l] = pkg
+                    if (l.isNotEmpty()) {
+                        counts.getOrPut(l) { mutableListOf() }.add(pkg)
+                    }
                 } catch (_: Exception) {}
+            }
+            // Retain ONLY exact, unique labels that map unambiguously to exactly one package
+            for ((l, pkgs) in counts) {
+                if (pkgs.size == 1) {
+                    appLabelToPackageMap[l] = pkgs[0]
+                }
             }
             lastLabelCacheTime = now
         }
         val clean = label.lowercase().trim()
-        val direct = appLabelToPackageMap[clean]
-        if (direct != null) return direct
+        return appLabelToPackageMap[clean] // Exact, unique match only!
+    }
 
-        return appLabelToPackageMap.entries.firstOrNull { (k, _) -> clean.startsWith(k) || clean.contains(k) }?.value
+    private fun isLauncherPackage(pkgName: String, clsName: String): Boolean {
+        if (pkgName.isBlank()) return false
+        val now = System.currentTimeMillis()
+        if (now - lastLauncherQueryTime > 60000 || launcherPackages.isEmpty()) {
+            launcherPackages.clear()
+            try {
+                val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+                val resolveInfos = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                    packageManager.queryIntentActivities(homeIntent, android.content.pm.PackageManager.ResolveInfoFlags.of(0))
+                } else {
+                    @Suppress("DEPRECATION")
+                    packageManager.queryIntentActivities(homeIntent, 0)
+                }
+                for (info in resolveInfos) {
+                    info.activityInfo?.packageName?.let { launcherPackages.add(it) }
+                }
+            } catch (_: Exception) {}
+            lastLauncherQueryTime = now
+        }
+        return launcherPackages.contains(pkgName) || isHomeOrLauncher(pkgName, clsName)
     }
 
     private fun dispatchRecentsCheck() {
@@ -95,7 +125,8 @@ class AppEventService : AccessibilityService() {
         val clsName = event.className?.toString() ?: ""
 
         // 1. Instant Launcher Click Detection: Pre-register & protect app on click before window transition starts
-        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+        // Restricted strictly to launcher packages and exact, unique labels
+        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED && isLauncherPackage(pkgName, clsName)) {
             val desc = event.contentDescription?.toString() ?: ""
             val text = event.text?.joinToString(" ") ?: ""
             val combined = if (desc.isNotBlank()) desc else text
@@ -107,7 +138,7 @@ class AppEventService : AccessibilityService() {
             }
 
             if (cleanLabel.isNotBlank()) {
-                val targetPkg = getPackageForLabel(cleanLabel)
+                val targetPkg = getPackageForExactUniqueLabel(cleanLabel)
                 if (targetPkg != null) {
                     FreezerManager.registerAppOpen(targetPkg)
                     if (combined.contains("Disabled ", ignoreCase = true) ||

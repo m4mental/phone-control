@@ -4,16 +4,18 @@
    for details.
 -->
 <data-extraction-rules>
-    <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+    <cloud-backup disableIfNoEncryptionCapabilities="true">
+        <exclude domain="file" path="phone_control_daemon.sh" />
+        <exclude domain="file" path="daemon.log" />
+        <exclude domain="file" path="adb_history" />
+        <exclude domain="sharedpref" path="tower_prefs.xml" />
+        <exclude domain="sharedpref" path="tower_prefs" />
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <exclude domain="file" path="phone_control_daemon.sh" />
+        <exclude domain="file" path="daemon.log" />
+        <exclude domain="file" path="adb_history" />
+        <exclude domain="sharedpref" path="tower_prefs.xml" />
+        <exclude domain="sharedpref" path="tower_prefs" />
     </device-transfer>
-    -->
 </data-extraction-rules>

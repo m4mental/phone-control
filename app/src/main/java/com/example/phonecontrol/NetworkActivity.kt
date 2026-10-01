@@ -152,7 +152,7 @@ class NetworkActivity : AppCompatActivity() {
     private fun updateVisibility() {
         val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
         findViewById<View>(R.id.cardTowerLock).visibility =
-            if (prefs.getBoolean("tower_lock_enabled", true)) View.VISIBLE else View.GONE
+            if (prefs.getBoolean(DaemonManager.PREF_TOWER_LOCK_ENABLED, true)) View.VISIBLE else View.GONE
         findViewById<View>(R.id.cardFirewall).visibility =
             if (prefs.getBoolean("firewall_enabled", true)) View.VISIBLE else View.GONE
         findViewById<View>(R.id.cardTcpBbr).visibility =

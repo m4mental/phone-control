@@ -59,7 +59,7 @@
               └───────────────┬──────────────┘ └─────────────┬──────────────┘
                               │                              │
                       ┌───────▼──────────────────────────────▼───────┐
-                      │         Root Executive Layer (libsu)         │
+                      │     Root Executive Layer (Native Shell)      │
                       │  • Kernel Sysfs / Procfs Nodes               │
                       │  • Android Framework AppOps / DeviceIdle     │
                       │  • Iptables / TC Packet Shaping              │
@@ -515,7 +515,7 @@ Phone Control incorporates a **Hierarchical Master Tweak Architecture**:
 - **Language:** Kotlin 100%
 - **Target SDK:** Android 14 / 15 (API 34/35)
 - **Minimum SDK:** Android 12 (API 31)
-- **Root Provider:** `libsu` / Native Android Shell Execution
+- **Root Provider:** Native Root Shell Execution (`su` / `su -mm`)
 - **UI Components:** Android Material 3 Design Components, ViewBinding, NestedScrollView
 - **Build System:** Gradle Kotlin DSL / Groovy
 

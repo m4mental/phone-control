@@ -46,7 +46,11 @@ class FloatingHudService : Service() {
 
     private var windowManager: WindowManager? = null
     private var hudView: View? = null
-    private var isLoopRunning = false
+    @Volatile private var isLoopRunning = false
+    @Volatile private var isDestroyed = false
+    @Volatile private var isViewAttached = false
+    private var metricsThread: Thread? = null
+    private var retryAddViewRunnable: Runnable? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -54,12 +58,15 @@ class FloatingHudService : Service() {
     override fun onCreate() {
         super.onCreate()
         isRunning = true
+        isDestroyed = false
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
 
-        // Ensure overlay permission via Root if not yet granted
+        // Ensure overlay permission via Root if not yet granted (off the main thread)
         if (!Settings.canDrawOverlays(this)) {
-            ShellUtils.fastCmdResult("appops set $packageName SYSTEM_ALERT_WINDOW allow && pm grant $packageName android.permission.SYSTEM_ALERT_WINDOW", 2000)
+            thread(name = "FloatingHud-PermissionGrant") {
+                ShellUtils.fastCmdResult("appops set ${ShellUtils.shellQuote(packageName)} SYSTEM_ALERT_WINDOW allow && pm grant ${ShellUtils.shellQuote(packageName)} android.permission.SYSTEM_ALERT_WINDOW", 2000)
+            }
         }
 
         initHudView()
@@ -143,28 +150,35 @@ class FloatingHudService : Service() {
             }
         })
 
+        if (isDestroyed || isViewAttached) return
+
         val isAdded = try {
             windowManager?.addView(view, params)
+            isViewAttached = true
             true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to add HUD view on first attempt: ${e.message}")
             false
         }
 
-        if (!isAdded) {
-            mainHandler.postDelayed({
+        if (!isAdded && !isDestroyed) {
+            val retry = Runnable {
+                if (isDestroyed || isViewAttached) return@Runnable
                 try {
                     windowManager?.addView(view, params)
+                    isViewAttached = true
                 } catch (e: Exception) {
                     Log.e(TAG, "Retry add HUD view failed: ${e.message}")
                 }
-            }, 600)
+            }
+            retryAddViewRunnable = retry
+            mainHandler.postDelayed(retry, 600)
         }
     }
 
     private fun startMetricsLoop() {
         isLoopRunning = true
-        thread(name = "FloatingHud-Metrics") {
+        metricsThread = thread(name = "FloatingHud-Metrics") {
             val prefs = getSharedPreferences("prefs", Context.MODE_PRIVATE)
 
             while (isLoopRunning) {
@@ -273,14 +287,23 @@ class FloatingHudService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        isDestroyed = true
         isLoopRunning = false
         isRunning = false
+        retryAddViewRunnable?.let { mainHandler.removeCallbacks(it) }
+        retryAddViewRunnable = null
+        mainHandler.removeCallbacksAndMessages(null)
+        metricsThread?.interrupt()
+        metricsThread = null
         HudTileService.updateTile(this)
-        try {
-            hudView?.let { windowManager?.removeView(it) }
-            hudView = null
-        } catch (e: Exception) {
-            Log.w(TAG, "Error removing HUD view: ${e.message}")
+        if (isViewAttached) {
+            try {
+                hudView?.let { windowManager?.removeView(it) }
+            } catch (e: Exception) {
+                Log.w(TAG, "Error removing HUD view: ${e.message}")
+            }
+            isViewAttached = false
         }
+        hudView = null
     }
 }

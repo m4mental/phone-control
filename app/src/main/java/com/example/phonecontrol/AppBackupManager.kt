@@ -131,9 +131,6 @@ object AppBackupManager {
             ShellUtils.runAsRoot("cp ${metadataFile.absolutePath} $backupDir/info.json")
             metadataFile.delete()
 
-            // Final permissions
-            ShellUtils.runAsRoot("chmod -R 777 $backupDir")
-            
             onProgress(100, "Backup Complete!")
             return true
         } catch (e: Exception) {
