@@ -198,12 +198,13 @@ object RecentTasksManager {
                     val isSafe = MultitaskingManager.getUserWhitelist(context).contains(pkg) ||
                                  MultitaskingManager.protectedApps.contains(pkg)
                     val isSpecial = specialApps.contains(pkg)
-                    val isDownloading = if (isSpecial) false else hasActiveForegroundTask(pkg)
+                    val isFgsImmune = FreezerManager.isFgsImmunityEnabled(context, pkg)
+                    val isDownloading = if (!isSpecial && isFgsImmune) hasActiveForegroundTask(pkg) else false
                     if (!isAudio && !isSafe && !isDownloading) {
-                        Log.d(TAG, "❄️ Freezing swiped away app: $pkg (isSpecial=$isSpecial)")
+                        Log.d(TAG, "❄️ Freezing swiped away app: $pkg (isSpecial=$isSpecial, isFgsImmune=$isFgsImmune)")
                         FreezerManager.freezeApp(context, pkg, force = true, isExplicitDismiss = true)
                     } else if (isDownloading) {
-                        Log.d(TAG, "🛡️ Smart FGS Guard: App $pkg swiped away but has active foreground task/download -> Freeze BLOCKED!")
+                        Log.d(TAG, "🛡️ Smart FGS Guard: App $pkg swiped away but has FGS immunity & active task -> Freeze BLOCKED!")
                     }
                 }
             }
@@ -221,12 +222,13 @@ object RecentTasksManager {
                 val isSafe = MultitaskingManager.getUserWhitelist(context).contains(pkg) ||
                              MultitaskingManager.protectedApps.contains(pkg)
                 val isSpecial = specialApps.contains(pkg)
-                val isDownloading = if (isSpecial) false else hasActiveForegroundTask(pkg)
+                val isFgsImmune = FreezerManager.isFgsImmunityEnabled(context, pkg)
+                val isDownloading = if (!isSpecial && isFgsImmune) hasActiveForegroundTask(pkg) else false
                 if (!isAudio && !isSafe && !isDownloading) {
-                    Log.d(TAG, "❄️ Freezing orphan background process not in Recents: $pkg (isSpecial=$isSpecial)")
+                    Log.d(TAG, "❄️ Freezing orphan background process not in Recents: $pkg (isSpecial=$isSpecial, isFgsImmune=$isFgsImmune)")
                     FreezerManager.freezeApp(context, pkg, force = true, isExplicitDismiss = true)
                 } else if (isDownloading) {
-                    Log.d(TAG, "🛡️ Smart FGS Guard: Skipping orphan sweep for $pkg (active foreground service/download in progress)")
+                    Log.d(TAG, "🛡️ Smart FGS Guard: Skipping orphan sweep for $pkg (active FGS & download immunity in progress)")
                 }
             }
         }

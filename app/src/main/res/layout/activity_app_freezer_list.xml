@@ -16,15 +16,22 @@
         app:navigationIcon="@android:drawable/ic_menu_revert"
         app:navigationIconTint="@color/color_freezer" />
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/rvFrozenAppsList"
+    <com.google.android.material.tabs.TabLayout
+        android:id="@+id/tabLayoutFreezer"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:background="#161618"
+        app:tabIndicatorColor="#00E5FF"
+        app:tabIndicatorHeight="3dp"
+        app:tabSelectedTextColor="#00E5FF"
+        app:tabTextColor="#8E8E93"
+        app:tabMode="fixed"
+        app:tabGravity="fill" />
+
+    <androidx.viewpager2.widget.ViewPager2
+        android:id="@+id/viewPagerFreezer"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        android:clipToPadding="false"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
-        android:paddingTop="16dp"
-        android:paddingBottom="24dp" />
+        android:layout_weight="1" />
 
 </LinearLayout>

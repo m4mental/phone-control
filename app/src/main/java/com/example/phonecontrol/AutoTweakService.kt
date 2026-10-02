@@ -870,9 +870,12 @@ class AutoTweakService : Service() {
                     return@execute
                 }
 
+                val isFgsImmune = FreezerManager.isFgsImmunityEnabled(this@AutoTweakService, pkg)
+
                 // 🛡️ SMART ACTIVE TASK / DOWNLOAD GUARD:
-                if (!isSpecial && RecentTasksManager.hasActiveForegroundTask(pkg)) {
-                    Log.d("AutoTweak", "🛡️ Smart FGS Guard: $pkg is actively downloading/syncing -> Skipping background freeze")
+                // Only exempt if the app has explicit FGS / Download immunity permission!
+                if (!isSpecial && isFgsImmune && RecentTasksManager.hasActiveForegroundTask(pkg)) {
+                    Log.d("AutoTweak", "🛡️ Smart FGS Guard: $pkg has FGS immunity & actively downloading/syncing -> Skipping background freeze")
                     return@execute
                 }
 
@@ -1772,10 +1775,11 @@ class AutoTweakService : Service() {
                 }
 
                 val isSpecial = FreezerManager.isSpecialFreeze(this@AutoTweakService, pkg)
+                val isFgsImmune = FreezerManager.isFgsImmunityEnabled(this@AutoTweakService, pkg)
 
-                // 🛡️ Smart FGS Guard: If app is actively downloading in background with screen OFF, NEVER kill it!
-                if (!isSpecial && RecentTasksManager.hasActiveForegroundTask(pkg)) {
-                    Log.d("AutoTweak", "🛡️ Smart FGS Guard: Exempting active downloader '$pkg' from Screen-Off freeze")
+                // 🛡️ Smart FGS Guard: If app is actively downloading in background with screen OFF, ONLY exempt if it has FGS immunity!
+                if (!isSpecial && isFgsImmune && RecentTasksManager.hasActiveForegroundTask(pkg)) {
+                    Log.d("AutoTweak", "🛡️ Smart FGS Guard: Exempting active downloader '$pkg' with FGS immunity from Screen-Off freeze")
                     continue
                 }
 

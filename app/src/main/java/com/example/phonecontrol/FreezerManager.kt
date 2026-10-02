@@ -68,6 +68,7 @@ object FreezerManager {
         if (!force && isAppCurrentlyVisible(packageName)) return
 
         val isSpecial = isSpecialFreeze(context, packageName)
+        val isFgsImmune = isFgsImmunityEnabled(context, packageName)
 
         // 🛡️ RECENT TASKS IMMUNITY GUARD:
         // As long as the app is open/alive in Recents (Multitasking), do NOT kill it!
@@ -79,10 +80,10 @@ object FreezerManager {
         }
 
         // 🛡️ SMART ACTIVE TASK & FOREGROUND SERVICE GUARD:
-        // If the app is actively performing a foreground service, download (e.g. SpeedDown),
-        // or holding a wake lock, NEVER kill or freeze it UNLESS it's an explicit Special Freeze app!
-        if (!isExplicitDismiss && !force && !isSpecial && RecentTasksManager.hasActiveForegroundTask(packageName)) {
-            android.util.Log.d("FreezerManager", "🛡️ Smart FGS Guard: $packageName is actively running a foreground service / download -> Freeze BLOCKED!")
+        // Only exempt from freeze if the app has EXPLICIT FGS / Download Immunity permission!
+        // Special Freeze apps NEVER receive FGS immunity (always force-stopped).
+        if (!isExplicitDismiss && !force && !isSpecial && isFgsImmune && RecentTasksManager.hasActiveForegroundTask(packageName)) {
+            android.util.Log.d("FreezerManager", "🛡️ Smart FGS Guard: $packageName has FGS immunity & active task -> Freeze BLOCKED!")
             return
         }
 
@@ -146,9 +147,10 @@ object FreezerManager {
 
         val pkgList = packages.filter { pkg ->
             val isSpecial = isSpecialFreeze(context, pkg)
+            val isFgsImmune = isFgsImmunityEnabled(context, pkg)
             !allSafeApps.contains(pkg) &&
             !activeAudio.contains(pkg) &&
-            (isSpecial || !RecentTasksManager.hasActiveForegroundTask(pkg)) &&
+            (isSpecial || !isFgsImmune || !RecentTasksManager.hasActiveForegroundTask(pkg)) &&
             (currentFocus.isBlank() || !currentFocus.contains(pkg)) &&
             (force || (!isRecentlyLaunched(pkg, 10000L) && !isAppActiveSession(pkg)))
         }
@@ -208,8 +210,9 @@ object FreezerManager {
         val sessionCopy = HashSet(activeSessionApps)
         for (pkg in sessionCopy) {
             val isSpecial = specialApps.contains(pkg)
-            val isDownloading = RecentTasksManager.hasActiveForegroundTask(pkg)
-            if (!currentRecents.contains(pkg) && pkg != currentForeground && !isAppCurrentlyVisible(pkg) && (isSpecial || !isDownloading)) {
+            val isFgsImmune = isFgsImmunityEnabled(context, pkg)
+            val isDownloading = if (!isSpecial && isFgsImmune) RecentTasksManager.hasActiveForegroundTask(pkg) else false
+            if (!currentRecents.contains(pkg) && pkg != currentForeground && !isAppCurrentlyVisible(pkg) && (!isDownloading)) {
                 toFreeze.add(pkg)
             }
         }
@@ -219,8 +222,9 @@ object FreezerManager {
         val runningConfigured = getRunningConfiguredApps(allConfigured)
         for (pkg in runningConfigured) {
             val isSpecial = specialApps.contains(pkg)
-            val isDownloading = RecentTasksManager.hasActiveForegroundTask(pkg)
-            if (pkg != currentForeground && !currentRecents.contains(pkg) && !isAppCurrentlyVisible(pkg) && (isSpecial || !isDownloading)) {
+            val isFgsImmune = isFgsImmunityEnabled(context, pkg)
+            val isDownloading = if (!isSpecial && isFgsImmune) RecentTasksManager.hasActiveForegroundTask(pkg) else false
+            if (pkg != currentForeground && !currentRecents.contains(pkg) && !isAppCurrentlyVisible(pkg) && (!isDownloading)) {
                 toFreeze.add(pkg)
             }
         }
@@ -236,8 +240,9 @@ object FreezerManager {
             }
 
             val isSpecial = specialApps.contains(pkg)
-            val isDownloading = RecentTasksManager.hasActiveForegroundTask(pkg)
-            if (allConfigured.contains(pkg) && !allSafeApps.contains(pkg) && !activeAudio.contains(pkg) && (isSpecial || !isDownloading)) {
+            val isFgsImmune = isFgsImmunityEnabled(context, pkg)
+            val isDownloading = if (!isSpecial && isFgsImmune) RecentTasksManager.hasActiveForegroundTask(pkg) else false
+            if (allConfigured.contains(pkg) && !allSafeApps.contains(pkg) && !activeAudio.contains(pkg) && (!isDownloading)) {
                 android.util.Log.d("FreezerManager", "❄️ Recents Dismissed / Background Idle -> Freeze for $pkg (special=$isSpecial)")
                 freezeApp(context, pkg, force = true, isExplicitDismiss = true)
             }
@@ -567,6 +572,11 @@ object FreezerManager {
             prefs.edit().putStringSet("special_freeze_apps", special).apply()
         }
 
+        val fgsImmune = prefs.getStringSet("fgs_immune_apps", emptySet())?.toMutableSet() ?: mutableSetOf()
+        if (fgsImmune.remove(packageName)) {
+            prefs.edit().putStringSet("fgs_immune_apps", fgsImmune).apply()
+        }
+
         val custom = prefs.getStringSet("custom_widget_apps", emptySet())?.toMutableSet() ?: mutableSetOf()
         if (custom.remove(packageName)) {
             prefs.edit().putStringSet("custom_widget_apps", custom).apply()
@@ -617,6 +627,41 @@ object FreezerManager {
         val set = prefs.getStringSet("special_freeze_apps", emptySet())?.toMutableSet() ?: mutableSetOf()
         if (enable) set.add(packageName) else set.remove(packageName)
         prefs.edit().putStringSet("special_freeze_apps", set).apply()
+    }
+
+    fun getFgsImmuneApps(context: Context): Set<String> {
+        val prefs = context.getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE)
+        return prefs.getStringSet("fgs_immune_apps", emptySet()) ?: emptySet()
+    }
+
+    fun saveFgsImmuneApps(context: Context, apps: Set<String>) {
+        val prefs = context.getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putStringSet("fgs_immune_apps", apps).apply()
+    }
+
+    fun isFgsImmunityEnabled(context: Context, packageName: String): Boolean {
+        return getFgsImmuneApps(context).contains(packageName)
+    }
+
+    fun setFgsImmunity(context: Context, packageName: String, enable: Boolean) {
+        val prefs = context.getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE)
+        val set = prefs.getStringSet("fgs_immune_apps", emptySet())?.toMutableSet() ?: mutableSetOf()
+        if (enable) set.add(packageName) else set.remove(packageName)
+        prefs.edit().putStringSet("fgs_immune_apps", set).apply()
+    }
+
+    fun toggleFgsImmunity(context: Context, packageName: String): Boolean {
+        val prefs = context.getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE)
+        val set = prefs.getStringSet("fgs_immune_apps", emptySet())?.toMutableSet() ?: mutableSetOf()
+        val newState = if (set.contains(packageName)) {
+            set.remove(packageName)
+            false
+        } else {
+            set.add(packageName)
+            true
+        }
+        prefs.edit().putStringSet("fgs_immune_apps", set).apply()
+        return newState
     }
 
     val KNOWN_EQUALIZERS = listOf(

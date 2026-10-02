@@ -29,29 +29,49 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.switchmaterial.SwitchMaterial
+import com.google.android.material.tabs.TabLayout
+import com.google.android.material.tabs.TabLayoutMediator
 import kotlin.concurrent.thread
 
 class AppFreezerListActivity : AppCompatActivity() {
 
-    private lateinit var rvFrozenAppsList: RecyclerView
-    private lateinit var adapter: FrozenAppsAdapter
+    private lateinit var tabLayout: TabLayout
+    private lateinit var viewPager: ViewPager2
     private lateinit var pm: PackageManager
 
-    private var isEditMode = false
-    private val selectedToRemove = mutableSetOf<String>()
-    private var displayItems: List<FrozenDisplayItem> = emptyList()
+    // Tab 1: Normal Freezer
+    private lateinit var rvNormalFreezer: RecyclerView
+    private lateinit var normalAdapter: NormalFreezerAdapter
+    private var normalDisplayItems: List<FrozenDisplayItem> = emptyList()
+    private var isNormalEditMode = false
+    private val selectedNormalToRemove = mutableSetOf<String>()
 
-    // Header State
+    // Tab 2: Special Freezer
+    private lateinit var rvSpecialFreezer: RecyclerView
+    private lateinit var specialAdapter: SpecialFreezerAdapter
+    private var specialDisplayItems: List<FrozenDisplayItem> = emptyList()
+    private var isSpecialEditMode = false
+    private val selectedSpecialToRemove = mutableSetOf<String>()
+
+    // Tab 3: Immunity Manager
+    private lateinit var rvImmunityList: RecyclerView
+    private lateinit var immunityAdapter: ImmunityAdapter
+    private var immunityDisplayItems: List<ImmunityDisplayItem> = emptyList()
+
+    // Normal Header State
     private var autoFreezeEnabled: Boolean = false
     private var eqGuardEnabled: Boolean = false
     private var detectedEqText: String = "Detected: None"
     private var detectedEqColor: Int = Color.GRAY
 
     companion object {
-        var cachedDisplayItems: List<FrozenDisplayItem>? = null
+        var cachedNormalItems: List<FrozenDisplayItem>? = null
+        var cachedSpecialItems: List<FrozenDisplayItem>? = null
+        var cachedImmunityItems: List<ImmunityDisplayItem>? = null
         var cachedInstalledApps: List<AppItem>? = null
         val appInfoCache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, Drawable?>>()
 
@@ -80,6 +100,13 @@ class AppFreezerListActivity : AppCompatActivity() {
         val isCustomWidget: Boolean = false,
         val isSystem: Boolean = false
     )
+    data class ImmunityDisplayItem(
+        val pkg: String,
+        val name: String,
+        val icon: Drawable?,
+        var isImmune: Boolean,
+        val hasActiveTask: Boolean
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -96,15 +123,64 @@ class AppFreezerListActivity : AppCompatActivity() {
             } else false
         }
 
+        tabLayout = findViewById(R.id.tabLayoutFreezer)
+        viewPager = findViewById(R.id.viewPagerFreezer)
+        viewPager.offscreenPageLimit = 2
+
         autoFreezeEnabled = FreezerManager.isAutoFreezeEnabled(this)
 
-        rvFrozenAppsList = findViewById(R.id.rvFrozenAppsList)
-        rvFrozenAppsList.layoutManager = LinearLayoutManager(this)
-        rvFrozenAppsList.setHasFixedSize(true)
-        rvFrozenAppsList.setItemViewCacheSize(25)
+        // Inflate Tab Pages
+        val inflater = LayoutInflater.from(this)
+        val pageNormal = inflater.inflate(R.layout.layout_tab_freezer_normal, viewPager, false)
+        val pageSpecial = inflater.inflate(R.layout.layout_tab_freezer_special, viewPager, false)
+        val pageImmunity = inflater.inflate(R.layout.layout_tab_freezer_immunity, viewPager, false)
 
-        adapter = FrozenAppsAdapter()
-        rvFrozenAppsList.adapter = adapter
+        // Setup Tab 1
+        rvNormalFreezer = pageNormal.findViewById(R.id.rvNormalFreezer)
+        rvNormalFreezer.layoutManager = LinearLayoutManager(this)
+        rvNormalFreezer.setHasFixedSize(true)
+        rvNormalFreezer.setItemViewCacheSize(25)
+        normalAdapter = NormalFreezerAdapter()
+        rvNormalFreezer.adapter = normalAdapter
+
+        // Setup Tab 2
+        rvSpecialFreezer = pageSpecial.findViewById(R.id.rvSpecialFreezer)
+        rvSpecialFreezer.layoutManager = LinearLayoutManager(this)
+        rvSpecialFreezer.setHasFixedSize(true)
+        rvSpecialFreezer.setItemViewCacheSize(25)
+        specialAdapter = SpecialFreezerAdapter()
+        rvSpecialFreezer.adapter = specialAdapter
+
+        // Setup Tab 3
+        rvImmunityList = pageImmunity.findViewById(R.id.rvImmunityList)
+        rvImmunityList.layoutManager = LinearLayoutManager(this)
+        rvImmunityList.setHasFixedSize(true)
+        rvImmunityList.setItemViewCacheSize(25)
+        immunityAdapter = ImmunityAdapter()
+        rvImmunityList.adapter = immunityAdapter
+
+        val pages = listOf(pageNormal, pageSpecial, pageImmunity)
+        viewPager.adapter = object : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+            override fun getItemCount(): Int = pages.size
+            override fun getItemViewType(position: Int): Int = position
+            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+                val page = pages[viewType]
+                if (page.parent != null) {
+                    (page.parent as? ViewGroup)?.removeView(page)
+                }
+                return object : RecyclerView.ViewHolder(page) {}
+            }
+            override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {}
+        }
+
+        // Attach ViewPager2 with TabLayout with smooth indicator animations
+        TabLayoutMediator(tabLayout, viewPager) { tab, position ->
+            when (position) {
+                0 -> tab.text = "❄️ Normal Freezer"
+                1 -> tab.text = "🔒 Special Freezer"
+                2 -> tab.text = "🛡️ FGS Immunity"
+            }
+        }.attach()
 
         // Background Pre-warming for 0ms instant app picker dialogs
         cachedInstalledApps = null
@@ -153,8 +229,591 @@ class AppFreezerListActivity : AppCompatActivity() {
             detectedEqColor = Color.GRAY
         }
 
-        if (::adapter.isInitialized) {
-            adapter.notifyItemChanged(0)
+        if (::normalAdapter.isInitialized) {
+            normalAdapter.notifyItemChanged(0)
+        }
+    }
+
+    private fun refreshList() {
+        FreezerManager.pruneUninstalledPackages(this)
+        val frozenApps = FreezerManager.getFrozenApps(this)
+        val specialApps = FreezerManager.getSpecialFreezeApps(this)
+
+        // 1. CACHE-FIRST: Instant 0ms render from memory cache
+        if (cachedNormalItems != null) normalDisplayItems = cachedNormalItems!!
+        if (cachedSpecialItems != null) specialDisplayItems = cachedSpecialItems!!
+        if (cachedImmunityItems != null) immunityDisplayItems = cachedImmunityItems!!
+
+        if (::normalAdapter.isInitialized) normalAdapter.notifyDataSetChanged()
+        if (::specialAdapter.isInitialized) specialAdapter.notifyDataSetChanged()
+        if (::immunityAdapter.isInitialized) immunityAdapter.notifyDataSetChanged()
+
+        // 2. SILENT BACKGROUND REVALIDATE:
+        thread {
+            val activeSet = FreezerManager.getActivePackages(this@AppFreezerListActivity, frozenApps)
+            val customWidgetSet = FreezerManager.getCustomWidgetApps(this)
+            val fgsImmuneSet = FreezerManager.getFgsImmuneApps(this)
+
+            val normalPkgs = frozenApps.filter { !specialApps.contains(it) }
+            val specialPkgs = specialApps.toList()
+
+            val freshNormalItems = normalPkgs.mapNotNull { pkg ->
+                try {
+                    val appInfo = pm.getApplicationInfo(pkg, 0)
+                    val cachedInfo = appInfoCache[pkg]
+                    val name = cachedInfo?.first ?: pm.getApplicationLabel(appInfo).toString()
+                    val icon = cachedInfo?.second ?: try { pm.getApplicationIcon(appInfo) } catch (e: Exception) { null }
+                    appInfoCache[pkg] = Pair(name, icon)
+
+                    val isActive = activeSet.contains(pkg)
+                    val isCustomWidget = customWidgetSet.contains(pkg)
+                    val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                    FrozenDisplayItem(pkg, name, icon, isSpecial = false, isActive = isActive, isCustomWidget = isCustomWidget, isSystem = isSystem)
+                } catch (e: Exception) {
+                    null
+                }
+            }.sortedBy { it.name.lowercase() }
+
+            val freshSpecialItems = specialPkgs.mapNotNull { pkg ->
+                try {
+                    val appInfo = pm.getApplicationInfo(pkg, 0)
+                    val cachedInfo = appInfoCache[pkg]
+                    val name = cachedInfo?.first ?: pm.getApplicationLabel(appInfo).toString()
+                    val icon = cachedInfo?.second ?: try { pm.getApplicationIcon(appInfo) } catch (e: Exception) { null }
+                    appInfoCache[pkg] = Pair(name, icon)
+
+                    val isActive = activeSet.contains(pkg)
+                    val isCustomWidget = customWidgetSet.contains(pkg)
+                    val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                    FrozenDisplayItem(pkg, name, icon, isSpecial = true, isActive = isActive, isCustomWidget = isCustomWidget, isSystem = isSystem)
+                } catch (e: Exception) {
+                    null
+                }
+            }.sortedBy { it.name.lowercase() }
+
+            val freshImmunityItems = freshNormalItems.map { normalItem ->
+                val isImmune = fgsImmuneSet.contains(normalItem.pkg)
+                val hasTask = RecentTasksManager.hasActiveForegroundTask(normalItem.pkg)
+                ImmunityDisplayItem(
+                    pkg = normalItem.pkg,
+                    name = normalItem.name,
+                    icon = normalItem.icon,
+                    isImmune = isImmune,
+                    hasActiveTask = hasTask
+                )
+            }
+
+            cachedNormalItems = freshNormalItems
+            cachedSpecialItems = freshSpecialItems
+            cachedImmunityItems = freshImmunityItems
+
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                normalDisplayItems = freshNormalItems
+                specialDisplayItems = freshSpecialItems
+                immunityDisplayItems = freshImmunityItems
+                normalAdapter.notifyDataSetChanged()
+                specialAdapter.notifyDataSetChanged()
+                immunityAdapter.notifyDataSetChanged()
+            }
+        }
+    }
+
+    private fun freezeAllNormal() {
+        val normalApps = normalDisplayItems.map { it.pkg }.toSet()
+        if (normalApps.isEmpty()) {
+            Toast.makeText(this, "No apps in Normal Freezer list!", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val progress = ProgressDialog(this).apply {
+            setMessage("Hibernating ${normalApps.size} Normal apps...")
+            setCancelable(false)
+            show()
+        }
+
+        thread {
+            FreezerManager.freezeMultipleApps(this, normalApps, force = true)
+            val estimatedRamMb = (normalApps.size * 110).coerceAtLeast(100)
+            runOnUiThread {
+                progress.dismiss()
+                refreshList()
+                notifyWidgets()
+                Toast.makeText(this, "❄️ Hibernated ${normalApps.size} apps! ~${estimatedRamMb} MB background RAM reclaimed", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun freezeAllSpecial() {
+        val specialApps = specialDisplayItems.map { it.pkg }.toSet()
+        if (specialApps.isEmpty()) {
+            Toast.makeText(this, "No apps in Special Freeze list!", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val progress = ProgressDialog(this).apply {
+            setMessage("Suspending ${specialApps.size} Special apps...")
+            setCancelable(false)
+            show()
+        }
+
+        thread {
+            FreezerManager.freezeMultipleApps(this, specialApps, force = true)
+            runOnUiThread {
+                progress.dismiss()
+                refreshList()
+                notifyWidgets()
+                Toast.makeText(this, "🔒 Suspended ${specialApps.size} Special isolated apps!", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun notifyWidgets() {
+        FreezerWidgetProvider.updateAllWidgets(this)
+        SpecialFreezerWidgetProvider.updateAllWidgets(this)
+    }
+
+    private fun showNormalAppOptionsDialog(pkg: String, appName: String) {
+        val isCustomWidget = FreezerManager.getCustomWidgetApps(this).contains(pkg)
+        val widgetLabel = if (isCustomWidget) "📱 Remove from Custom Widget" else "📱 Add to Custom Widget"
+        val options = arrayOf(
+            "🚀 Launch App",
+            "❄️ Resume / Unfreeze App",
+            "🔒 Move to Special Freeze (Deep Suspend)",
+            widgetLabel,
+            "Remove from Hibernation List",
+            "Bulk Edit Mode"
+        )
+
+        AlertDialog.Builder(this)
+            .setTitle(appName)
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> {
+                        FreezerManager.launchApp(this, pkg)
+                        Toast.makeText(this, "Launching $appName...", Toast.LENGTH_SHORT).show()
+                    }
+                    1 -> {
+                        thread {
+                            FreezerManager.unfreezeApp(pkg)
+                            runOnUiThread {
+                                refreshList()
+                                notifyWidgets()
+                                Toast.makeText(this, "$appName Unfrozen & Ready", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                    2 -> {
+                        FreezerManager.setSpecialFreeze(this, pkg, true)
+                        thread {
+                            FreezerManager.freezeApp(this, pkg, force = true)
+                            runOnUiThread {
+                                refreshList()
+                                notifyWidgets()
+                                Toast.makeText(this, "Moved $appName to Special Freeze (Suspended)", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                    3 -> {
+                        val added = FreezerManager.toggleCustomWidgetApp(this, pkg)
+                        refreshList()
+                        notifyWidgets()
+                        val msg = if (added) "Added $appName to Custom Widget" else "Removed $appName from Custom Widget"
+                        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                    }
+                    4 -> {
+                        val current = FreezerManager.getFrozenApps(this).toMutableSet()
+                        current.remove(pkg)
+                        thread {
+                            FreezerManager.removeAppFromFreezer(this, pkg)
+                            runOnUiThread {
+                                refreshList()
+                                notifyWidgets()
+                                Toast.makeText(this, "Removed and unfreezed $appName", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                    5 -> enterNormalEditMode(pkg)
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showSpecialAppOptionsDialog(pkg: String, appName: String) {
+        val isCustomWidget = FreezerManager.getCustomWidgetApps(this).contains(pkg)
+        val widgetLabel = if (isCustomWidget) "📱 Remove from Custom Widget" else "📱 Add to Custom Widget"
+        val options = arrayOf(
+            "🚀 Launch App",
+            "❄️ Unsuspend & Restore App",
+            "❄️ Move to Normal Freezer (am freeze)",
+            widgetLabel,
+            "Remove from Special Freeze List",
+            "Bulk Edit Mode"
+        )
+
+        AlertDialog.Builder(this)
+            .setTitle("🔒 $appName (Special Freeze)")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> {
+                        FreezerManager.launchApp(this, pkg)
+                        Toast.makeText(this, "Launching $appName...", Toast.LENGTH_SHORT).show()
+                    }
+                    1 -> {
+                        thread {
+                            ShellUtils.fastCmd("cmd package unsuspend --user 0 $pkg 2>/dev/null; pm unsuspend $pkg 2>/dev/null")
+                            FreezerManager.setSpecialFreeze(this, pkg, false)
+                            FreezerManager.unfreezeApp(pkg)
+                            runOnUiThread {
+                                refreshList()
+                                notifyWidgets()
+                                Toast.makeText(this, "Unsuspended & Restored $appName", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                    2 -> {
+                        thread {
+                            ShellUtils.fastCmd("cmd package unsuspend --user 0 $pkg 2>/dev/null; pm unsuspend $pkg 2>/dev/null")
+                            FreezerManager.setSpecialFreeze(this, pkg, false)
+                            FreezerManager.freezeApp(this, pkg, force = true)
+                            runOnUiThread {
+                                refreshList()
+                                notifyWidgets()
+                                Toast.makeText(this, "Moved $appName to Normal Freezer", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                    3 -> {
+                        val added = FreezerManager.toggleCustomWidgetApp(this, pkg)
+                        refreshList()
+                        notifyWidgets()
+                        val msg = if (added) "Added $appName to Custom Widget" else "Removed $appName from Custom Widget"
+                        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                    }
+                    4 -> {
+                        thread {
+                            ShellUtils.fastCmd("cmd package unsuspend --user 0 $pkg 2>/dev/null; pm unsuspend $pkg 2>/dev/null")
+                            FreezerManager.removeAppFromFreezer(this, pkg)
+                            runOnUiThread {
+                                refreshList()
+                                notifyWidgets()
+                                Toast.makeText(this, "Removed and restored $appName", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                    5 -> enterSpecialEditMode(pkg)
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun toggleNormalSelection(pkg: String) {
+        if (selectedNormalToRemove.contains(pkg)) {
+            selectedNormalToRemove.remove(pkg)
+        } else {
+            selectedNormalToRemove.add(pkg)
+        }
+        val index = normalDisplayItems.indexOfFirst { it.pkg == pkg }
+        if (index != -1) {
+            normalAdapter.notifyItemChanged(index + 1)
+        }
+        normalAdapter.notifyItemChanged(0)
+    }
+
+    private fun enterNormalEditMode(initialPkg: String) {
+        isNormalEditMode = true
+        selectedNormalToRemove.clear()
+        selectedNormalToRemove.add(initialPkg)
+        normalAdapter.notifyDataSetChanged()
+    }
+
+    private fun exitNormalEditMode() {
+        isNormalEditMode = false
+        selectedNormalToRemove.clear()
+        normalAdapter.notifyDataSetChanged()
+    }
+
+    private fun removeMultipleNormalApps() {
+        if (selectedNormalToRemove.isEmpty()) return
+        AlertDialog.Builder(this)
+            .setTitle("Unfreeze Selected?")
+            .setMessage("Stop hibernation for ${selectedNormalToRemove.size} apps?")
+            .setPositiveButton("Yes") { _, _ ->
+                val count = selectedNormalToRemove.size
+                val toRemove = selectedNormalToRemove.toSet()
+                thread {
+                    for (pkg in toRemove) {
+                        FreezerManager.removeAppFromFreezer(this, pkg)
+                    }
+                    runOnUiThread {
+                        notifyWidgets()
+                        exitNormalEditMode()
+                        refreshList()
+                        Toast.makeText(this, "Removed & Unfroze $count apps", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .setNegativeButton("No", null)
+            .show()
+    }
+
+    private fun toggleSpecialSelection(pkg: String) {
+        if (selectedSpecialToRemove.contains(pkg)) {
+            selectedSpecialToRemove.remove(pkg)
+        } else {
+            selectedSpecialToRemove.add(pkg)
+        }
+        val index = specialDisplayItems.indexOfFirst { it.pkg == pkg }
+        if (index != -1) {
+            specialAdapter.notifyItemChanged(index + 1)
+        }
+        specialAdapter.notifyItemChanged(0)
+    }
+
+    private fun enterSpecialEditMode(initialPkg: String) {
+        isSpecialEditMode = true
+        selectedSpecialToRemove.clear()
+        selectedSpecialToRemove.add(initialPkg)
+        specialAdapter.notifyDataSetChanged()
+    }
+
+    private fun exitSpecialEditMode() {
+        isSpecialEditMode = false
+        selectedSpecialToRemove.clear()
+        specialAdapter.notifyDataSetChanged()
+    }
+
+    private fun removeMultipleSpecialApps() {
+        if (selectedSpecialToRemove.isEmpty()) return
+        AlertDialog.Builder(this)
+            .setTitle("Unsuspend Selected?")
+            .setMessage("Restore and unsuspend ${selectedSpecialToRemove.size} apps?")
+            .setPositiveButton("Yes") { _, _ ->
+                val count = selectedSpecialToRemove.size
+                val toRemove = selectedSpecialToRemove.toSet()
+                thread {
+                    for (pkg in toRemove) {
+                        ShellUtils.fastCmd("cmd package unsuspend --user 0 $pkg 2>/dev/null; pm unsuspend $pkg 2>/dev/null")
+                        FreezerManager.removeAppFromFreezer(this, pkg)
+                    }
+                    runOnUiThread {
+                        notifyWidgets()
+                        exitSpecialEditMode()
+                        refreshList()
+                        Toast.makeText(this, "Restored & Unsuspended $count apps", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .setNegativeButton("No", null)
+            .show()
+    }
+
+    private fun showSearchableAppPicker(isSpecialTarget: Boolean = false) {
+        val currentFrozen = FreezerManager.getFrozenApps(this)
+        val dialogView = layoutInflater.inflate(R.layout.dialog_app_picker, null)
+        val etSearch = dialogView.findViewById<EditText>(R.id.etSearchApp)
+        val lvApps = dialogView.findViewById<ListView>(R.id.lvApps)
+        val cbSelectAll = dialogView.findViewById<CheckBox>(R.id.cbSelectAll)
+        val spinnerFilter = dialogView.findViewById<Spinner>(R.id.spinnerFilter)
+
+        spinnerFilter.visibility = View.VISIBLE
+        val filterOptions = arrayOf("👤 User Apps", "⚙️ System Apps", "All Apps")
+        val spinnerAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, filterOptions)
+        spinnerFilter.adapter = spinnerAdapter
+
+        // ⚡ Cache-First: Instant population from memory
+        var allApps: List<AppItem> = (cachedInstalledApps ?: emptyList())
+            .filter { !currentFrozen.contains(it.info.packageName) }
+        for (app in allApps) {
+            app.isChecked = false
+        }
+        var filteredApps: List<AppItem> = allApps
+        val pickerAdapter = AppPickerAdapter(filteredApps)
+        lvApps.adapter = pickerAdapter
+
+        fun updateList() {
+            val query = etSearch.text.toString().trim().lowercase()
+            val filterMode = spinnerFilter.selectedItemPosition
+            filteredApps = allApps.filter { item ->
+                val isSystem = (item.info.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                val matchesCategory = when (filterMode) {
+                    0 -> !isSystem
+                    1 -> isSystem
+                    else -> true
+                }
+                val matchesQuery = query.isEmpty() ||
+                        item.label.lowercase().contains(query) ||
+                        item.info.packageName.lowercase().contains(query)
+                matchesCategory && matchesQuery
+            }
+            pickerAdapter.items = filteredApps
+            pickerAdapter.notifyDataSetChanged()
+        }
+
+        spinnerFilter.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                updateList()
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+
+        updateList()
+
+        etSearch.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                updateList()
+            }
+            override fun afterTextChanged(s: Editable?) {}
+        })
+
+        cbSelectAll.setOnCheckedChangeListener { _, isChecked ->
+            for (app in filteredApps) app.isChecked = isChecked
+            pickerAdapter.notifyDataSetChanged()
+        }
+
+        val title = if (isSpecialTarget) "Add Apps to Special Freeze (Suspend)" else "Add Apps to Normal Hibernate"
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(title)
+            .setView(dialogView)
+            .setPositiveButton("Add") { _, _ ->
+                val newlySelected = allApps.filter { it.isChecked }.map { it.info.packageName }.toSet()
+                if (newlySelected.isNotEmpty()) {
+                    val updatedSet = currentFrozen.toMutableSet().apply { addAll(newlySelected) }
+                    FreezerManager.saveFrozenApps(this, updatedSet)
+
+                    if (isSpecialTarget) {
+                        for (pkg in newlySelected) {
+                            FreezerManager.setSpecialFreeze(this, pkg, true)
+                        }
+                    }
+
+                    if (!FreezerManager.isAutoFreezeEnabled(this)) {
+                        FreezerManager.setAutoFreezeEnabled(this, true)
+                    }
+
+                    for (pkg in newlySelected) {
+                        FreezerManager.freezeApp(this, pkg, force = true)
+                    }
+                    refreshList()
+                    notifyWidgets()
+                    val targetLabel = if (isSpecialTarget) "Special Freeze (Suspended)" else "Normal Hibernation list"
+                    Toast.makeText(this, "Added ${newlySelected.size} apps to $targetLabel", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .create()
+
+        dialog.show()
+
+        thread {
+            val freshInstalled = getInstalledAppsList()
+            val freshAvailable = freshInstalled.filter { !currentFrozen.contains(it.info.packageName) }
+            if (freshAvailable.isNotEmpty() && (allApps.isEmpty() || freshAvailable.size != allApps.size)) {
+                allApps = freshAvailable
+                for (app in allApps) app.isChecked = false
+                runOnUiThread {
+                    if (dialog.isShowing && !isFinishing && !isDestroyed) {
+                        updateList()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun showCustomWidgetAppPicker() {
+        val allFrozen = FreezerManager.getFrozenApps(this) + FreezerManager.getSpecialFreezeApps(this)
+        if (allFrozen.isEmpty()) {
+            Toast.makeText(this, "No apps in hibernation list yet! Add apps first.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val currentCustom = FreezerManager.getCustomWidgetApps(this)
+        val dialogView = layoutInflater.inflate(R.layout.dialog_app_picker, null)
+        val etSearch = dialogView.findViewById<EditText>(R.id.etSearchApp)
+        val lvApps = dialogView.findViewById<ListView>(R.id.lvApps)
+        val cbSelectAll = dialogView.findViewById<CheckBox>(R.id.cbSelectAll)
+        dialogView.findViewById<View>(R.id.spinnerFilter)?.visibility = View.GONE
+
+        var allItems: List<AppItem> = allFrozen.mapNotNull { pkg ->
+            val cachedInfo = appInfoCache[pkg]
+            if (cachedInfo != null) {
+                val appInfo = try { pm.getApplicationInfo(pkg, 0) } catch (e: Exception) { null }
+                if (appInfo != null) {
+                    AppItem(appInfo, cachedInfo.first).apply {
+                        isChecked = currentCustom.contains(pkg)
+                    }
+                } else null
+            } else null
+        }.sortedBy { it.label.lowercase() }
+
+        var filteredItems: List<AppItem> = allItems
+        val pickerAdapter = AppPickerAdapter(filteredItems)
+        lvApps.adapter = pickerAdapter
+
+        fun updateList() {
+            val query = etSearch.text.toString().trim().lowercase()
+            filteredItems = if (query.isEmpty()) {
+                allItems
+            } else {
+                allItems.filter { it.label.lowercase().contains(query) || it.info.packageName.lowercase().contains(query) }
+            }
+            pickerAdapter.items = filteredItems
+            pickerAdapter.notifyDataSetChanged()
+        }
+
+        etSearch.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { updateList() }
+            override fun afterTextChanged(s: Editable?) {}
+        })
+
+        cbSelectAll.setOnCheckedChangeListener { _, isChecked ->
+            for (app in filteredItems) app.isChecked = isChecked
+            pickerAdapter.notifyDataSetChanged()
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Select Custom Widget Apps")
+            .setView(dialogView)
+            .setPositiveButton("Save") { _, _ ->
+                val selected = allItems.filter { it.isChecked }.map { it.info.packageName }.toSet()
+                FreezerManager.saveCustomWidgetApps(this, selected)
+                refreshList()
+                notifyWidgets()
+                Toast.makeText(this, "Saved ${selected.size} apps for Custom Widget", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancel", null)
+            .create()
+
+        dialog.show()
+
+        thread {
+            val freshItems = allFrozen.mapNotNull { pkg ->
+                try {
+                    val appInfo = pm.getApplicationInfo(pkg, 0)
+                    val label = pm.getApplicationLabel(appInfo).toString()
+                    val icon = try { pm.getApplicationIcon(appInfo) } catch (e: Exception) { null }
+                    appInfoCache[pkg] = Pair(label, icon)
+                    AppItem(appInfo, label).apply {
+                        isChecked = currentCustom.contains(pkg)
+                    }
+                } catch (e: Exception) {
+                    null
+                }
+            }.sortedBy { it.label.lowercase() }
+
+            if (freshItems.size != allItems.size) {
+                allItems = freshItems
+                runOnUiThread {
+                    if (dialog.isShowing && !isFinishing && !isDestroyed) {
+                        updateList()
+                    }
+                }
+            }
         }
     }
 
@@ -214,433 +873,10 @@ class AppFreezerListActivity : AppCompatActivity() {
 
         dialog.show()
 
-        // Background pre-fetch/revalidation if cache was empty
         thread {
             if (allApps.isEmpty()) {
                 val freshApps = getInstalledAppsList().sortedBy { it.label.lowercase() }
                 allApps = freshApps
-                runOnUiThread {
-                    if (dialog.isShowing && !isFinishing && !isDestroyed) {
-                        updateList()
-                    }
-                }
-            }
-        }
-    }
-
-    private fun refreshList() {
-        FreezerManager.pruneUninstalledPackages(this)
-        val frozenApps = FreezerManager.getFrozenApps(this)
-
-        if (frozenApps.isEmpty()) {
-            cachedDisplayItems = emptyList()
-            displayItems = emptyList()
-            if (::adapter.isInitialized) {
-                adapter.notifyDataSetChanged()
-            }
-            return
-        }
-
-        // 1. CACHE-FIRST: Instant 0ms render from memory cache
-        val cached = cachedDisplayItems
-        if (!cached.isNullOrEmpty()) {
-            displayItems = cached
-            if (::adapter.isInitialized) {
-                adapter.notifyDataSetChanged()
-            }
-        }
-
-        // 2. SILENT BACKGROUND REVALIDATE:
-        thread {
-            val activeSet = FreezerManager.getActivePackages(this@AppFreezerListActivity, frozenApps)
-            val customWidgetSet = FreezerManager.getCustomWidgetApps(this)
-            val freshItems = frozenApps.mapNotNull { pkg ->
-                try {
-                    val appInfo = pm.getApplicationInfo(pkg, 0)
-                    val cachedInfo = appInfoCache[pkg]
-                    val name = cachedInfo?.first ?: pm.getApplicationLabel(appInfo).toString()
-                    val icon = cachedInfo?.second ?: try { pm.getApplicationIcon(appInfo) } catch (e: Exception) { null }
-
-                    appInfoCache[pkg] = Pair(name, icon)
-
-                    val isSpecial = FreezerManager.isSpecialFreeze(this, pkg)
-                    val isActive = activeSet.contains(pkg)
-                    val isCustomWidget = customWidgetSet.contains(pkg)
-                    val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
-                    FrozenDisplayItem(pkg, name, icon, isSpecial, isActive, isCustomWidget, isSystem)
-                } catch (e: Exception) {
-                    null
-                }
-            }.sortedBy { it.name.lowercase() }
-
-            cachedDisplayItems = freshItems
-
-            runOnUiThread {
-                if (isFinishing || isDestroyed) return@runOnUiThread
-                displayItems = freshItems
-                adapter.notifyDataSetChanged()
-            }
-        }
-    }
-
-    private fun freezeAll() {
-        val apps = FreezerManager.getFrozenApps(this) + FreezerManager.getSpecialFreezeApps(this)
-        if (apps.isEmpty()) {
-            Toast.makeText(this, "No apps in Hibernation list to freeze!", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val progress = ProgressDialog(this).apply {
-            setMessage("Hibernating ${apps.size} apps...")
-            setCancelable(false)
-            show()
-        }
-
-        thread {
-            FreezerManager.freezeMultipleApps(this, apps, force = true)
-            val estimatedRamMb = (apps.size * 115).coerceAtLeast(150)
-            runOnUiThread {
-                progress.dismiss()
-                refreshList()
-                notifyWidgets()
-                Toast.makeText(this, "❄️ Hibernated ${apps.size} apps! ~${estimatedRamMb} MB background RAM reclaimed", Toast.LENGTH_LONG).show()
-            }
-        }
-    }
-
-    private fun notifyWidgets() {
-        FreezerWidgetProvider.updateAllWidgets(this)
-        SpecialFreezerWidgetProvider.updateAllWidgets(this)
-    }
-
-    private fun showAppOptionsDialog(pkg: String, appName: String) {
-        val isSpecial = FreezerManager.isSpecialFreeze(this, pkg)
-        val specialLabel = if (isSpecial) "Disable Special Freeze (Restore Launcher Icon)" else "Enable Special Freeze (Hard Kill + Suspend)"
-        val isCustomWidget = FreezerManager.getCustomWidgetApps(this).contains(pkg)
-        val widgetLabel = if (isCustomWidget) "📱 Remove from Custom Widget" else "📱 Add to Custom Widget"
-        val options = arrayOf("🚀 Launch App", "❄️ Resume / Unfreeze App", specialLabel, widgetLabel, "Remove from Hibernation List", "Bulk Edit Mode")
-
-        AlertDialog.Builder(this)
-            .setTitle(appName)
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> {
-                        FreezerManager.launchApp(this, pkg)
-                        Toast.makeText(this, "Launching $appName...", Toast.LENGTH_SHORT).show()
-                    }
-                    1 -> {
-                        thread {
-                            FreezerManager.unfreezeApp(pkg)
-                            runOnUiThread {
-                                refreshList()
-                                notifyWidgets()
-                                Toast.makeText(this, "$appName Unfrozen & Ready", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    }
-                    2 -> {
-                        val newVal = !isSpecial
-                        FreezerManager.setSpecialFreeze(this, pkg, newVal)
-                        thread {
-                            if (newVal) {
-                                FreezerManager.freezeApp(this, pkg, force = true)
-                            } else {
-                                ShellUtils.fastCmd("cmd package unsuspend --user 0 $pkg 2>/dev/null; pm unsuspend $pkg 2>/dev/null")
-                                FreezerManager.freezeApp(this, pkg, force = true)
-                            }
-                            runOnUiThread {
-                                refreshList()
-                                notifyWidgets()
-                                val msg = if (newVal) "Special Freeze Enabled (Hard Suspend)" else "Special Freeze Disabled (Standard Hibernation Active)"
-                                Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    }
-                    3 -> {
-                        val added = FreezerManager.toggleCustomWidgetApp(this, pkg)
-                        refreshList()
-                        notifyWidgets()
-                        val msg = if (added) "Added $appName to Custom Widget" else "Removed $appName from Custom Widget"
-                        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
-                    }
-                    4 -> {
-                        val current = FreezerManager.getFrozenApps(this).toMutableSet()
-                        current.remove(pkg)
-                        thread {
-                            FreezerManager.setSpecialFreeze(this, pkg, false)
-                            val custom = FreezerManager.getCustomWidgetApps(this).toMutableSet()
-                            if (custom.remove(pkg)) {
-                                FreezerManager.saveCustomWidgetApps(this, custom)
-                            }
-                            FreezerManager.unfreezeApp(pkg)
-                            FreezerManager.saveFrozenApps(this, current)
-                            runOnUiThread {
-                                refreshList()
-                                notifyWidgets()
-                                Toast.makeText(this, "Removed and unfreezed $appName", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    }
-                    5 -> enterEditMode(pkg)
-                }
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    private fun toggleSelection(pkg: String) {
-        if (selectedToRemove.contains(pkg)) {
-            selectedToRemove.remove(pkg)
-        } else {
-            selectedToRemove.add(pkg)
-        }
-        val index = displayItems.indexOfFirst { it.pkg == pkg }
-        if (index != -1) {
-            adapter.notifyItemChanged(index + 1)
-        }
-        adapter.notifyItemChanged(0) // update count in header actions
-    }
-
-    private fun enterEditMode(initialPkg: String) {
-        isEditMode = true
-        selectedToRemove.clear()
-        selectedToRemove.add(initialPkg)
-        adapter.notifyDataSetChanged()
-    }
-
-    private fun exitEditMode() {
-        isEditMode = false
-        selectedToRemove.clear()
-        adapter.notifyDataSetChanged()
-    }
-
-    private fun removeMultipleApps() {
-        if (selectedToRemove.isEmpty()) return
-
-        AlertDialog.Builder(this)
-            .setTitle("Unfreeze Selected?")
-            .setMessage("Stop hibernation for ${selectedToRemove.size} apps?")
-            .setPositiveButton("Yes") { _, _ ->
-                val count = selectedToRemove.size
-                val toRemove = selectedToRemove.toSet()
-                val current = FreezerManager.getFrozenApps(this).toMutableSet()
-                current.removeAll(toRemove)
-                FreezerManager.saveFrozenApps(this, current)
-
-                val custom = FreezerManager.getCustomWidgetApps(this).toMutableSet()
-                if (custom.removeAll(toRemove)) {
-                    FreezerManager.saveCustomWidgetApps(this, custom)
-                }
-
-                thread {
-                    for (pkg in toRemove) {
-                        FreezerManager.setSpecialFreeze(this, pkg, false)
-                    }
-                    FreezerManager.unfreezeMultipleApps(toRemove)
-                    runOnUiThread {
-                        notifyWidgets()
-                        exitEditMode()
-                        Toast.makeText(this, "Removed & Unfroze $count apps", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            }
-            .setNegativeButton("No", null)
-            .show()
-    }
-
-    private fun showSearchableAppPicker() {
-        val currentFrozen = FreezerManager.getFrozenApps(this)
-        val dialogView = layoutInflater.inflate(R.layout.dialog_app_picker, null)
-        val etSearch = dialogView.findViewById<EditText>(R.id.etSearchApp)
-        val lvApps = dialogView.findViewById<ListView>(R.id.lvApps)
-        val cbSelectAll = dialogView.findViewById<CheckBox>(R.id.cbSelectAll)
-        val spinnerFilter = dialogView.findViewById<Spinner>(R.id.spinnerFilter)
-
-        spinnerFilter.visibility = View.VISIBLE
-        val filterOptions = arrayOf("👤 User Apps", "⚙️ System Apps", "All Apps")
-        val spinnerAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, filterOptions)
-        spinnerFilter.adapter = spinnerAdapter
-
-        // ⚡ Cache-First: Instant population from memory
-        var allApps: List<AppItem> = (cachedInstalledApps ?: emptyList())
-            .filter { !currentFrozen.contains(it.info.packageName) }
-        for (app in allApps) {
-            app.isChecked = false
-        }
-        var filteredApps: List<AppItem> = allApps
-        var pickerAdapter = AppPickerAdapter(filteredApps)
-        lvApps.adapter = pickerAdapter
-
-        fun updateList() {
-            val query = etSearch.text.toString().trim().lowercase()
-            val filterMode = spinnerFilter.selectedItemPosition // 0 = User Apps, 1 = System Apps, 2 = All
-            filteredApps = allApps.filter { item ->
-                val isSystem = (item.info.flags and ApplicationInfo.FLAG_SYSTEM) != 0
-                val matchesCategory = when (filterMode) {
-                    0 -> !isSystem
-                    1 -> isSystem
-                    else -> true
-                }
-                val matchesQuery = query.isEmpty() ||
-                        item.label.lowercase().contains(query) ||
-                        item.info.packageName.lowercase().contains(query)
-                matchesCategory && matchesQuery
-            }
-            pickerAdapter.items = filteredApps
-            pickerAdapter.notifyDataSetChanged()
-        }
-
-        spinnerFilter.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                updateList()
-            }
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
-        }
-
-        // Apply initial filter (User Apps)
-        updateList()
-
-        etSearch.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                updateList()
-            }
-            override fun afterTextChanged(s: Editable?) {}
-        })
-
-        cbSelectAll.setOnCheckedChangeListener { _, isChecked ->
-            for (app in filteredApps) app.isChecked = isChecked
-            pickerAdapter.notifyDataSetChanged()
-        }
-
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("Add Apps to Hibernate")
-            .setView(dialogView)
-            .setPositiveButton("Add") { _, _ ->
-                val newlySelected = allApps.filter { it.isChecked }.map { it.info.packageName }.toSet()
-                if (newlySelected.isNotEmpty()) {
-                    val updatedSet = currentFrozen.toMutableSet().apply { addAll(newlySelected) }
-                    FreezerManager.saveFrozenApps(this, updatedSet)
-                    if (!FreezerManager.isAutoFreezeEnabled(this)) {
-                        FreezerManager.setAutoFreezeEnabled(this, true)
-                    }
-                    for (pkg in newlySelected) {
-                        FreezerManager.freezeApp(this, pkg, force = true)
-                    }
-                    refreshList()
-                    notifyWidgets()
-                    Toast.makeText(this, "Added ${newlySelected.size} apps to Hibernation list", Toast.LENGTH_SHORT).show()
-                }
-            }
-            .setNegativeButton("Cancel", null)
-            .create()
-
-        // ⚡ Dialog pops up IMMEDIATELY with zero lag!
-        dialog.show()
-
-        // Background silent revalidation & update if cache was empty or packages changed
-        thread {
-            val freshInstalled = getInstalledAppsList()
-            val freshAvailable = freshInstalled.filter { !currentFrozen.contains(it.info.packageName) }
-            if (freshAvailable.isNotEmpty() && (allApps.isEmpty() || freshAvailable.size != allApps.size)) {
-                allApps = freshAvailable
-                for (app in allApps) app.isChecked = false
-                runOnUiThread {
-                    if (dialog.isShowing && !isFinishing && !isDestroyed) {
-                        updateList()
-                    }
-                }
-            }
-        }
-    }
-
-    private fun showCustomWidgetAppPicker() {
-        val allFrozen = FreezerManager.getFrozenApps(this) + FreezerManager.getSpecialFreezeApps(this)
-        if (allFrozen.isEmpty()) {
-            Toast.makeText(this, "No apps in hibernation list yet! Add apps first.", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val currentCustom = FreezerManager.getCustomWidgetApps(this)
-        val dialogView = layoutInflater.inflate(R.layout.dialog_app_picker, null)
-        val etSearch = dialogView.findViewById<EditText>(R.id.etSearchApp)
-        val lvApps = dialogView.findViewById<ListView>(R.id.lvApps)
-        val cbSelectAll = dialogView.findViewById<CheckBox>(R.id.cbSelectAll)
-        dialogView.findViewById<View>(R.id.spinnerFilter)?.visibility = View.GONE
-
-        // ⚡ Cache-First: Instant population from appInfoCache / cachedDisplayItems
-        var allItems: List<AppItem> = allFrozen.mapNotNull { pkg ->
-            val cachedInfo = appInfoCache[pkg]
-            if (cachedInfo != null) {
-                val appInfo = try { pm.getApplicationInfo(pkg, 0) } catch (e: Exception) { null }
-                if (appInfo != null) {
-                    AppItem(appInfo, cachedInfo.first).apply {
-                        isChecked = currentCustom.contains(pkg)
-                    }
-                } else null
-            } else null
-        }.sortedBy { it.label.lowercase() }
-
-        var filteredItems: List<AppItem> = allItems
-        var pickerAdapter = AppPickerAdapter(filteredItems)
-        lvApps.adapter = pickerAdapter
-
-        fun updateList() {
-            val query = etSearch.text.toString().trim().lowercase()
-            filteredItems = if (query.isEmpty()) {
-                allItems
-            } else {
-                allItems.filter { it.label.lowercase().contains(query) || it.info.packageName.lowercase().contains(query) }
-            }
-            pickerAdapter.items = filteredItems
-            pickerAdapter.notifyDataSetChanged()
-        }
-
-        etSearch.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { updateList() }
-            override fun afterTextChanged(s: Editable?) {}
-        })
-
-        cbSelectAll.setOnCheckedChangeListener { _, isChecked ->
-            for (app in filteredItems) app.isChecked = isChecked
-            pickerAdapter.notifyDataSetChanged()
-        }
-
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("Select Custom Widget Apps")
-            .setView(dialogView)
-            .setPositiveButton("Save") { _, _ ->
-                val selected = allItems.filter { it.isChecked }.map { it.info.packageName }.toSet()
-                FreezerManager.saveCustomWidgetApps(this, selected)
-                refreshList()
-                notifyWidgets()
-                Toast.makeText(this, "Saved ${selected.size} apps for Custom Widget", Toast.LENGTH_SHORT).show()
-            }
-            .setNegativeButton("Cancel", null)
-            .create()
-
-        // ⚡ Dialog pops up IMMEDIATELY!
-        dialog.show()
-
-        // Background revalidate if any app was not yet in cache
-        thread {
-            val freshItems = allFrozen.mapNotNull { pkg ->
-                try {
-                    val appInfo = pm.getApplicationInfo(pkg, 0)
-                    val label = pm.getApplicationLabel(appInfo).toString()
-                    val icon = try { pm.getApplicationIcon(appInfo) } catch (e: Exception) { null }
-                    appInfoCache[pkg] = Pair(label, icon)
-                    AppItem(appInfo, label).apply {
-                        isChecked = currentCustom.contains(pkg)
-                    }
-                } catch (e: Exception) {
-                    null
-                }
-            }.sortedBy { it.label.lowercase() }
-
-            if (freshItems.size != allItems.size) {
-                allItems = freshItems
                 runOnUiThread {
                     if (dialog.isShowing && !isFinishing && !isDestroyed) {
                         updateList()
@@ -672,23 +908,21 @@ class AppFreezerListActivity : AppCompatActivity() {
         return list
     }
 
-    // High-Performance Recycled List Adapter (0ms latency, zero main-thread blockage)
-    private inner class FrozenAppsAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
-
+    // ==========================================
+    // TAB 1: Normal Freezer Adapter
+    // ==========================================
+    private inner class NormalFreezerAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
         private val TYPE_HEADER = 0
         private val TYPE_ITEM = 1
 
-        override fun getItemCount(): Int = displayItems.size + 1
-
-        override fun getItemViewType(position: Int): Int {
-            return if (position == 0) TYPE_HEADER else TYPE_ITEM
-        }
+        override fun getItemCount(): Int = normalDisplayItems.size + 1
+        override fun getItemViewType(position: Int): Int = if (position == 0) TYPE_HEADER else TYPE_ITEM
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
             val inflater = LayoutInflater.from(parent.context)
             return if (viewType == TYPE_HEADER) {
                 val view = inflater.inflate(R.layout.layout_freezer_header, parent, false)
-                HeaderViewHolder(view)
+                NormalHeaderViewHolder(view)
             } else {
                 val view = inflater.inflate(R.layout.item_app_picker, parent, false)
                 AppViewHolder(view)
@@ -696,16 +930,28 @@ class AppFreezerListActivity : AppCompatActivity() {
         }
 
         override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-            if (holder is HeaderViewHolder) {
+            if (holder is NormalHeaderViewHolder) {
                 holder.bind()
             } else if (holder is AppViewHolder) {
-                val item = displayItems[position - 1]
-                holder.bind(item)
+                val item = normalDisplayItems[position - 1]
+                holder.bind(item, isNormalEditMode, selectedNormalToRemove.contains(item.pkg)) {
+                    if (isNormalEditMode) {
+                        toggleNormalSelection(item.pkg)
+                    } else {
+                        showNormalAppOptionsDialog(item.pkg, item.name)
+                    }
+                }
+                holder.itemView.setOnLongClickListener {
+                    if (!isNormalEditMode) {
+                        enterNormalEditMode(item.pkg)
+                    }
+                    true
+                }
             }
         }
     }
 
-    private inner class HeaderViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+    private inner class NormalHeaderViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val switchAuto: SwitchMaterial = itemView.findViewById(R.id.switchAutoFreeze)
         val layoutDelayContainer: View = itemView.findViewById(R.id.layoutDelayContainer)
         val chipGroupDelay: com.google.android.material.chip.ChipGroup = itemView.findViewById(R.id.chipGroupFreezeDelay)
@@ -726,7 +972,6 @@ class AppFreezerListActivity : AppCompatActivity() {
         val tvEmptyState: TextView = itemView.findViewById(R.id.tvEmptyState)
 
         fun bind() {
-            // Auto Freeze
             switchAuto.setOnCheckedChangeListener(null)
             switchAuto.isChecked = autoFreezeEnabled
             layoutDelayContainer.visibility = if (autoFreezeEnabled) View.VISIBLE else View.GONE
@@ -783,8 +1028,8 @@ class AppFreezerListActivity : AppCompatActivity() {
                 Toast.makeText(this@AppFreezerListActivity, if (isChecked) "Auto-Freeze on screen off enabled" else "Auto-Freeze disabled", Toast.LENGTH_SHORT).show()
             }
 
-            btnFreezeAll.setOnClickListener { freezeAll() }
-            btnAddApps.setOnClickListener { showSearchableAppPicker() }
+            btnFreezeAll.setOnClickListener { freezeAllNormal() }
+            btnAddApps.setOnClickListener { showSearchableAppPicker(isSpecialTarget = false) }
             btnCustomWidgetApps.setOnClickListener { showCustomWidgetAppPicker() }
 
             // Equalizer Guard
@@ -806,19 +1051,210 @@ class AppFreezerListActivity : AppCompatActivity() {
             }
 
             // Edit Mode Actions Bar
-            layoutEditActions.visibility = if (isEditMode) View.VISIBLE else View.GONE
-            val count = selectedToRemove.size
+            layoutEditActions.visibility = if (isNormalEditMode) View.VISIBLE else View.GONE
+            val count = selectedNormalToRemove.size
             tvEditModeTitle.text = if (count == 0) "Select apps to unfreeze" else "$count apps selected"
             btnRemoveSelected.text = if (count == 0) "Unfreeze Selected" else "Unfreeze ($count)"
-            btnRemoveSelected.setOnClickListener { removeMultipleApps() }
-            btnCancelEdit.setOnClickListener { exitEditMode() }
+            btnRemoveSelected.setOnClickListener { removeMultipleNormalApps() }
+            btnCancelEdit.setOnClickListener { exitNormalEditMode() }
 
             // Section Title & Empty State
-            tvHibernatingTitle.text = if (displayItems.isEmpty()) "Hibernating Apps" else "Hibernating Apps (${displayItems.size})"
-            tvEmptyState.visibility = if (displayItems.isEmpty()) View.VISIBLE else View.GONE
+            tvHibernatingTitle.text = if (normalDisplayItems.isEmpty()) "Normal Hibernating Apps (am freeze)" else "Normal Hibernating Apps (${normalDisplayItems.size})"
+            tvEmptyState.visibility = if (normalDisplayItems.isEmpty()) View.VISIBLE else View.GONE
         }
     }
 
+    // ==========================================
+    // TAB 2: Special Freezer Adapter
+    // ==========================================
+    private inner class SpecialFreezerAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+        private val TYPE_HEADER = 0
+        private val TYPE_ITEM = 1
+
+        override fun getItemCount(): Int = specialDisplayItems.size + 1
+        override fun getItemViewType(position: Int): Int = if (position == 0) TYPE_HEADER else TYPE_ITEM
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+            val inflater = LayoutInflater.from(parent.context)
+            return if (viewType == TYPE_HEADER) {
+                val view = inflater.inflate(R.layout.layout_special_freezer_header, parent, false)
+                SpecialHeaderViewHolder(view)
+            } else {
+                val view = inflater.inflate(R.layout.item_app_picker, parent, false)
+                AppViewHolder(view)
+            }
+        }
+
+        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+            if (holder is SpecialHeaderViewHolder) {
+                holder.bind()
+            } else if (holder is AppViewHolder) {
+                val item = specialDisplayItems[position - 1]
+                holder.bind(item, isSpecialEditMode, selectedSpecialToRemove.contains(item.pkg)) {
+                    if (isSpecialEditMode) {
+                        toggleSpecialSelection(item.pkg)
+                    } else {
+                        showSpecialAppOptionsDialog(item.pkg, item.name)
+                    }
+                }
+                holder.itemView.setOnLongClickListener {
+                    if (!isSpecialEditMode) {
+                        enterSpecialEditMode(item.pkg)
+                    }
+                    true
+                }
+            }
+        }
+    }
+
+    private inner class SpecialHeaderViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        val btnFreezeAllSpecial: MaterialButton = itemView.findViewById(R.id.btnFreezeAllSpecial)
+        val btnAddSpecialApps: MaterialButton = itemView.findViewById(R.id.btnAddSpecialApps)
+        val layoutEditActionsSpecial: LinearLayout = itemView.findViewById(R.id.layoutEditActionsSpecial)
+        val tvEditModeTitleSpecial: TextView = itemView.findViewById(R.id.tvEditModeTitleSpecial)
+        val btnRemoveSelectedSpecial: MaterialButton = itemView.findViewById(R.id.btnRemoveSelectedSpecial)
+        val btnCancelEditSpecial: MaterialButton = itemView.findViewById(R.id.btnCancelEditSpecial)
+        val tvSpecialTitle: TextView = itemView.findViewById(R.id.tvSpecialTitle)
+        val tvEmptyStateSpecial: TextView = itemView.findViewById(R.id.tvEmptyStateSpecial)
+
+        fun bind() {
+            btnFreezeAllSpecial.setOnClickListener { freezeAllSpecial() }
+            btnAddSpecialApps.setOnClickListener { showSearchableAppPicker(isSpecialTarget = true) }
+
+            layoutEditActionsSpecial.visibility = if (isSpecialEditMode) View.VISIBLE else View.GONE
+            val count = selectedSpecialToRemove.size
+            tvEditModeTitleSpecial.text = if (count == 0) "Select apps to unsuspend" else "$count apps selected"
+            btnRemoveSelectedSpecial.text = if (count == 0) "Unsuspend Selected" else "Unsuspend ($count)"
+            btnRemoveSelectedSpecial.setOnClickListener { removeMultipleSpecialApps() }
+            btnCancelEditSpecial.setOnClickListener { exitSpecialEditMode() }
+
+            tvSpecialTitle.text = if (specialDisplayItems.isEmpty()) "Suspended Apps (Hard Kill)" else "Suspended Apps (${specialDisplayItems.size})"
+            tvEmptyStateSpecial.visibility = if (specialDisplayItems.isEmpty()) View.VISIBLE else View.GONE
+        }
+    }
+
+    // ==========================================
+    // TAB 3: Immunity Adapter
+    // ==========================================
+    private inner class ImmunityAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+        private val TYPE_HEADER = 0
+        private val TYPE_ITEM = 1
+
+        override fun getItemCount(): Int = immunityDisplayItems.size + 1
+        override fun getItemViewType(position: Int): Int = if (position == 0) TYPE_HEADER else TYPE_ITEM
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+            val inflater = LayoutInflater.from(parent.context)
+            return if (viewType == TYPE_HEADER) {
+                val view = inflater.inflate(R.layout.layout_immunity_header, parent, false)
+                ImmunityHeaderViewHolder(view)
+            } else {
+                val view = inflater.inflate(R.layout.item_immunity_app, parent, false)
+                ImmunityItemViewHolder(view)
+            }
+        }
+
+        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+            if (holder is ImmunityHeaderViewHolder) {
+                holder.bind()
+            } else if (holder is ImmunityItemViewHolder) {
+                val item = immunityDisplayItems[position - 1]
+                holder.bind(item)
+            }
+        }
+    }
+
+    private inner class ImmunityHeaderViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        val btnEnableAll: MaterialButton = itemView.findViewById(R.id.btnEnableAllImmunity)
+        val btnDisableAll: MaterialButton = itemView.findViewById(R.id.btnDisableAllImmunity)
+        val tvImmunityTitle: TextView = itemView.findViewById(R.id.tvImmunityTitle)
+        val tvEmptyStateImmunity: TextView = itemView.findViewById(R.id.tvEmptyStateImmunity)
+
+        fun bind() {
+            btnEnableAll.setOnClickListener {
+                val normalPkgs = normalDisplayItems.map { it.pkg }.toSet()
+                if (normalPkgs.isEmpty()) {
+                    Toast.makeText(this@AppFreezerListActivity, "No apps in Normal Freezer!", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                val existing = FreezerManager.getFgsImmuneApps(this@AppFreezerListActivity).toMutableSet()
+                existing.addAll(normalPkgs)
+                FreezerManager.saveFgsImmuneApps(this@AppFreezerListActivity, existing)
+                refreshList()
+                Toast.makeText(this@AppFreezerListActivity, "Granted FGS immunity to all Normal Freezer apps", Toast.LENGTH_SHORT).show()
+            }
+
+            btnDisableAll.setOnClickListener {
+                val normalPkgs = normalDisplayItems.map { it.pkg }.toSet()
+                if (normalPkgs.isEmpty()) return@setOnClickListener
+                val existing = FreezerManager.getFgsImmuneApps(this@AppFreezerListActivity).toMutableSet()
+                existing.removeAll(normalPkgs)
+                FreezerManager.saveFgsImmuneApps(this@AppFreezerListActivity, existing)
+                refreshList()
+                Toast.makeText(this@AppFreezerListActivity, "Revoked FGS immunity for all Normal Freezer apps", Toast.LENGTH_SHORT).show()
+            }
+
+            tvImmunityTitle.text = if (immunityDisplayItems.isEmpty()) "Normal Freezer Apps (Per-App Permission)" else "Normal Freezer Apps (${immunityDisplayItems.size})"
+            tvEmptyStateImmunity.visibility = if (immunityDisplayItems.isEmpty()) View.VISIBLE else View.GONE
+        }
+    }
+
+    private inner class ImmunityItemViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        val ivIcon: ImageView = itemView.findViewById(R.id.ivAppIcon)
+        val tvName: TextView = itemView.findViewById(R.id.tvAppName)
+        val tvPkg: TextView = itemView.findViewById(R.id.tvPackageName)
+        val tvStatus: TextView = itemView.findViewById(R.id.tvAppStatus)
+        val switchImmunity: SwitchMaterial = itemView.findViewById(R.id.switchFgsImmunity)
+
+        fun bind(item: ImmunityDisplayItem) {
+            tvName.text = if (item.name.isNotBlank() && item.name != "Unknown App") item.name else item.pkg
+            tvPkg.text = item.pkg
+
+            if (item.icon != null) {
+                ivIcon.setImageDrawable(item.icon)
+            } else {
+                ivIcon.setImageResource(android.R.drawable.sym_def_app_icon)
+            }
+
+            if (item.hasActiveTask) {
+                tvStatus.text = "⚡ Active FGS / Downloading"
+                tvStatus.setTextColor(Color.parseColor("#00E676"))
+            } else if (item.isImmune) {
+                tvStatus.text = "🛡️ Immune while active FGS / Download"
+                tvStatus.setTextColor(Color.parseColor("#00E5FF"))
+            } else {
+                tvStatus.text = "❄️ Normal (Immediate Freeze)"
+                tvStatus.setTextColor(Color.parseColor("#8E8E93"))
+            }
+
+            switchImmunity.setOnCheckedChangeListener(null)
+            switchImmunity.isChecked = item.isImmune
+            switchImmunity.setOnCheckedChangeListener { _, isChecked ->
+                item.isImmune = isChecked
+                FreezerManager.setFgsImmunity(this@AppFreezerListActivity, item.pkg, isChecked)
+                if (item.hasActiveTask) {
+                    tvStatus.text = "⚡ Active FGS / Downloading"
+                    tvStatus.setTextColor(Color.parseColor("#00E676"))
+                } else if (isChecked) {
+                    tvStatus.text = "🛡️ Immune while active FGS / Download"
+                    tvStatus.setTextColor(Color.parseColor("#00E5FF"))
+                } else {
+                    tvStatus.text = "❄️ Normal (Immediate Freeze)"
+                    tvStatus.setTextColor(Color.parseColor("#8E8E93"))
+                }
+                val msg = if (isChecked) "🛡️ FGS Immunity granted to ${item.name}" else "❄️ Immediate freeze enabled for ${item.name}"
+                Toast.makeText(this@AppFreezerListActivity, msg, Toast.LENGTH_SHORT).show()
+            }
+
+            itemView.setOnClickListener {
+                switchImmunity.isChecked = !switchImmunity.isChecked
+            }
+        }
+    }
+
+    // ==========================================
+    // Common App View Holder for Tab 1 & Tab 2
+    // ==========================================
     private inner class AppViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val ivIcon: ImageView = itemView.findViewById(R.id.ivAppIcon)
         val tvName: TextView = itemView.findViewById(R.id.tvAppName)
@@ -826,9 +1262,14 @@ class AppFreezerListActivity : AppCompatActivity() {
         val tvStatus: TextView = itemView.findViewById(R.id.tvAppStatus)
         val cbSelect: CheckBox = itemView.findViewById(R.id.cbSelect)
 
-        fun bind(item: FrozenDisplayItem) {
+        fun bind(
+            item: FrozenDisplayItem,
+            isEditMode: Boolean,
+            isSelected: Boolean,
+            onClick: () -> Unit
+        ) {
             cbSelect.visibility = if (isEditMode) View.VISIBLE else View.GONE
-            cbSelect.isChecked = selectedToRemove.contains(item.pkg)
+            cbSelect.isChecked = isSelected
 
             if (item.icon != null) {
                 ivIcon.setImageDrawable(item.icon)
@@ -850,24 +1291,11 @@ class AppFreezerListActivity : AppCompatActivity() {
                 tvStatus.text = "Active in Memory$systemTag$widgetTag"
                 tvStatus.setTextColor(Color.parseColor("#00E676"))
             } else {
-                tvStatus.text = "Hibernated (0% CPU)$systemTag$widgetTag"
+                tvStatus.text = "Hibernated (am freeze)$systemTag$widgetTag"
                 tvStatus.setTextColor(Color.parseColor("#00E5FF"))
             }
 
-            itemView.setOnClickListener {
-                if (isEditMode) {
-                    toggleSelection(item.pkg)
-                } else {
-                    showAppOptionsDialog(item.pkg, item.name)
-                }
-            }
-
-            itemView.setOnLongClickListener {
-                if (!isEditMode) {
-                    enterEditMode(item.pkg)
-                }
-                true
-            }
+            itemView.setOnClickListener { onClick() }
         }
     }
 
