@@ -293,7 +293,39 @@ class AppFreezerListActivity : AppCompatActivity() {
 
             val freshImmunityItems = freshNormalItems.map { normalItem ->
                 val isImmune = fgsImmuneSet.contains(normalItem.pkg)
-                val hasTask = RecentTasksManager.hasActiveForegroundTask(normalItem.pkg)
+                val prevItem = cachedImmunityItems?.find { it.pkg == normalItem.pkg }
+                ImmunityDisplayItem(
+                    pkg = normalItem.pkg,
+                    name = normalItem.name,
+                    icon = normalItem.icon,
+                    isImmune = isImmune,
+                    hasActiveTask = prevItem?.hasActiveTask ?: false
+                )
+            }.toMutableList()
+
+            cachedNormalItems = freshNormalItems
+            cachedSpecialItems = freshSpecialItems
+            cachedImmunityItems = freshImmunityItems
+
+            // 1. Publish Normal and Special lists immediately with zero blocking delay
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                normalDisplayItems = freshNormalItems
+                specialDisplayItems = freshSpecialItems
+                immunityDisplayItems = freshImmunityItems
+                normalAdapter.notifyDataSetChanged()
+                specialAdapter.notifyDataSetChanged()
+                immunityAdapter.notifyDataSetChanged()
+            }
+
+            // 2. Defer task-status checks in background and update immunity statuses afterward
+            val updatedImmunityItems = freshNormalItems.map { normalItem ->
+                val isImmune = fgsImmuneSet.contains(normalItem.pkg)
+                val hasTask = if (activeSet.contains(normalItem.pkg)) {
+                    RecentTasksManager.hasActiveForegroundTask(normalItem.pkg)
+                } else {
+                    false
+                }
                 ImmunityDisplayItem(
                     pkg = normalItem.pkg,
                     name = normalItem.name,
@@ -303,17 +335,10 @@ class AppFreezerListActivity : AppCompatActivity() {
                 )
             }
 
-            cachedNormalItems = freshNormalItems
-            cachedSpecialItems = freshSpecialItems
-            cachedImmunityItems = freshImmunityItems
-
+            cachedImmunityItems = updatedImmunityItems
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
-                normalDisplayItems = freshNormalItems
-                specialDisplayItems = freshSpecialItems
-                immunityDisplayItems = freshImmunityItems
-                normalAdapter.notifyDataSetChanged()
-                specialAdapter.notifyDataSetChanged()
+                immunityDisplayItems = updatedImmunityItems
                 immunityAdapter.notifyDataSetChanged()
             }
         }
@@ -695,13 +720,18 @@ class AppFreezerListActivity : AppCompatActivity() {
                         FreezerManager.setAutoFreezeEnabled(this, true)
                     }
 
-                    for (pkg in newlySelected) {
-                        FreezerManager.freezeApp(this, pkg, force = true)
+                    thread {
+                        for (pkg in newlySelected) {
+                            FreezerManager.freezeApp(this@AppFreezerListActivity, pkg, force = true)
+                        }
+                        runOnUiThread {
+                            if (isFinishing || isDestroyed) return@runOnUiThread
+                            refreshList()
+                            notifyWidgets()
+                            val targetLabel = if (isSpecialTarget) "Special Freeze (Suspended)" else "Normal Hibernation list"
+                            Toast.makeText(this@AppFreezerListActivity, "Added ${newlySelected.size} apps to $targetLabel", Toast.LENGTH_SHORT).show()
+                        }
                     }
-                    refreshList()
-                    notifyWidgets()
-                    val targetLabel = if (isSpecialTarget) "Special Freeze (Suspended)" else "Normal Hibernation list"
-                    Toast.makeText(this, "Added ${newlySelected.size} apps to $targetLabel", Toast.LENGTH_SHORT).show()
                 }
             }
             .setNegativeButton("Cancel", null)

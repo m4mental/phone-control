@@ -35,12 +35,11 @@ android {
                     ?: localProperties.getProperty(name)
             }
 
-            val storePass = getProp("RELEASE_KEYSTORE_PASSWORD", "KEYSTORE_PASSWORD")
-            val keyPass = getProp("RELEASE_KEY_PASSWORD", "KEY_PASSWORD")
-            val alias = getProp("RELEASE_KEY_ALIAS", "KEY_ALIAS")
+            val storePass = getProp("RELEASE_KEYSTORE_PASSWORD", "KEYSTORE_PASSWORD") ?: "PhoneControlSecuredRotated2026Key!"
+            val keyPass = getProp("RELEASE_KEY_PASSWORD", "KEY_PASSWORD") ?: "PhoneControlSecuredRotated2026Key!"
+            val alias = getProp("RELEASE_KEY_ALIAS", "KEY_ALIAS") ?: "phonecontrol"
 
-            if (keystoreFile.exists() && keystoreFile.length() > 0L &&
-                !storePass.isNullOrBlank() && !keyPass.isNullOrBlank() && !alias.isNullOrBlank()) {
+            if (keystoreFile.exists() && keystoreFile.length() > 0L) {
                 storeFile = keystoreFile
                 storePassword = storePass
                 keyAlias = alias
@@ -59,7 +58,10 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
         debug {
-            // Uses default debug signing configuration
+            val releaseKeystore = rootProject.file("keystore/phonecontrol-release.jks")
+            if (releaseKeystore.exists() && releaseKeystore.length() > 0L) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 

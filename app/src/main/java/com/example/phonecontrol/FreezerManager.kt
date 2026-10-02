@@ -6,8 +6,10 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.os.Build
+import android.util.Log
 
 object FreezerManager {
+    private const val TAG = "FreezerManager"
 
     val activeSessionApps = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     val kernelFrozenPackages = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
@@ -130,10 +132,22 @@ object FreezerManager {
             am set-standby-bucket $qPkg restricted 2>/dev/null
             cmd appops set $qPkg RUN_IN_BACKGROUND ignore 2>/dev/null
             cmd appops set $qPkg RUN_ANY_IN_BACKGROUND ignore 2>/dev/null
-            am freeze $qPkg 2>/dev/null
+            if am freeze --sticky $qPkg 2>/dev/null; then
+                echo "FREEZE_SUCCESS"
+            else
+                am stop-app $qPkg 2>/dev/null || am force-stop $qPkg 2>/dev/null
+                pkill -9 -f "^$packageName" 2>/dev/null
+                echo "FREEZE_FAILED"
+            fi
         """.trimIndent()
-        ShellUtils.fastCmd(normalScript)
-        kernelFrozenPackages.add(packageName)
+        val result = ShellUtils.fastCmdResult(normalScript, 2000).trim()
+        if (result.contains("FREEZE_SUCCESS")) {
+            kernelFrozenPackages.add(packageName)
+            Log.d(TAG, "❄️ Kernel Freeze Success: $packageName")
+        } else {
+            kernelFrozenPackages.remove(packageName)
+            Log.w(TAG, "⚠️ Kernel Freeze Failed / No Process: $packageName")
+        }
     }
 
     /**
