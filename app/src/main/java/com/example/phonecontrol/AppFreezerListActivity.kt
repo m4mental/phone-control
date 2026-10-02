@@ -252,7 +252,7 @@ class AppFreezerListActivity : AppCompatActivity() {
 
         // 2. SILENT BACKGROUND REVALIDATE:
         thread {
-            val activeSet = FreezerManager.getActivePackages(frozenApps)
+            val activeSet = FreezerManager.getActivePackages(this@AppFreezerListActivity, frozenApps)
             val customWidgetSet = FreezerManager.getCustomWidgetApps(this)
             val freshItems = frozenApps.mapNotNull { pkg ->
                 try {
@@ -318,13 +318,17 @@ class AppFreezerListActivity : AppCompatActivity() {
         val specialLabel = if (isSpecial) "Disable Special Freeze (Restore Launcher Icon)" else "Enable Special Freeze (Hard Kill + Suspend)"
         val isCustomWidget = FreezerManager.getCustomWidgetApps(this).contains(pkg)
         val widgetLabel = if (isCustomWidget) "📱 Remove from Custom Widget" else "📱 Add to Custom Widget"
-        val options = arrayOf("Resume / Unfreeze App", specialLabel, widgetLabel, "Remove from Hibernation List", "Bulk Edit Mode")
+        val options = arrayOf("🚀 Launch App", "❄️ Resume / Unfreeze App", specialLabel, widgetLabel, "Remove from Hibernation List", "Bulk Edit Mode")
 
         AlertDialog.Builder(this)
             .setTitle(appName)
             .setItems(options) { _, which ->
                 when (which) {
                     0 -> {
+                        FreezerManager.launchApp(this, pkg)
+                        Toast.makeText(this, "Launching $appName...", Toast.LENGTH_SHORT).show()
+                    }
+                    1 -> {
                         thread {
                             FreezerManager.unfreezeApp(pkg)
                             runOnUiThread {
@@ -334,7 +338,7 @@ class AppFreezerListActivity : AppCompatActivity() {
                             }
                         }
                     }
-                    1 -> {
+                    2 -> {
                         val newVal = !isSpecial
                         FreezerManager.setSpecialFreeze(this, pkg, newVal)
                         thread {
@@ -352,14 +356,14 @@ class AppFreezerListActivity : AppCompatActivity() {
                             }
                         }
                     }
-                    2 -> {
+                    3 -> {
                         val added = FreezerManager.toggleCustomWidgetApp(this, pkg)
                         refreshList()
                         notifyWidgets()
                         val msg = if (added) "Added $appName to Custom Widget" else "Removed $appName from Custom Widget"
                         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
                     }
-                    3 -> {
+                    4 -> {
                         val current = FreezerManager.getFrozenApps(this).toMutableSet()
                         current.remove(pkg)
                         thread {
@@ -377,9 +381,10 @@ class AppFreezerListActivity : AppCompatActivity() {
                             }
                         }
                     }
-                    4 -> enterEditMode(pkg)
+                    5 -> enterEditMode(pkg)
                 }
             }
+            .setNegativeButton("Cancel", null)
             .show()
     }
 

@@ -170,32 +170,6 @@ class AppEventService : AccessibilityService() {
         if (eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
 
         if (pkgName.isBlank()) return
-        
-        // Auto-launch when user taps a legacy suspended app without pressing BACK
-        if (clsName.contains("SuspendedAppActivity", ignoreCase = true)) {
-            val specialApps = FreezerManager.getSpecialFreezeApps(this)
-            val lastPkg = FreezerManager.lastLaunchedPackage
-            val targetPkg = if (lastPkg != null && specialApps.contains(lastPkg)) {
-                lastPkg
-            } else {
-                val text = event.text?.joinToString(" ") ?: ""
-                val desc = event.contentDescription?.toString() ?: ""
-                val combined = "$text $desc"
-                specialApps.firstOrNull { pkg ->
-                    try {
-                        val appInfo = packageManager.getApplicationInfo(pkg, 0)
-                        val label = packageManager.getApplicationLabel(appInfo).toString()
-                        combined.contains(label, ignoreCase = true)
-                    } catch (e: Exception) { false }
-                }
-            }
-            if (targetPkg != null) {
-                performGlobalAction(GLOBAL_ACTION_BACK)
-                FreezerManager.unfreezeApp(targetPkg)
-                FreezerManager.launchApp(this, targetPkg)
-            }
-            return
-        }
 
         // Ignore system overlays, keyboards, volume sliders, and transient dialogs
         if (ignoredSystemPackages.contains(pkgName)) {

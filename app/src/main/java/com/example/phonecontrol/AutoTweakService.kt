@@ -862,6 +862,8 @@ class AutoTweakService : Service() {
                 val isAudio = FreezerManager.getActivePlayingAudioPackages(this@AutoTweakService).contains(pkg)
                 val allSafeApps = MultitaskingManager.getUserWhitelist(this@AutoTweakService) + MultitaskingManager.protectedApps
 
+                val isSpecial = FreezerManager.isSpecialFreeze(this@AutoTweakService, pkg)
+
                 // 🛡️ RECENT TASKS IMMUNITY: If user still has the app in Recents (multitasking), do NOT kill it!
                 if (RecentTasksManager.isAppInRecents(pkg)) {
                     Log.d("AutoTweak", "🛡️ Multitasking Guard: $pkg is alive in Recents -> Skipping background freeze")
@@ -869,7 +871,7 @@ class AutoTweakService : Service() {
                 }
 
                 // 🛡️ SMART ACTIVE TASK / DOWNLOAD GUARD:
-                if (RecentTasksManager.hasActiveForegroundTask(pkg)) {
+                if (!isSpecial && RecentTasksManager.hasActiveForegroundTask(pkg)) {
                     Log.d("AutoTweak", "🛡️ Smart FGS Guard: $pkg is actively downloading/syncing -> Skipping background freeze")
                     return@execute
                 }
@@ -1769,8 +1771,10 @@ class AutoTweakService : Service() {
                     continue
                 }
 
+                val isSpecial = FreezerManager.isSpecialFreeze(this@AutoTweakService, pkg)
+
                 // 🛡️ Smart FGS Guard: If app is actively downloading in background with screen OFF, NEVER kill it!
-                if (RecentTasksManager.hasActiveForegroundTask(pkg)) {
+                if (!isSpecial && RecentTasksManager.hasActiveForegroundTask(pkg)) {
                     Log.d("AutoTweak", "🛡️ Smart FGS Guard: Exempting active downloader '$pkg' from Screen-Off freeze")
                     continue
                 }
