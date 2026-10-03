@@ -22,7 +22,7 @@ object WirelessAdbManager {
     }
 
     fun isAutoSleepEnabled(context: Context): Boolean {
-        return context.getSharedPreferences("prefs", Context.MODE_PRIVATE).getBoolean(PREF_AUTO_SLEEP, false)
+        return context.getSharedPreferences("prefs", Context.MODE_PRIVATE).getBoolean(PREF_AUTO_SLEEP, true)
     }
 
     fun setAutoSleepEnabled(context: Context, enabled: Boolean) {
@@ -266,11 +266,18 @@ object WirelessAdbManager {
 
     private fun getFallbackIp(): String {
         try {
-            val out = ShellUtils.fastCmdResult("ip route get 1.1.1.1 | tr ' ' '\\n' | grep -A 1 src | tail -n 1", 500).trim()
-            if (out.matches(Regex("\\d+\\.\\d+\\.\\d+\\.\\d+"))) return out
-            val out2 = ShellUtils.fastCmdResult("ip -4 addr show wlan0", 500)
-            val match = Regex("inet\\s+(\\d+\\.\\d+\\.\\d+\\.\\d+)").find(out2)
-            if (match != null) return match.groupValues[1]
+            // Strictly check local debug interfaces only (Wi-Fi, Hotspot, USB Tethering, Ethernet)
+            // Never query generic 'ip route get' which can leak cellular SIM IP addresses!
+            for (iface in listOf("wlan0", "wlan1", "ap0", "softap0", "swlan0", "rndis0", "usb0", "eth0")) {
+                val out = ShellUtils.fastCmdResult("ip -4 addr show $iface", 500)
+                val match = Regex("inet\\s+(\\d+\\.\\d+\\.\\d+\\.\\d+)").find(out)
+                if (match != null) {
+                    val ip = match.groupValues[1]
+                    if (!ip.startsWith("127.") && !ip.startsWith("169.254.") && ip != "0.0.0.0") {
+                        return ip
+                    }
+                }
+            }
         } catch (e: Exception) {}
         return "127.0.0.1"
     }

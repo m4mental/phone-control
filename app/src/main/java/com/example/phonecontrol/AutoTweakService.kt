@@ -280,7 +280,7 @@ class AutoTweakService : Service() {
                     lastNotifiedAdbIp = currentIp
                 }
             } else {
-                // Network lost: Debounce 20 seconds before sleeping port to avoid flapping
+                // Local network disconnected (Mobile Data or Offline): Debounce 15s before sleeping port to save battery
                 if (!isServiceDestroyed && adbAutoSleepRunnable == null && (WirelessAdbManager.isPortOpen(this@AutoTweakService) || !WirelessAdbManager.isSuspended(this@AutoTweakService))) {
                     val runnable = Runnable {
                         if (isServiceDestroyed) return@Runnable
@@ -289,19 +289,19 @@ class AutoTweakService : Service() {
                             if (WirelessAdbManager.isEnabled(this@AutoTweakService) &&
                                 WirelessAdbManager.isAutoSleepEnabled(this@AutoTweakService) &&
                                 !WirelessAdbManager.isLocalNetworkActive(this@AutoTweakService)) {
-                                Log.d("AutoTweak", "🌙 Wi-Fi & Hotspot Disconnected -> Sleeping Wireless ADB Port $port (Battery Save)")
+                                Log.d("AutoTweak", "🌙 Wi-Fi, Hotspot & USB Tether Disconnected -> Sleeping Wireless ADB Port $port (Battery Guard)")
                                 WirelessAdbManager.suspendPort(this@AutoTweakService)
                                 sendSafeUiUpdate()
                                 WirelessAdbTileService.updateTile(this@AutoTweakService)
                                 Handler(Looper.getMainLooper()).post {
-                                    Toast.makeText(applicationContext, "💤 Wireless ADB: Port $port suspended (Offline)", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(applicationContext, "💤 Wireless ADB: Port $port suspended (Offline / Mobile Data)", Toast.LENGTH_SHORT).show()
                                 }
                             }
                             adbAutoSleepRunnable = null
                         }
                     }
                     adbAutoSleepRunnable = runnable
-                    adbAutoSleepHandler.postDelayed(runnable, 20_000)
+                    adbAutoSleepHandler.postDelayed(runnable, 15_000)
                 }
             }
         }
@@ -332,6 +332,20 @@ class AutoTweakService : Service() {
             if (!stillConnected) {
                 handleSmartNetworkSwitch(false)
             }
+            handleWirelessAdbSmartPort()
+        }
+    }
+
+    private val defaultNetworkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            handleWirelessAdbSmartPort()
+        }
+
+        override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+            handleWirelessAdbSmartPort()
+        }
+
+        override fun onLost(network: Network) {
             handleWirelessAdbSmartPort()
         }
     }
@@ -467,8 +481,17 @@ class AutoTweakService : Service() {
         
         val networkRequest = NetworkRequest.Builder()
             .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+            .addTransportType(NetworkCapabilities.TRANSPORT_ETHERNET)
             .build()
         connectivityManager.registerNetworkCallback(networkRequest, networkCallback)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            try {
+                connectivityManager.registerDefaultNetworkCallback(defaultNetworkCallback)
+            } catch (e: Exception) {
+                Log.w("AutoTweak", "Failed to registerDefaultNetworkCallback: ${e.message}")
+            }
+        }
 
         val wifiFilter = IntentFilter().apply {
             addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION)
@@ -476,6 +499,9 @@ class AutoTweakService : Service() {
             addAction(ConnectivityManager.CONNECTIVITY_ACTION)
             addAction("android.net.wifi.WIFI_AP_STATE_CHANGED")
             addAction("android.net.conn.TETHER_STATE_CHANGED")
+            addAction("android.hardware.usb.action.USB_STATE")
+            addAction(Intent.ACTION_POWER_CONNECTED)
+            addAction(Intent.ACTION_POWER_DISCONNECTED)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(wifiStateReceiver, wifiFilter, RECEIVER_NOT_EXPORTED)
@@ -1911,6 +1937,7 @@ class AutoTweakService : Service() {
         try { unregisterReceiver(packageReceiver) } catch (e: Exception) {}
         try { unregisterReceiver(audioRouteReceiver) } catch (e: Exception) {}
         try { connectivityManager.unregisterNetworkCallback(networkCallback) } catch (e: Exception) {}
+        try { connectivityManager.unregisterNetworkCallback(defaultNetworkCallback) } catch (e: Exception) {}
         try {
             cameraManager?.unregisterAvailabilityCallback(cameraAvailabilityCallback)
         } catch (e: Exception) {}
