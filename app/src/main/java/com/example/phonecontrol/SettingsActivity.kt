@@ -723,10 +723,12 @@ class SettingsActivity : AppCompatActivity() {
             switchAutoSleep?.setOnCheckedChangeListener { _, isAutoSleepChecked ->
                 WirelessAdbManager.setAutoSleepEnabled(this@SettingsActivity, isAutoSleepChecked)
                 thread {
+                    val isNetActive = WirelessAdbManager.isLocalNetworkActive(this@SettingsActivity)
                     if (isAutoSleepChecked) {
-                        val isNetActive = WirelessAdbManager.isLocalNetworkActive(this@SettingsActivity)
                         if (!isNetActive) {
                             WirelessAdbManager.suspendPort(this@SettingsActivity)
+                        } else if (WirelessAdbManager.isSuspended(this@SettingsActivity)) {
+                            WirelessAdbManager.reopenPort(this@SettingsActivity)
                         }
                     } else {
                         if (WirelessAdbManager.isSuspended(this@SettingsActivity)) {

@@ -28,14 +28,12 @@ class AppEventService : AccessibilityService() {
 
     private var lastRecentsCheckTime = 0L
     private var lastForegroundDispatchTime = 0L
-    private var lastLabelCacheTime = 0L
-    private val appLabelToPackageMap = java.util.concurrent.ConcurrentHashMap<String, String>()
     private val launcherPackages = java.util.Collections.synchronizedSet(mutableSetOf<String>())
     private var lastLauncherQueryTime = 0L
 
     private fun getPackageForExactUniqueLabel(label: String): String? {
         val now = System.currentTimeMillis()
-        if (now - lastLabelCacheTime > 60000 || appLabelToPackageMap.isEmpty()) {
+        if (now - lastLabelCacheTime > 10000 || appLabelToPackageMap.isEmpty()) {
             appLabelToPackageMap.clear()
             val allFrozen = FreezerManager.getSpecialFreezeApps(this) + FreezerManager.getFrozenApps(this)
             val counts = mutableMapOf<String, MutableList<String>>()
@@ -222,6 +220,14 @@ class AppEventService : AccessibilityService() {
     }
 
     companion object {
+        private var lastLabelCacheTime = 0L
+        private val appLabelToPackageMap = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+        fun invalidateLabelCache() {
+            appLabelToPackageMap.clear()
+            lastLabelCacheTime = 0L
+        }
+
         /**
          * Automatically enables this Accessibility Service via Root (Zero User Interaction).
          */

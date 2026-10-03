@@ -175,12 +175,13 @@ object RecentTasksManager {
         }
 
         // Dismissed packages = packages that WERE in recents, but are NO LONGER in recents,
-        // and are NOT currently active in foreground.
+        // and are NOT currently active in foreground, visible, or recently launched.
         val dismissedPackages = previousRecents.filter { pkg ->
             !currentRecents.contains(pkg) &&
             pkg != currentForeground &&
             !isIgnoredSystemPackage(pkg) &&
-            !FreezerManager.isAppCurrentlyVisible(pkg)
+            !FreezerManager.isAppCurrentlyVisible(pkg) &&
+            !FreezerManager.isRecentlyLaunched(pkg, 30000L)
         }.toSet()
 
         if (dismissedPackages.isNotEmpty()) {
@@ -217,6 +218,13 @@ object RecentTasksManager {
         val runningConfigured = FreezerManager.getRunningConfiguredApps(allConfigured)
 
         for (pkg in runningConfigured) {
+            // 🛡️ CRITICAL GUARD: Never sweep apps recently launched, in active session, or in recents cache!
+            if (FreezerManager.isRecentlyLaunched(pkg, 30000L) ||
+                FreezerManager.isAppActiveSession(pkg) ||
+                isAppInRecents(pkg)) {
+                continue
+            }
+
             if (!currentRecents.contains(pkg) && pkg != currentForeground && !FreezerManager.isAppCurrentlyVisible(pkg)) {
                 val isAudio = FreezerManager.getActivePlayingAudioPackages(context).contains(pkg)
                 val isSafe = MultitaskingManager.getUserWhitelist(context).contains(pkg) ||

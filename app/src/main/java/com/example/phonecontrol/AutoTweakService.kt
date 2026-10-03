@@ -15,6 +15,7 @@ import android.media.AudioManager
 import android.media.AudioPlaybackConfiguration
 import android.media.audiofx.AudioEffect
 import android.net.ConnectivityManager
+import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
@@ -194,7 +195,11 @@ class AutoTweakService : Service() {
                     return true
                 }
             }
-            false
+            val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            if (wm?.isWifiEnabled == true && wm.connectionInfo?.networkId != -1) {
+                return true
+            }
+            WirelessAdbManager.isLocalNetworkActive(this)
         } catch (e: Exception) {
             false
         }
@@ -245,7 +250,7 @@ class AutoTweakService : Service() {
             val port = WirelessAdbManager.getPort(this@AutoTweakService)
             val isNetActive = WirelessAdbManager.isLocalNetworkActive(this@AutoTweakService)
             if (isNetActive) {
-                // Cancel pending sleep runnable if connection returned
+                // Cancel pending sleep runnable immediately if connection is active
                 adbAutoSleepRunnable?.let { adbAutoSleepHandler.removeCallbacks(it) }
                 adbAutoSleepRunnable = null
 
@@ -261,7 +266,7 @@ class AutoTweakService : Service() {
                     sendSafeUiUpdate()
                     WirelessAdbTileService.updateTile(this@AutoTweakService)
                     Handler(Looper.getMainLooper()).post {
-                        Toast.makeText(applicationContext, "⚡ Wireless ADB: Reconnected at $currentIp:$port", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(applicationContext, "⚡ Wireless ADB: Active at $currentIp:$port", Toast.LENGTH_SHORT).show()
                     }
                 } else if (lastNotifiedAdbIp != null && lastNotifiedAdbIp != currentIp && currentIp != "127.0.0.1") {
                     Log.d("AutoTweak", "🔄 Wireless ADB: IP changed from $lastNotifiedAdbIp to $currentIp:$port")
@@ -275,7 +280,7 @@ class AutoTweakService : Service() {
                     lastNotifiedAdbIp = currentIp
                 }
             } else {
-                // Network lost: Debounce 15 seconds before sleeping port to avoid flapping
+                // Network lost: Debounce 20 seconds before sleeping port to avoid flapping
                 if (!isServiceDestroyed && adbAutoSleepRunnable == null && (WirelessAdbManager.isPortOpen(this@AutoTweakService) || !WirelessAdbManager.isSuspended(this@AutoTweakService))) {
                     val runnable = Runnable {
                         if (isServiceDestroyed) return@Runnable
@@ -296,7 +301,7 @@ class AutoTweakService : Service() {
                         }
                     }
                     adbAutoSleepRunnable = runnable
-                    adbAutoSleepHandler.postDelayed(runnable, 15_000)
+                    adbAutoSleepHandler.postDelayed(runnable, 20_000)
                 }
             }
         }
@@ -308,6 +313,17 @@ class AutoTweakService : Service() {
             if (caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true) {
                 handleSmartNetworkSwitch(true)
             }
+            handleWirelessAdbSmartPort()
+        }
+
+        override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+            if (networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                handleSmartNetworkSwitch(true)
+            }
+            handleWirelessAdbSmartPort()
+        }
+
+        override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
             handleWirelessAdbSmartPort()
         }
 
@@ -867,6 +883,12 @@ class AutoTweakService : Service() {
                 // 🛡️ RECENT TASKS IMMUNITY: If user still has the app in Recents (multitasking), do NOT kill it!
                 if (RecentTasksManager.isAppInRecents(pkg)) {
                     Log.d("AutoTweak", "🛡️ Multitasking Guard: $pkg is alive in Recents -> Skipping background freeze")
+                    return@execute
+                }
+
+                // 🛡️ CRITICAL LAUNCH & ACTIVE SESSION GUARD:
+                if (FreezerManager.isRecentlyLaunched(pkg, 30000L) || FreezerManager.isAppActiveSession(pkg)) {
+                    Log.d("AutoTweak", "🛡️ Launch Grace Guard: $pkg was recently launched or is active session -> Skipping background freeze")
                     return@execute
                 }
 

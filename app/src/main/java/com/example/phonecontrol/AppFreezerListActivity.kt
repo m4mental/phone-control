@@ -358,7 +358,7 @@ class AppFreezerListActivity : AppCompatActivity() {
         }
 
         thread {
-            FreezerManager.freezeMultipleApps(this, normalApps, force = true)
+            FreezerManager.freezeMultipleApps(this, normalApps, force = true, isManualUserAction = true)
             val estimatedRamMb = (normalApps.size * 110).coerceAtLeast(100)
             runOnUiThread {
                 progress.dismiss()
@@ -383,7 +383,7 @@ class AppFreezerListActivity : AppCompatActivity() {
         }
 
         thread {
-            FreezerManager.freezeMultipleApps(this, specialApps, force = true)
+            FreezerManager.freezeMultipleApps(this, specialApps, force = true, isManualUserAction = true)
             runOnUiThread {
                 progress.dismiss()
                 refreshList()
@@ -431,7 +431,7 @@ class AppFreezerListActivity : AppCompatActivity() {
                     2 -> {
                         FreezerManager.setSpecialFreeze(this, pkg, true)
                         thread {
-                            FreezerManager.freezeApp(this, pkg, force = true)
+                            FreezerManager.freezeApp(this, pkg, force = true, isManualUserAction = true)
                             runOnUiThread {
                                 refreshList()
                                 notifyWidgets()
@@ -501,7 +501,7 @@ class AppFreezerListActivity : AppCompatActivity() {
                         thread {
                             ShellUtils.fastCmd("cmd package unsuspend --user 0 $pkg 2>/dev/null; pm unsuspend $pkg 2>/dev/null")
                             FreezerManager.setSpecialFreeze(this, pkg, false)
-                            FreezerManager.freezeApp(this, pkg, force = true)
+                            FreezerManager.freezeApp(this, pkg, force = true, isManualUserAction = true)
                             runOnUiThread {
                                 refreshList()
                                 notifyWidgets()
@@ -722,7 +722,7 @@ class AppFreezerListActivity : AppCompatActivity() {
 
                     thread {
                         for (pkg in newlySelected) {
-                            FreezerManager.freezeApp(this@AppFreezerListActivity, pkg, force = true)
+                            FreezerManager.freezeApp(this@AppFreezerListActivity, pkg, force = true, isManualUserAction = true)
                         }
                         runOnUiThread {
                             if (isFinishing || isDestroyed) return@runOnUiThread
