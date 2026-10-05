@@ -17,66 +17,14 @@
         app:navigationIconTint="@android:color/white">
 
         <ImageButton
-            android:id="@+id/btnCopyOutput"
+            android:id="@+id/btnTerminalMenu"
             android:layout_width="44dp"
             android:layout_height="44dp"
             android:layout_gravity="end"
-            android:src="@android:drawable/ic_menu_save"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Copy Output"
-            app:tint="#00E676" />
-
-        <ImageButton
-            android:id="@+id/btnShareLog"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:layout_gravity="end"
-            android:src="@android:drawable/ic_menu_share"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Share Log"
+            android:src="@android:drawable/ic_menu_more"
+            android:contentDescription="More Options"
             app:tint="@android:color/white" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnForceInstallToolbar"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="end"
-            android:text="INSTALL"
-            android:textColor="#00E676"
-            app:icon="@android:drawable/stat_sys_download"
-            app:iconTint="#00E676" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnAppList"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="end"
-            android:text="APPS"
-            android:textColor="@android:color/white"
-            app:icon="@android:drawable/ic_menu_sort_by_size"
-            app:iconTint="@android:color/white" />
-
-        <ImageButton
-            android:id="@+id/btnProcessMonitor"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:layout_gravity="end"
-            android:src="@android:drawable/ic_menu_recent_history"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Live Monitor"
-            app:tint="#00E5FF" />
-
-        <ImageButton
-            android:id="@+id/btnShowTips"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:layout_gravity="end"
-            android:src="@android:drawable/ic_menu_info_details"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Help Tips"
-            app:tint="#FFD700" />
 
     </com.google.android.material.appbar.MaterialToolbar>
 

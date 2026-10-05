@@ -37,12 +37,15 @@ class FreezerLaunchReceiver : BroadcastReceiver() {
         }
 
         // 3. Launch application safely and schedule widget refresh
+        // Register app open IMMEDIATELY on the receiver thread with 0ms delay!
+        FreezerManager.registerAppOpen(packageName)
+
         kotlin.concurrent.thread {
             FreezerManager.launchApp(context, packageName)
             Handler(Looper.getMainLooper()).postDelayed({
                 FreezerWidgetProvider.updateAllWidgets(context)
                 SpecialFreezerWidgetProvider.updateAllWidgets(context)
-            }, 500)
+            }, 1000)
         }
     }
 

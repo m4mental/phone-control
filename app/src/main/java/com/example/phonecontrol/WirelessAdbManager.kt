@@ -22,7 +22,7 @@ object WirelessAdbManager {
     }
 
     fun isAutoSleepEnabled(context: Context): Boolean {
-        return context.getSharedPreferences("prefs", Context.MODE_PRIVATE).getBoolean(PREF_AUTO_SLEEP, false)
+        return context.getSharedPreferences("prefs", Context.MODE_PRIVATE).getBoolean(PREF_AUTO_SLEEP, true)
     }
 
     fun setAutoSleepEnabled(context: Context, enabled: Boolean) {
@@ -52,52 +52,94 @@ object WirelessAdbManager {
         return true
     }
 
+    fun getSystemProperty(key: String, defValue: String = ""): String {
+        try {
+            val clazz = Class.forName("android.os.SystemProperties")
+            val getMethod = clazz.getMethod("get", String::class.java, String::class.java)
+            val result = getMethod.invoke(null, key, defValue) as? String
+            if (!result.isNullOrBlank()) return result.trim()
+        } catch (e: Exception) {}
+
+        try {
+            val process = Runtime.getRuntime().exec(arrayOf("getprop", key))
+            val out = process.inputStream.bufferedReader().use { it.readText().trim() }
+            if (out.isNotBlank()) return out
+        } catch (e: Exception) {}
+
+        return ShellUtils.fastCmdResult("getprop $key", 1000).trim().takeIf { !it.startsWith("ERROR") } ?: defValue
+    }
+
     fun isPortOpen(context: Context? = null): Boolean {
-        val currentPort = ShellUtils.fastCmdResult("getprop service.adb.tcp.port", 500).trim()
+        val currentPort = getSystemProperty("service.adb.tcp.port").trim()
         val expectedPort = if (context != null) getPort(context).toString() else (currentPort.takeIf { it != "-1" && it.isNotEmpty() } ?: DEFAULT_ADB_PORT.toString())
         return currentPort == expectedPort && currentPort != "-1" && currentPort.isNotEmpty()
     }
 
     /**
-     * Checks if any local networking interface (Wi-Fi, Mobile Hotspot, USB Tethering) is actively up with a valid IPv4 address.
+     * Checks if any local networking interface (Wi-Fi, Mobile Hotspot, USB Tethering, Ethernet) is actively up with a valid IPv4 address.
      */
     fun isLocalNetworkActive(context: Context): Boolean {
-        // 1. Check active Wi-Fi connection via ConnectivityManager
+        // 1. Check active Wi-Fi or Ethernet connection via ConnectivityManager
         try {
             val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
             val active = cm?.activeNetwork
             if (active != null) {
                 val caps = cm.getNetworkCapabilities(active)
-                if (caps?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true) {
+                if (caps?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true ||
+                    caps?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET) == true) {
                     return true
                 }
             }
             cm?.allNetworks?.forEach { network ->
                 val caps = cm.getNetworkCapabilities(network)
-                if (caps?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true) {
+                if (caps?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true ||
+                    caps?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET) == true) {
                     return true
                 }
             }
         } catch (e: Exception) {}
 
-        // 2. Check for active Mobile Hotspot (ap0, swlan, softap), RNDIS, or Wi-Fi (wlan0) with valid IPv4
+        // 2. Check WifiManager directly
         try {
-            val interfaces = NetworkInterface.getNetworkInterfaces() ?: return false
-            for (intf in interfaces) {
-                if (!intf.isUp || intf.isLoopback) continue
-                val name = intf.name.lowercase()
-                val isTarget = name.contains("ap") || name.contains("swlan") || name.contains("softap") ||
-                               name.contains("rndis") || name.contains("wlan")
-                if (isTarget) {
-                    for (addr in intf.inetAddresses) {
-                        if (!addr.isLoopbackAddress && addr is Inet4Address) {
-                            val host = addr.hostAddress ?: continue
-                            if (!host.startsWith("127.") && !host.startsWith("169.254.")) {
-                                return true
+            val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
+            if (wm?.isWifiEnabled == true) {
+                val info = wm.connectionInfo
+                if (info != null && info.networkId != -1 && info.ipAddress != 0) {
+                    return true
+                }
+            }
+        } catch (e: Exception) {}
+
+        // 3. Check for active Mobile Hotspot (ap0, swlan, softap), RNDIS, or Wi-Fi (wlan0) with valid IPv4
+        try {
+            val interfaces = NetworkInterface.getNetworkInterfaces()
+            if (interfaces != null) {
+                for (intf in interfaces) {
+                    try {
+                        val name = intf.name.lowercase()
+                        val isTarget = name.contains("ap") || name.contains("swlan") || name.contains("softap") ||
+                                       name.contains("rndis") || name.contains("wlan") || name.contains("eth") || name.contains("usb")
+                        if (!isTarget) continue
+                        if (intf.isLoopback) continue
+
+                        for (addr in intf.inetAddresses) {
+                            if (!addr.isLoopbackAddress && addr is Inet4Address) {
+                                val host = addr.hostAddress ?: continue
+                                if (!host.startsWith("127.") && !host.startsWith("169.254.") && host != "0.0.0.0") {
+                                    return true
+                                }
                             }
                         }
-                    }
+                    } catch (e: Exception) {}
                 }
+            }
+        } catch (e: Exception) {}
+
+        // 4. Fallback: Check if device IP resolves to a valid local IPv4
+        try {
+            val ip = getDeviceIpAddress()
+            if (ip.isNotBlank() && ip != "127.0.0.1" && !ip.startsWith("169.254.")) {
+                return true
             }
         } catch (e: Exception) {}
 
@@ -149,12 +191,16 @@ object WirelessAdbManager {
 
     /**
      * Reopens configured ADB port when Wi-Fi or Hotspot is connected.
+     * Non-destructive: Does NOT restart adbd if it is already listening on the configured port.
      */
     @Synchronized
     fun reopenPort(context: Context) {
         if (!isEnabled(context)) return
         val port = getPort(context)
-        ShellUtils.fastCmd("setprop service.adb.tcp.port $port; stop adbd; start adbd")
+        val currentProp = getSystemProperty("service.adb.tcp.port")
+        if (currentProp != port.toString()) {
+            ShellUtils.fastCmd("setprop service.adb.tcp.port $port; stop adbd; start adbd")
+        }
         context.getSharedPreferences("prefs", Context.MODE_PRIVATE).edit()
             .putBoolean(PREF_SUSPENDED, false)
             .apply()
@@ -190,22 +236,29 @@ object WirelessAdbManager {
             val interfaces = NetworkInterface.getNetworkInterfaces() ?: return getFallbackIp()
             var hotspotIp: String? = null
             var wifiIp: String? = null
+            var ethernetIp: String? = null
 
             for (intf in interfaces) {
-                val name = intf.name.lowercase()
-                for (addr in intf.inetAddresses) {
-                    if (!addr.isLoopbackAddress && addr is Inet4Address) {
-                        val host = addr.hostAddress ?: continue
-                        if (name.contains("ap") || name.contains("swlan") || name.contains("softap") || name.contains("rndis")) {
-                            hotspotIp = host
-                        } else if (name.contains("wlan")) {
-                            wifiIp = host
+                try {
+                    val name = intf.name.lowercase()
+                    for (addr in intf.inetAddresses) {
+                        if (!addr.isLoopbackAddress && addr is Inet4Address) {
+                            val host = addr.hostAddress ?: continue
+                            if (host.startsWith("127.") || host.startsWith("169.254.") || host == "0.0.0.0") continue
+                            if (name.contains("ap") || name.contains("swlan") || name.contains("softap") || name.contains("rndis")) {
+                                hotspotIp = host
+                            } else if (name.contains("wlan")) {
+                                wifiIp = host
+                            } else if (name.contains("eth") || name.contains("usb")) {
+                                ethernetIp = host
+                            }
                         }
                     }
-                }
+                } catch (e: Exception) {}
             }
             if (!hotspotIp.isNullOrBlank()) return hotspotIp
             if (!wifiIp.isNullOrBlank()) return wifiIp
+            if (!ethernetIp.isNullOrBlank()) return ethernetIp
         } catch (e: Exception) {}
 
         return getFallbackIp()
@@ -213,11 +266,18 @@ object WirelessAdbManager {
 
     private fun getFallbackIp(): String {
         try {
-            val out = ShellUtils.fastCmdResult("ip route get 1.1.1.1 | tr ' ' '\\n' | grep -A 1 src | tail -n 1", 500).trim()
-            if (out.matches(Regex("\\d+\\.\\d+\\.\\d+\\.\\d+"))) return out
-            val out2 = ShellUtils.fastCmdResult("ip -4 addr show wlan0", 500)
-            val match = Regex("inet\\s+(\\d+\\.\\d+\\.\\d+\\.\\d+)").find(out2)
-            if (match != null) return match.groupValues[1]
+            // Strictly check local debug interfaces only (Wi-Fi, Hotspot, USB Tethering, Ethernet)
+            // Never query generic 'ip route get' which can leak cellular SIM IP addresses!
+            for (iface in listOf("wlan0", "wlan1", "ap0", "softap0", "swlan0", "rndis0", "usb0", "eth0")) {
+                val out = ShellUtils.fastCmdResult("ip -4 addr show $iface", 500)
+                val match = Regex("inet\\s+(\\d+\\.\\d+\\.\\d+\\.\\d+)").find(out)
+                if (match != null) {
+                    val ip = match.groupValues[1]
+                    if (!ip.startsWith("127.") && !ip.startsWith("169.254.") && ip != "0.0.0.0") {
+                        return ip
+                    }
+                }
+            }
         } catch (e: Exception) {}
         return "127.0.0.1"
     }

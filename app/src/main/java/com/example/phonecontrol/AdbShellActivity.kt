@@ -11,7 +11,9 @@ import android.provider.OpenableColumns
 import android.text.Spannable
 import android.text.SpannableStringBuilder
 import android.text.style.ForegroundColorSpan
+import android.graphics.drawable.ColorDrawable
 import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
@@ -62,22 +64,11 @@ class AdbShellActivity : AppCompatActivity() {
         findViewById<View>(android.R.id.content).visibility = View.GONE
         showSecurityCheck()
 
-        findViewById<MaterialToolbar>(R.id.toolbarAdb).setNavigationOnClickListener { finish() }
-
-        // Copy & Share
-        findViewById<ImageButton>(R.id.btnCopyOutput).setOnClickListener { copyOutputToClipboard() }
-        findViewById<ImageButton>(R.id.btnShareLog).setOnClickListener { shareOutputLog() }
-
-        findViewById<View>(R.id.btnShowTips).setOnClickListener { showCommandTips() }
-        findViewById<View>(R.id.btnAppList).setOnClickListener {
-            appInspectorLauncher.launch(Intent(this, AppInspectorActivity::class.java))
+        val toolbar = findViewById<MaterialToolbar>(R.id.toolbarAdb)
+        toolbar.setNavigationOnClickListener { finish() }
+        findViewById<ImageButton>(R.id.btnTerminalMenu).setOnClickListener { anchor ->
+            showTerminalPopupMenu(anchor)
         }
-
-        findViewById<View>(R.id.btnForceInstallToolbar).setOnClickListener {
-            launchPackagePicker()
-        }
-
-        findViewById<ImageButton>(R.id.btnProcessMonitor).setOnClickListener { runSystemSnapshot() }
         findViewById<Chip>(R.id.chipLiveStats).setOnClickListener { runSystemSnapshot() }
         findViewById<Chip>(R.id.chipForceInstallApp).setOnClickListener { launchPackagePicker() }
 
@@ -103,6 +94,53 @@ class AdbShellActivity : AppCompatActivity() {
         // Initial prompt
         tvOutput.text = ""
         appendColoredText("root@phonecontrol:~# ", Color.parseColor("#00E676"))
+    }
+
+    private fun showTerminalPopupMenu(anchor: View) {
+        val popupView = layoutInflater.inflate(R.layout.layout_terminal_menu, null)
+        val widthPx = (200 * resources.displayMetrics.density).toInt()
+        val popupWindow = PopupWindow(
+            popupView,
+            widthPx,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            true
+        ).apply {
+            elevation = 16f
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            isOutsideTouchable = true
+        }
+
+        popupView.findViewById<View>(R.id.menuItemRunningServices).setOnClickListener {
+            popupWindow.dismiss()
+            startActivity(Intent(this, RunningServicesActivity::class.java))
+        }
+        popupView.findViewById<View>(R.id.menuItemLiveMonitor).setOnClickListener {
+            popupWindow.dismiss()
+            runSystemSnapshot()
+        }
+        popupView.findViewById<View>(R.id.menuItemAppInspector).setOnClickListener {
+            popupWindow.dismiss()
+            appInspectorLauncher.launch(Intent(this, AppInspectorActivity::class.java))
+        }
+        popupView.findViewById<View>(R.id.menuItemForceInstall).setOnClickListener {
+            popupWindow.dismiss()
+            launchPackagePicker()
+        }
+        popupView.findViewById<View>(R.id.menuItemCopyOutput).setOnClickListener {
+            popupWindow.dismiss()
+            copyOutputToClipboard()
+        }
+        popupView.findViewById<View>(R.id.menuItemShareLog).setOnClickListener {
+            popupWindow.dismiss()
+            shareOutputLog()
+        }
+        popupView.findViewById<View>(R.id.menuItemCommandTips).setOnClickListener {
+            popupWindow.dismiss()
+            showCommandTips()
+        }
+
+        // Anchor popup neatly to the 3-dot button
+        popupWindow.showAsDropDown(anchor, 0, 4)
     }
 
     private fun launchPackagePicker() {

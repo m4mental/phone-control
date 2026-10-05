@@ -15,6 +15,7 @@ import android.media.AudioManager
 import android.media.AudioPlaybackConfiguration
 import android.media.audiofx.AudioEffect
 import android.net.ConnectivityManager
+import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
@@ -194,7 +195,11 @@ class AutoTweakService : Service() {
                     return true
                 }
             }
-            false
+            val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            if (wm?.isWifiEnabled == true && wm.connectionInfo?.networkId != -1) {
+                return true
+            }
+            WirelessAdbManager.isLocalNetworkActive(this)
         } catch (e: Exception) {
             false
         }
@@ -245,7 +250,7 @@ class AutoTweakService : Service() {
             val port = WirelessAdbManager.getPort(this@AutoTweakService)
             val isNetActive = WirelessAdbManager.isLocalNetworkActive(this@AutoTweakService)
             if (isNetActive) {
-                // Cancel pending sleep runnable if connection returned
+                // Cancel pending sleep runnable immediately if connection is active
                 adbAutoSleepRunnable?.let { adbAutoSleepHandler.removeCallbacks(it) }
                 adbAutoSleepRunnable = null
 
@@ -261,7 +266,7 @@ class AutoTweakService : Service() {
                     sendSafeUiUpdate()
                     WirelessAdbTileService.updateTile(this@AutoTweakService)
                     Handler(Looper.getMainLooper()).post {
-                        Toast.makeText(applicationContext, "⚡ Wireless ADB: Reconnected at $currentIp:$port", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(applicationContext, "⚡ Wireless ADB: Active at $currentIp:$port", Toast.LENGTH_SHORT).show()
                     }
                 } else if (lastNotifiedAdbIp != null && lastNotifiedAdbIp != currentIp && currentIp != "127.0.0.1") {
                     Log.d("AutoTweak", "🔄 Wireless ADB: IP changed from $lastNotifiedAdbIp to $currentIp:$port")
@@ -275,7 +280,7 @@ class AutoTweakService : Service() {
                     lastNotifiedAdbIp = currentIp
                 }
             } else {
-                // Network lost: Debounce 15 seconds before sleeping port to avoid flapping
+                // Local network disconnected (Mobile Data or Offline): Debounce 15s before sleeping port to save battery
                 if (!isServiceDestroyed && adbAutoSleepRunnable == null && (WirelessAdbManager.isPortOpen(this@AutoTweakService) || !WirelessAdbManager.isSuspended(this@AutoTweakService))) {
                     val runnable = Runnable {
                         if (isServiceDestroyed) return@Runnable
@@ -284,12 +289,12 @@ class AutoTweakService : Service() {
                             if (WirelessAdbManager.isEnabled(this@AutoTweakService) &&
                                 WirelessAdbManager.isAutoSleepEnabled(this@AutoTweakService) &&
                                 !WirelessAdbManager.isLocalNetworkActive(this@AutoTweakService)) {
-                                Log.d("AutoTweak", "🌙 Wi-Fi & Hotspot Disconnected -> Sleeping Wireless ADB Port $port (Battery Save)")
+                                Log.d("AutoTweak", "🌙 Wi-Fi, Hotspot & USB Tether Disconnected -> Sleeping Wireless ADB Port $port (Battery Guard)")
                                 WirelessAdbManager.suspendPort(this@AutoTweakService)
                                 sendSafeUiUpdate()
                                 WirelessAdbTileService.updateTile(this@AutoTweakService)
                                 Handler(Looper.getMainLooper()).post {
-                                    Toast.makeText(applicationContext, "💤 Wireless ADB: Port $port suspended (Offline)", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(applicationContext, "💤 Wireless ADB: Port $port suspended (Offline / Mobile Data)", Toast.LENGTH_SHORT).show()
                                 }
                             }
                             adbAutoSleepRunnable = null
@@ -311,11 +316,36 @@ class AutoTweakService : Service() {
             handleWirelessAdbSmartPort()
         }
 
+        override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+            if (networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                handleSmartNetworkSwitch(true)
+            }
+            handleWirelessAdbSmartPort()
+        }
+
+        override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
+            handleWirelessAdbSmartPort()
+        }
+
         override fun onLost(network: Network) {
             val stillConnected = isWifiActive()
             if (!stillConnected) {
                 handleSmartNetworkSwitch(false)
             }
+            handleWirelessAdbSmartPort()
+        }
+    }
+
+    private val defaultNetworkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            handleWirelessAdbSmartPort()
+        }
+
+        override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+            handleWirelessAdbSmartPort()
+        }
+
+        override fun onLost(network: Network) {
             handleWirelessAdbSmartPort()
         }
     }
@@ -451,8 +481,17 @@ class AutoTweakService : Service() {
         
         val networkRequest = NetworkRequest.Builder()
             .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+            .addTransportType(NetworkCapabilities.TRANSPORT_ETHERNET)
             .build()
         connectivityManager.registerNetworkCallback(networkRequest, networkCallback)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            try {
+                connectivityManager.registerDefaultNetworkCallback(defaultNetworkCallback)
+            } catch (e: Exception) {
+                Log.w("AutoTweak", "Failed to registerDefaultNetworkCallback: ${e.message}")
+            }
+        }
 
         val wifiFilter = IntentFilter().apply {
             addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION)
@@ -460,6 +499,9 @@ class AutoTweakService : Service() {
             addAction(ConnectivityManager.CONNECTIVITY_ACTION)
             addAction("android.net.wifi.WIFI_AP_STATE_CHANGED")
             addAction("android.net.conn.TETHER_STATE_CHANGED")
+            addAction("android.hardware.usb.action.USB_STATE")
+            addAction(Intent.ACTION_POWER_CONNECTED)
+            addAction(Intent.ACTION_POWER_DISCONNECTED)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(wifiStateReceiver, wifiFilter, RECEIVER_NOT_EXPORTED)
@@ -841,7 +883,7 @@ class AutoTweakService : Service() {
     }
 
     private fun scheduleBackgroundAppFreeze(pkg: String) {
-        if (pkg.isBlank() || pkg == packageName || pkg.contains("launcher", ignoreCase = true) || pkg.contains("home", ignoreCase = true) || pkg == "com.android.systemui") return
+        if (pkg.isBlank() || pkg == packageName || RecentTasksManager.isIgnoredSystemPackage(pkg)) return
         if (!FreezerManager.isAutoFreezeEnabled(this)) return
 
         val frozenApps = FreezerManager.getFrozenApps(this) + FreezerManager.getSpecialFreezeApps(this)
@@ -862,15 +904,26 @@ class AutoTweakService : Service() {
                 val isAudio = FreezerManager.getActivePlayingAudioPackages(this@AutoTweakService).contains(pkg)
                 val allSafeApps = MultitaskingManager.getUserWhitelist(this@AutoTweakService) + MultitaskingManager.protectedApps
 
+                val isSpecial = FreezerManager.isSpecialFreeze(this@AutoTweakService, pkg)
+
                 // 🛡️ RECENT TASKS IMMUNITY: If user still has the app in Recents (multitasking), do NOT kill it!
                 if (RecentTasksManager.isAppInRecents(pkg)) {
                     Log.d("AutoTweak", "🛡️ Multitasking Guard: $pkg is alive in Recents -> Skipping background freeze")
                     return@execute
                 }
 
+                // 🛡️ CRITICAL LAUNCH & ACTIVE SESSION GUARD:
+                if (FreezerManager.isRecentlyLaunched(pkg, 30000L) || FreezerManager.isAppActiveSession(pkg)) {
+                    Log.d("AutoTweak", "🛡️ Launch Grace Guard: $pkg was recently launched or is active session -> Skipping background freeze")
+                    return@execute
+                }
+
+                val isFgsImmune = FreezerManager.isFgsImmunityEnabled(this@AutoTweakService, pkg)
+
                 // 🛡️ SMART ACTIVE TASK / DOWNLOAD GUARD:
-                if (RecentTasksManager.hasActiveForegroundTask(pkg)) {
-                    Log.d("AutoTweak", "🛡️ Smart FGS Guard: $pkg is actively downloading/syncing -> Skipping background freeze")
+                // Only exempt if the app has explicit FGS / Download immunity permission!
+                if (!isSpecial && isFgsImmune && RecentTasksManager.hasActiveForegroundTask(pkg)) {
+                    Log.d("AutoTweak", "🛡️ Smart FGS Guard: $pkg has FGS immunity & actively downloading/syncing -> Skipping background freeze")
                     return@execute
                 }
 
@@ -918,7 +971,7 @@ class AutoTweakService : Service() {
         scheduleBackgroundAppFreeze(previousPkg)
 
         // 4. Fallback verification for Recents swipe: When returning to launcher/home, re-check recents after 500ms
-        if (newPkg.contains("launcher", ignoreCase = true) || newPkg.contains("home", ignoreCase = true)) {
+        if (RecentTasksManager.isIgnoredSystemPackage(newPkg)) {
             equalizerFreezeHandler?.postDelayed({
                 tweakExecutor.execute {
                     reevaluatePerAppHierarchy(newPkg)
@@ -934,9 +987,7 @@ class AutoTweakService : Service() {
         freezerExecutor.execute {
             // 1. Register foreground app if it's a real user application (grants 0ms immunity + unfreezes)
             if (currentForeground.isNotBlank() &&
-                !currentForeground.contains("launcher", ignoreCase = true) &&
-                !currentForeground.contains("home", ignoreCase = true) &&
-                currentForeground != "com.android.systemui" &&
+                !RecentTasksManager.isIgnoredSystemPackage(currentForeground) &&
                 currentForeground != packageName
             ) {
                 FreezerManager.registerAppOpen(currentForeground)
@@ -980,15 +1031,17 @@ class AutoTweakService : Service() {
 
         // 1. Collect all live packages in Recent Tasks + In-Memory Active Sessions + Current Foreground
         val recentPkgs = FreezerManager.getRecentPackages(forceRefresh = true).toMutableSet()
-        FreezerManager.activeSessionApps.retainAll(recentPkgs)
+        FreezerManager.activeSessionApps.retainAll { p ->
+            recentPkgs.contains(p) || FreezerManager.isRecentlyLaunched(p, 30000L)
+        }
         recentPkgs.addAll(FreezerManager.activeSessionApps)
-        if (foregroundPkg.isNotBlank() && !foregroundPkg.contains("launcher", ignoreCase = true) && foregroundPkg != "com.android.systemui" && foregroundPkg != packageName) {
+        if (foregroundPkg.isNotBlank() && !RecentTasksManager.isIgnoredSystemPackage(foregroundPkg) && foregroundPkg != packageName) {
             recentPkgs.add(foregroundPkg)
             FreezerManager.activeSessionApps.add(foregroundPkg)
         }
 
         // Check if current foreground app itself has an explicit profile (user actively inside it)
-        val isEligibleFg = foregroundPkg.isNotBlank() && foregroundPkg != packageName && !foregroundPkg.contains("launcher", ignoreCase = true) && foregroundPkg != "com.android.systemui"
+        val isEligibleFg = foregroundPkg.isNotBlank() && foregroundPkg != packageName && !RecentTasksManager.isIgnoredSystemPackage(foregroundPkg)
         val isGameInForeground = isEligibleFg && games.contains(foregroundPkg)
         val isGameTurboMaster = turboPrefs.getBoolean("game_turbo_enabled", false)
 
@@ -1348,7 +1401,7 @@ class AutoTweakService : Service() {
         // 3. Normal Global Mode (Targeted Apps Only is OFF)
         StudioDspManager.setBypass(this, false)
 
-        val isEligibleFg = foregroundPkg.isNotBlank() && foregroundPkg != packageName && !foregroundPkg.contains("launcher", ignoreCase = true) && foregroundPkg != "com.android.systemui"
+        val isEligibleFg = foregroundPkg.isNotBlank() && foregroundPkg != packageName && !RecentTasksManager.isIgnoredSystemPackage(foregroundPkg)
         val fgEqPreset = if (isEligibleFg) {
             PowerampPresetManager.getAppPreset(this, foregroundPkg)
                 ?: PerAppManager.getConfig(this, foregroundPkg)?.eqPreset?.takeIf { it.isNotBlank() && it != "Default" && it != "Default (System)" }
@@ -1769,9 +1822,12 @@ class AutoTweakService : Service() {
                     continue
                 }
 
-                // 🛡️ Smart FGS Guard: If app is actively downloading in background with screen OFF, NEVER kill it!
-                if (RecentTasksManager.hasActiveForegroundTask(pkg)) {
-                    Log.d("AutoTweak", "🛡️ Smart FGS Guard: Exempting active downloader '$pkg' from Screen-Off freeze")
+                val isSpecial = FreezerManager.isSpecialFreeze(this@AutoTweakService, pkg)
+                val isFgsImmune = FreezerManager.isFgsImmunityEnabled(this@AutoTweakService, pkg)
+
+                // 🛡️ Smart FGS Guard: If app is actively downloading in background with screen OFF, ONLY exempt if it has FGS immunity!
+                if (!isSpecial && isFgsImmune && RecentTasksManager.hasActiveForegroundTask(pkg)) {
+                    Log.d("AutoTweak", "🛡️ Smart FGS Guard: Exempting active downloader '$pkg' with FGS immunity from Screen-Off freeze")
                     continue
                 }
 
@@ -1881,6 +1937,7 @@ class AutoTweakService : Service() {
         try { unregisterReceiver(packageReceiver) } catch (e: Exception) {}
         try { unregisterReceiver(audioRouteReceiver) } catch (e: Exception) {}
         try { connectivityManager.unregisterNetworkCallback(networkCallback) } catch (e: Exception) {}
+        try { connectivityManager.unregisterNetworkCallback(defaultNetworkCallback) } catch (e: Exception) {}
         try {
             cameraManager?.unregisterAvailabilityCallback(cameraAvailabilityCallback)
         } catch (e: Exception) {}

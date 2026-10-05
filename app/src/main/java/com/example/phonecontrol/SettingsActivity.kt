@@ -659,7 +659,7 @@ class SettingsActivity : AppCompatActivity() {
                     badge.setTextColor(Color.parseColor("#FFA000"))
                     cardWirelessAdb.strokeColor = Color.parseColor("#FFA000")
                     layoutCmd.visibility = View.GONE
-                    tvSubtitle.text = "Port $currentPort suspended (Wi-Fi/Hotspot offline). Auto-resumes on connect."
+                    tvSubtitle.text = "Port $currentPort suspended (Offline / Mobile Data). Auto-resumes on Wi-Fi, Hotspot, or USB Tethering."
                 } else {
                     badge.text = "ONLINE : $currentPort"
                     badge.setBackgroundResource(R.drawable.bg_badge_pill)
@@ -723,10 +723,12 @@ class SettingsActivity : AppCompatActivity() {
             switchAutoSleep?.setOnCheckedChangeListener { _, isAutoSleepChecked ->
                 WirelessAdbManager.setAutoSleepEnabled(this@SettingsActivity, isAutoSleepChecked)
                 thread {
+                    val isNetActive = WirelessAdbManager.isLocalNetworkActive(this@SettingsActivity)
                     if (isAutoSleepChecked) {
-                        val isNetActive = WirelessAdbManager.isLocalNetworkActive(this@SettingsActivity)
                         if (!isNetActive) {
                             WirelessAdbManager.suspendPort(this@SettingsActivity)
+                        } else if (WirelessAdbManager.isSuspended(this@SettingsActivity)) {
+                            WirelessAdbManager.reopenPort(this@SettingsActivity)
                         }
                     } else {
                         if (WirelessAdbManager.isSuspended(this@SettingsActivity)) {
@@ -738,7 +740,7 @@ class SettingsActivity : AppCompatActivity() {
                         refreshUi(WirelessAdbManager.isEnabled(this@SettingsActivity))
                         val port = WirelessAdbManager.getPort(this@SettingsActivity)
                         val msg = if (isAutoSleepChecked) {
-                            "💤 Smart Port Auto-Sleep: Enabled (Closes Port $port when offline)"
+                            "💤 Smart Port Auto-Sleep: Enabled (Active on Wi-Fi/Hotspot/USB Tethering, suspends on Mobile Data)"
                         } else {
                             "⚡ Smart Port Auto-Sleep: Disabled (Port $port stays always active)"
                         }

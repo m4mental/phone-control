@@ -406,7 +406,7 @@
                                 android:id="@+id/tvWirelessAdbAutoSleepDesc"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Auto-closes Port when Wi-Fi &amp; Hotspot are disconnected to stop battery drain."
+                                android:text="Active ONLY on Wi-Fi, Hotspot &amp; USB Tethering. Suspends on Mobile Data/offline to stop battery drain."
                                 android:textColor="#B0BEC5"
                                 android:textSize="11sp"
                                 android:layout_marginTop="2dp" />

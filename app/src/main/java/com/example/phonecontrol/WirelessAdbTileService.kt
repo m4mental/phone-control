@@ -65,7 +65,7 @@ class WirelessAdbTileService : TileService() {
                     tile.state = Tile.STATE_INACTIVE
                     tile.label = "Wireless ADB"
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        tile.subtitle = "Auto-Sleep (Offline)"
+                        tile.subtitle = "Standby (Auto-Sleep)"
                     }
                 } else {
                     tile.state = Tile.STATE_INACTIVE
@@ -99,7 +99,7 @@ class WirelessAdbTileService : TileService() {
                     WirelessAdbManager.suspendPort(this)
                     getSharedPreferences("prefs", MODE_PRIVATE).edit().putBoolean("wireless_adb_enabled", true).apply()
                     Handler(Looper.getMainLooper()).post {
-                        Toast.makeText(applicationContext, "🌙 Wireless ADB: Standby (Offline, Port $port)", Toast.LENGTH_LONG).show()
+                        Toast.makeText(applicationContext, "🌙 Wireless ADB: Standby (Active on Wi-Fi, Hotspot, USB Tethering)", Toast.LENGTH_LONG).show()
                         refreshTileState()
                     }
                 } else {

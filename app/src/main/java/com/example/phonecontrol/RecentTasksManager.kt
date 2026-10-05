@@ -91,9 +91,11 @@ object RecentTasksManager {
             lastKnownRecents = pkgs
             lastQueryTimestamp = now
 
-            // Synchronize activeRecentsPackages with actual system tasks
+            // Synchronize activeRecentsPackages with actual system tasks while strictly preserving newly launched apps
             if (pkgs.isNotEmpty()) {
-                activeRecentsPackages.retainAll(pkgs)
+                activeRecentsPackages.retainAll { p ->
+                    pkgs.contains(p) || FreezerManager.isRecentlyLaunched(p, 30000L)
+                }
                 activeRecentsPackages.addAll(pkgs)
             }
 
@@ -175,12 +177,13 @@ object RecentTasksManager {
         }
 
         // Dismissed packages = packages that WERE in recents, but are NO LONGER in recents,
-        // and are NOT currently active in foreground.
+        // and are NOT currently active in foreground, visible, or recently launched.
         val dismissedPackages = previousRecents.filter { pkg ->
             !currentRecents.contains(pkg) &&
             pkg != currentForeground &&
             !isIgnoredSystemPackage(pkg) &&
-            !FreezerManager.isAppCurrentlyVisible(pkg)
+            !FreezerManager.isAppCurrentlyVisible(pkg) &&
+            !FreezerManager.isRecentlyLaunched(pkg, 30000L)
         }.toSet()
 
         if (dismissedPackages.isNotEmpty()) {
@@ -197,12 +200,14 @@ object RecentTasksManager {
                     val isAudio = FreezerManager.getActivePlayingAudioPackages(context).contains(pkg)
                     val isSafe = MultitaskingManager.getUserWhitelist(context).contains(pkg) ||
                                  MultitaskingManager.protectedApps.contains(pkg)
-                    val isDownloading = hasActiveForegroundTask(pkg)
+                    val isSpecial = specialApps.contains(pkg)
+                    val isFgsImmune = FreezerManager.isFgsImmunityEnabled(context, pkg)
+                    val isDownloading = if (!isSpecial && isFgsImmune) hasActiveForegroundTask(pkg) else false
                     if (!isAudio && !isSafe && !isDownloading) {
-                        Log.d(TAG, "❄️ Freezing swiped away app: $pkg")
+                        Log.d(TAG, "❄️ Freezing swiped away app: $pkg (isSpecial=$isSpecial, isFgsImmune=$isFgsImmune)")
                         FreezerManager.freezeApp(context, pkg, force = true, isExplicitDismiss = true)
                     } else if (isDownloading) {
-                        Log.d(TAG, "🛡️ Smart FGS Guard: App $pkg swiped away but has active foreground task/download -> Freeze BLOCKED!")
+                        Log.d(TAG, "🛡️ Smart FGS Guard: App $pkg swiped away but has FGS immunity & active task -> Freeze BLOCKED!")
                     }
                 }
             }
@@ -215,16 +220,25 @@ object RecentTasksManager {
         val runningConfigured = FreezerManager.getRunningConfiguredApps(allConfigured)
 
         for (pkg in runningConfigured) {
+            // 🛡️ CRITICAL GUARD: Never sweep apps recently launched, in active session, or in recents cache!
+            if (FreezerManager.isRecentlyLaunched(pkg, 30000L) ||
+                FreezerManager.isAppActiveSession(pkg) ||
+                isAppInRecents(pkg)) {
+                continue
+            }
+
             if (!currentRecents.contains(pkg) && pkg != currentForeground && !FreezerManager.isAppCurrentlyVisible(pkg)) {
                 val isAudio = FreezerManager.getActivePlayingAudioPackages(context).contains(pkg)
                 val isSafe = MultitaskingManager.getUserWhitelist(context).contains(pkg) ||
                              MultitaskingManager.protectedApps.contains(pkg)
-                val isDownloading = hasActiveForegroundTask(pkg)
+                val isSpecial = specialApps.contains(pkg)
+                val isFgsImmune = FreezerManager.isFgsImmunityEnabled(context, pkg)
+                val isDownloading = if (!isSpecial && isFgsImmune) hasActiveForegroundTask(pkg) else false
                 if (!isAudio && !isSafe && !isDownloading) {
-                    Log.d(TAG, "❄️ Freezing orphan background process not in Recents: $pkg")
+                    Log.d(TAG, "❄️ Freezing orphan background process not in Recents: $pkg (isSpecial=$isSpecial, isFgsImmune=$isFgsImmune)")
                     FreezerManager.freezeApp(context, pkg, force = true, isExplicitDismiss = true)
                 } else if (isDownloading) {
-                    Log.d(TAG, "🛡️ Smart FGS Guard: Skipping orphan sweep for $pkg (active foreground service/download in progress)")
+                    Log.d(TAG, "🛡️ Smart FGS Guard: Skipping orphan sweep for $pkg (active FGS & download immunity in progress)")
                 }
             }
         }
@@ -232,12 +246,19 @@ object RecentTasksManager {
 
     fun isIgnoredSystemPackage(pkg: String): Boolean {
         if (pkg.isBlank()) return true
-        return pkg.contains("launcher", ignoreCase = true) ||
-               pkg.contains("home", ignoreCase = true) ||
-               pkg == "com.android.systemui" ||
-               pkg == "android" ||
-               pkg == "com.android.settings" ||
-               pkg == "com.google.android.googlequicksearchbox" ||
-               pkg == "com.example.phonecontrol"
+        val lower = pkg.lowercase()
+        return lower.endsWith(".launcher") ||
+               lower.contains(".launcher.") ||
+               lower.endsWith(".home") ||
+               lower == "com.nothing.launcher" ||
+               lower == "com.google.android.apps.nexuslauncher" ||
+               lower == "com.android.launcher3" ||
+               lower == "com.miui.home" ||
+               lower == "com.sec.android.app.launcher" ||
+               lower == "com.android.systemui" ||
+               lower == "android" ||
+               lower == "com.android.settings" ||
+               lower == "com.google.android.googlequicksearchbox" ||
+               lower == "com.example.phonecontrol"
     }
 }

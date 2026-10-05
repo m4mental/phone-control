@@ -6,10 +6,13 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.os.Build
+import android.util.Log
 
 object FreezerManager {
+    private const val TAG = "FreezerManager"
 
     val activeSessionApps = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    val kernelFrozenPackages = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     var lastLaunchedPackage: String? = null
     var lastLaunchTime: Long = 0
     val launchTimestamps = java.util.concurrent.ConcurrentHashMap<String, Long>()
@@ -34,7 +37,8 @@ object FreezerManager {
         }
     }
 
-    fun isRecentlyLaunched(packageName: String, gracePeriodMs: Long = 20000L): Boolean {
+    fun isRecentlyLaunched(packageName: String, gracePeriodMs: Long = 30000L): Boolean {
+        if (packageName.isBlank()) return false
         if (packageName == lastLaunchedPackage && (System.currentTimeMillis() - lastLaunchTime < gracePeriodMs)) return true
         val time = launchTimestamps[packageName] ?: return false
         return (System.currentTimeMillis() - time < gracePeriodMs)
@@ -51,38 +55,55 @@ object FreezerManager {
 
     /**
      * Hibernates a single app immediately.
+     * Normal Freeze: Linux Kernel cgroup v2 freeze (`am freeze --sticky`) for 0ms instant launch from anywhere.
+     * Special Freeze: Deep Package Suspension (`cmd package suspend`) + force-stop for persistent/smartwatch apps.
      * @param force If true, bypasses session and recent-launch grace checks (for Screen-Off, Recents dismiss, or manual freeze).
      */
     fun freezeApp(
         context: Context,
         packageName: String,
         force: Boolean = false,
-        isExplicitDismiss: Boolean = false
+        isExplicitDismiss: Boolean = false,
+        isManualUserAction: Boolean = false
     ) {
         if (packageName.isBlank() || packageName == context.packageName) return
-        
-        // Never freeze the app if it is currently visible on screen (bypass when force is true, e.g. Screen-Off)
-        if (!force && isAppCurrentlyVisible(packageName)) return
+
+        // 🛡️ CRITICAL LAUNCH GRACE IMMUNITY:
+        // If an app was launched within the last 30 seconds, NEVER freeze or kill it!
+        // This completely eliminates premature kill races during cold start, splash screen, or transition.
+        if (!isManualUserAction && isRecentlyLaunched(packageName, 30000L)) {
+            Log.d(TAG, "🛡️ Launch Grace Guard: $packageName was launched recently -> Freeze BLOCKED!")
+            return
+        }
+
+        // 🛡️ VISIBILITY & FOREGROUND GUARD:
+        if (!isManualUserAction && isAppCurrentlyVisible(packageName)) {
+            Log.d(TAG, "🛡️ Visibility Guard: $packageName is visible -> Freeze BLOCKED!")
+            return
+        }
+
+        val isSpecial = isSpecialFreeze(context, packageName)
+        val isFgsImmune = isFgsImmunityEnabled(context, packageName)
 
         // 🛡️ RECENT TASKS IMMUNITY GUARD:
-        // As long as the app is open/alive in Recents (Multitasking), NEVER stop or kill it!
-        // It can ONLY be frozen if the user explicitly swiped it away from Recents (isExplicitDismiss == true).
-        if (!isExplicitDismiss && RecentTasksManager.isAppInRecents(packageName)) {
-            android.util.Log.d("FreezerManager", "🛡️ Recents Guard: $packageName is active in Recents -> Freeze BLOCKED!")
+        // As long as the app is open/alive in Recents (Multitasking), do NOT kill it!
+        // It can ONLY be frozen if the user explicitly swiped it away from Recents (isExplicitDismiss == true),
+        // or during forced operations (Screen-Off, Manual Freeze, Widget/Tile trigger).
+        if (!isManualUserAction && !isExplicitDismiss && !force && RecentTasksManager.isAppInRecents(packageName)) {
+            Log.d(TAG, "🛡️ Recents Guard: $packageName is active in Recents -> Freeze BLOCKED!")
             return
         }
 
         // 🛡️ SMART ACTIVE TASK & FOREGROUND SERVICE GUARD:
-        // If the app is actively performing a foreground service, download (e.g. SpeedDown),
-        // or holding a wake lock, NEVER kill or freeze it!
-        if (!isExplicitDismiss && RecentTasksManager.hasActiveForegroundTask(packageName)) {
-            android.util.Log.d("FreezerManager", "🛡️ Smart FGS Guard: $packageName is actively running a foreground service / download -> Freeze BLOCKED!")
+        // Only exempt from freeze if the app has EXPLICIT FGS / Download Immunity permission!
+        // Special Freeze apps NEVER receive FGS immunity (always force-stopped).
+        if (!isManualUserAction && !isExplicitDismiss && !force && !isSpecial && isFgsImmune && RecentTasksManager.hasActiveForegroundTask(packageName)) {
+            Log.d(TAG, "🛡️ Smart FGS Guard: $packageName has FGS immunity & active task -> Freeze BLOCKED!")
             return
         }
 
-        if (!force) {
+        if (!isManualUserAction && !force) {
             if (isAppActiveSession(packageName)) return
-            if (isRecentlyLaunched(packageName, 10000L)) return
         }
 
         val allSafeApps = MultitaskingManager.getUserWhitelist(context) + MultitaskingManager.protectedApps
@@ -91,81 +112,78 @@ object FreezerManager {
         val activeAudio = getActivePlayingAudioPackages(context)
         if (activeAudio.contains(packageName)) return
 
-        if (isSpecialFreeze(context, packageName)) {
+        val qPkg = ShellUtils.shellQuote(packageName)
+
+        if (isSpecial) {
+            // ==========================================
+            // 🔒 SPECIAL FREEZE: Deep Package Suspension + Force Stop
+            // ==========================================
+            // Suspends the package in package manager so Android OS completely blocks
+            // all background services (BLE, NotificationListener), alarms, jobs, and receivers.
+            // App can ONLY be reopened via Special Widget or Phone Control app!
             val specialScript = """
-                am set-standby-bucket "$packageName" restricted 2>/dev/null
-                cmd appops set "$packageName" RUN_IN_BACKGROUND ignore 2>/dev/null
-                cmd appops set "$packageName" RUN_ANY_IN_BACKGROUND ignore 2>/dev/null
-                pids=${'$'}(pgrep -f "^$packageName" 2>/dev/null || pidof "$packageName" 2>/dev/null)
-                is_safe=0
-                if [ -n "${'$'}pids" ]; then
-                    for p in ${'$'}pids; do
-                        adj=${'$'}(cat /proc/${'$'}p/oom_score_adj 2>/dev/null)
-                        if [ -n "${'$'}adj" ] && [ "${'$'}adj" -le 250 ]; then
-                            is_safe=1
-                            break
-                        fi
-                    done
-                fi
-                if [ "${'$'}is_safe" -eq 0 ]; then
-                    wl=${'$'}(dumpsys power 2>/dev/null | grep -E "PARTIAL_WAKE_LOCK.*$packageName" | head -n 1)
-                    [ -n "${'$'}wl" ] && is_safe=1
-                fi
-                if [ "${'$'}is_safe" -eq 0 ]; then
-                    am force-stop "$packageName" 2>/dev/null
-                fi
+                cmd package suspend --user 0 $qPkg 2>/dev/null
+                pm suspend $qPkg 2>/dev/null
+                am force-stop $qPkg 2>/dev/null
+                am set-standby-bucket $qPkg restricted 2>/dev/null
+                cmd appops set $qPkg RUN_IN_BACKGROUND ignore 2>/dev/null
+                cmd appops set $qPkg RUN_ANY_IN_BACKGROUND ignore 2>/dev/null
             """.trimIndent()
             ShellUtils.fastCmd(specialScript)
+            kernelFrozenPackages.remove(packageName)
             return
         }
 
-        // Standard Freeze: Restrict standby bucket, block background execution, and cleanly stop background processes (0ms ANRs)
-        val script = """
-            am set-standby-bucket "$packageName" restricted 2>/dev/null
-            cmd appops set "$packageName" RUN_IN_BACKGROUND ignore 2>/dev/null
-            cmd appops set "$packageName" RUN_ANY_IN_BACKGROUND ignore 2>/dev/null
-            pids=${'$'}(pgrep -f "^$packageName" 2>/dev/null || pidof "$packageName" 2>/dev/null)
-            is_safe=0
-            if [ -n "${'$'}pids" ]; then
-                for p in ${'$'}pids; do
-                    adj=${'$'}(cat /proc/${'$'}p/oom_score_adj 2>/dev/null)
-                    if [ -n "${'$'}adj" ] && [ "${'$'}adj" -le 250 ]; then
-                        is_safe=1
-                        break
-                    fi
-                done
-            fi
-            if [ "${'$'}is_safe" -eq 0 ]; then
-                wl=${'$'}(dumpsys power 2>/dev/null | grep -E "PARTIAL_WAKE_LOCK.*$packageName" | head -n 1)
-                [ -n "${'$'}wl" ] && is_safe=1
-            fi
-            if [ "${'$'}is_safe" -eq 0 ]; then
-                am stop-app "$packageName" 2>/dev/null || am kill "$packageName" 2>/dev/null
+        // ==========================================
+        // ❄️ NORMAL FREEZE: Linux Kernel cgroup v2 Freeze
+        // ==========================================
+        // Freezes all processes of the package at the kernel level without killing them.
+        // Consumes 0% CPU, 0 energy, and preserves memory state so it can be reopened
+        // from ANYWHERE (Launcher, Recents, Notifications, Widgets) with 0ms delay!
+        val normalScript = """
+            am set-standby-bucket $qPkg restricted 2>/dev/null
+            cmd appops set $qPkg RUN_IN_BACKGROUND ignore 2>/dev/null
+            cmd appops set $qPkg RUN_ANY_IN_BACKGROUND ignore 2>/dev/null
+            if am freeze --sticky $qPkg 2>/dev/null; then
+                echo "FREEZE_SUCCESS"
+            else
+                am stop-app $qPkg 2>/dev/null || am force-stop $qPkg 2>/dev/null
+                pkill -9 -f "^$packageName" 2>/dev/null
+                echo "FREEZE_FAILED"
             fi
         """.trimIndent()
-        ShellUtils.fastCmd(script)
+        val result = ShellUtils.fastCmdResult(normalScript, 2000).trim()
+        if (result.contains("FREEZE_SUCCESS")) {
+            kernelFrozenPackages.add(packageName)
+            Log.d(TAG, "❄️ Kernel Freeze Success: $packageName")
+        } else {
+            kernelFrozenPackages.remove(packageName)
+            Log.w(TAG, "⚠️ Kernel Freeze Failed / No Process: $packageName")
+        }
     }
 
     /**
      * Batch Hibernates multiple apps in a single ultra-fast shell execution (0ms UI lag).
      */
-    fun freezeMultipleApps(context: Context, packages: Collection<String>, force: Boolean = false) {
+    fun freezeMultipleApps(context: Context, packages: Collection<String>, force: Boolean = false, isManualUserAction: Boolean = false) {
         if (packages.isEmpty()) return
         val currentFocus = getCurrentlyFocusedWindowInfo()
         val allSafeApps = MultitaskingManager.getUserWhitelist(context) + MultitaskingManager.protectedApps
         val activeAudio = getActivePlayingAudioPackages(context)
 
         val pkgList = packages.filter { pkg ->
+            val isSpecial = isSpecialFreeze(context, pkg)
+            val isFgsImmune = isFgsImmunityEnabled(context, pkg)
             !allSafeApps.contains(pkg) &&
             !activeAudio.contains(pkg) &&
-            !RecentTasksManager.hasActiveForegroundTask(pkg) &&
+            (isSpecial || !isFgsImmune || !RecentTasksManager.hasActiveForegroundTask(pkg)) &&
             (currentFocus.isBlank() || !currentFocus.contains(pkg)) &&
-            (force || (!isRecentlyLaunched(pkg, 10000L) && !isAppActiveSession(pkg)))
+            (isManualUserAction || (!isRecentlyLaunched(pkg, 30000L) && (force || !isAppActiveSession(pkg))))
         }
         if (pkgList.isEmpty()) return
 
         for (pkg in pkgList) {
-            freezeApp(context, pkg, force = force)
+            freezeApp(context, pkg, force = force, isManualUserAction = isManualUserAction)
         }
     }
 
@@ -217,7 +235,13 @@ object FreezerManager {
         // 1. Apps tracked in activeSessionApps that have been dismissed from Recents and left foreground
         val sessionCopy = HashSet(activeSessionApps)
         for (pkg in sessionCopy) {
-            if (!currentRecents.contains(pkg) && pkg != currentForeground && !isAppCurrentlyVisible(pkg) && !RecentTasksManager.hasActiveForegroundTask(pkg)) {
+            // 🛡️ CRITICAL GUARD: Never freeze apps launched within the last 30s!
+            if (isRecentlyLaunched(pkg, 30000L)) continue
+
+            val isSpecial = specialApps.contains(pkg)
+            val isFgsImmune = isFgsImmunityEnabled(context, pkg)
+            val isDownloading = if (!isSpecial && isFgsImmune) RecentTasksManager.hasActiveForegroundTask(pkg) else false
+            if (!currentRecents.contains(pkg) && pkg != currentForeground && !isAppCurrentlyVisible(pkg) && (!isDownloading)) {
                 toFreeze.add(pkg)
             }
         }
@@ -226,7 +250,13 @@ object FreezerManager {
         // but has active running background processes (e.g. after background wakeup/broadcast)
         val runningConfigured = getRunningConfiguredApps(allConfigured)
         for (pkg in runningConfigured) {
-            if (pkg != currentForeground && !currentRecents.contains(pkg) && !isAppCurrentlyVisible(pkg) && !RecentTasksManager.hasActiveForegroundTask(pkg)) {
+            // 🛡️ CRITICAL GUARD: Never sweep apps recently launched, in active session, or in recents cache!
+            if (isRecentlyLaunched(pkg, 30000L) || isAppActiveSession(pkg) || RecentTasksManager.isAppInRecents(pkg)) continue
+
+            val isSpecial = specialApps.contains(pkg)
+            val isFgsImmune = isFgsImmunityEnabled(context, pkg)
+            val isDownloading = if (!isSpecial && isFgsImmune) RecentTasksManager.hasActiveForegroundTask(pkg) else false
+            if (pkg != currentForeground && !currentRecents.contains(pkg) && !isAppCurrentlyVisible(pkg) && (!isDownloading)) {
                 toFreeze.add(pkg)
             }
         }
@@ -234,29 +264,34 @@ object FreezerManager {
         if (toFreeze.isEmpty()) return
 
         for (pkg in toFreeze) {
-            if (isAppCurrentlyVisible(pkg)) continue
+            // 🛡️ Extra check before freeze
+            if (isRecentlyLaunched(pkg, 30000L) || isAppCurrentlyVisible(pkg)) continue
             activeSessionApps.remove(pkg)
             launchTimestamps.remove(pkg)
             if (pkg == lastLaunchedPackage) {
                 lastLaunchedPackage = null
             }
 
-            if (allConfigured.contains(pkg) && !allSafeApps.contains(pkg) && !activeAudio.contains(pkg) && !RecentTasksManager.hasActiveForegroundTask(pkg)) {
-                android.util.Log.d("FreezerManager", "❄️ Recents Dismissed / Background Idle -> Freeze for $pkg")
+            val isSpecial = specialApps.contains(pkg)
+            val isFgsImmune = isFgsImmunityEnabled(context, pkg)
+            val isDownloading = if (!isSpecial && isFgsImmune) RecentTasksManager.hasActiveForegroundTask(pkg) else false
+            if (allConfigured.contains(pkg) && !allSafeApps.contains(pkg) && !activeAudio.contains(pkg) && (!isDownloading)) {
+                Log.d(TAG, "❄️ Recents Dismissed / Background Idle -> Freeze for $pkg (special=$isSpecial)")
                 freezeApp(context, pkg, force = true, isExplicitDismiss = true)
             }
         }
     }
 
     /**
-     * Sweep to clean up any legacy pm suspend and sticky am freeze states from all freezer apps.
+     * Sweep to clean up any legacy pm suspend states from standard freezer apps,
+     * while strictly PRESERVING special freeze suspended apps.
      */
     fun cleanLegacySuspendedApps(context: Context) {
-        val allApps = getFrozenApps(context) + getSpecialFreezeApps(context)
-        if (allApps.isEmpty()) return
-        val pkgList = allApps.joinToString(" ")
+        val standardApps = getFrozenApps(context) - getSpecialFreezeApps(context)
+        if (standardApps.isEmpty()) return
+        val pkgList = standardApps.joinToString(" ") { ShellUtils.shellQuote(it) }
         freezerExecutor.execute {
-            ShellUtils.fastCmd("for p in $pkgList; do cmd package unsuspend --user 0 ${'$'}p 2>/dev/null; pm unsuspend ${'$'}p 2>/dev/null; am unfreeze ${'$'}p 2>/dev/null; done")
+            ShellUtils.fastCmd("for p in $pkgList; do cmd package unsuspend --user 0 \$p 2>/dev/null; pm unsuspend \$p 2>/dev/null; done")
         }
     }
 
@@ -338,20 +373,24 @@ object FreezerManager {
      */
     fun unfreezeApp(packageName: String) {
         if (packageName.isBlank()) return
+        kernelFrozenPackages.remove(packageName)
+        val qPkg = ShellUtils.shellQuote(packageName)
         val script = """
-            cmd package unsuspend --user 0 "$packageName" 2>/dev/null
-            pm unsuspend "$packageName" 2>/dev/null
-            pm enable "$packageName" 2>/dev/null
-            am unfreeze "$packageName" 2>/dev/null
-            cmd appops set "$packageName" RUN_IN_BACKGROUND allow 2>/dev/null
-            cmd appops set "$packageName" RUN_ANY_IN_BACKGROUND allow 2>/dev/null
-            am set-standby-bucket "$packageName" active 2>/dev/null
+            cmd package unsuspend --user 0 $qPkg 2>/dev/null
+            pm unsuspend $qPkg 2>/dev/null
+            pm enable $qPkg 2>/dev/null
+            am unfreeze --sticky $qPkg 2>/dev/null
+            am unfreeze $qPkg 2>/dev/null
             pids=${'$'}(pgrep -f "^$packageName" 2>/dev/null || pidof "$packageName" 2>/dev/null)
             if [ -n "${'$'}pids" ]; then
                 for p in ${'$'}pids; do
+                    kill -CONT ${'$'}p 2>/dev/null
                     echo 0 > /proc/${'$'}p/oom_score_adj 2>/dev/null
                 done
             fi
+            cmd appops set $qPkg RUN_IN_BACKGROUND allow 2>/dev/null
+            cmd appops set $qPkg RUN_ANY_IN_BACKGROUND allow 2>/dev/null
+            am set-standby-bucket $qPkg active 2>/dev/null
         """.trimIndent()
         ShellUtils.fastCmd(script)
     }
@@ -361,22 +400,27 @@ object FreezerManager {
      */
     fun unfreezeMultipleApps(packages: Collection<String>) {
         if (packages.isEmpty()) return
-        val pkgList = packages.joinToString(" ")
+        for (pkg in packages) {
+            kernelFrozenPackages.remove(pkg)
+        }
+        val pkgList = packages.joinToString(" ") { ShellUtils.shellQuote(it) }
         val script = """
             for pkg in $pkgList; do
                 cmd package unsuspend --user 0 "${'$'}pkg" 2>/dev/null
                 pm unsuspend "${'$'}pkg" 2>/dev/null
                 pm enable "${'$'}pkg" 2>/dev/null
+                am unfreeze --sticky "${'$'}pkg" 2>/dev/null
                 am unfreeze "${'$'}pkg" 2>/dev/null
-                cmd appops set "${'$'}pkg" RUN_IN_BACKGROUND allow 2>/dev/null
-                cmd appops set "${'$'}pkg" RUN_ANY_IN_BACKGROUND allow 2>/dev/null
-                am set-standby-bucket "${'$'}pkg" active 2>/dev/null
                 pids=${'$'}(pgrep -f "^${'$'}pkg" 2>/dev/null || pidof "${'$'}pkg" 2>/dev/null)
                 if [ -n "${'$'}pids" ]; then
                     for p in ${'$'}pids; do
+                        kill -CONT ${'$'}p 2>/dev/null
                         echo 0 > /proc/${'$'}p/oom_score_adj 2>/dev/null
                     done
                 fi
+                cmd appops set "${'$'}pkg" RUN_IN_BACKGROUND allow 2>/dev/null
+                cmd appops set "${'$'}pkg" RUN_ANY_IN_BACKGROUND allow 2>/dev/null
+                am set-standby-bucket "${'$'}pkg" active 2>/dev/null
             done
         """.trimIndent()
         ShellUtils.fastCmd(script)
@@ -442,7 +486,7 @@ object FreezerManager {
      */
     fun getCurrentlyFocusedWindowInfo(): String {
         return try {
-            ShellUtils.fastCmdResult("dumpsys window | grep 'mCurrentFocus' 2>/dev/null", 1000)
+            ShellUtils.fastCmdResult("dumpsys window | grep -E 'mCurrentFocus|mFocusedApp' 2>/dev/null", 1000)
         } catch (e: Exception) {
             ""
         }
@@ -457,31 +501,70 @@ object FreezerManager {
         return out.contains(packageName)
     }
 
-    fun getActivePackages(packages: Collection<String>): Set<String> {
+    fun getActivePackages(context: Context? = null, packages: Collection<String>): Set<String> {
         if (packages.isEmpty()) return emptySet()
         val out = ShellUtils.runAsRoot("ps -A -o NAME").output
         val running = out.split("\n").map { it.trim() }.toSet()
-        return packages.filter { running.contains(it) }.toSet()
+        val pm = context?.packageManager
+        return packages.filter { pkg ->
+            if (pm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                try {
+                    if (pm.isPackageSuspended(pkg)) return@filter false
+                } catch (_: Exception) {}
+            }
+            if (kernelFrozenPackages.contains(pkg) && !isAppCurrentlyVisible(pkg)) {
+                return@filter false
+            }
+            running.contains(pkg)
+        }.toSet()
+    }
+
+    fun getActivePackages(packages: Collection<String>): Set<String> {
+        return getActivePackages(null, packages)
     }
 
     fun launchApp(context: Context, packageName: String) {
         if (!ShellUtils.isValidPackageName(packageName)) return
         
-        // 1. Instantly register active session & grant 15-second absolute immunity
+        // 1. Instantly register active session & grant 30-second absolute immunity
         registerAppOpen(packageName)
+        kernelFrozenPackages.remove(packageName)
 
         val qPkg = ShellUtils.shellQuote(packageName)
 
-        // 2. Resolve target launcher activity component name if possible
-        val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
-        val componentName = launchIntent?.component?.flattenToShortString() ?: ""
+        // 2. Resolve target launcher activity component name (including suspended/disabled components)
+        var componentName = ""
+        val pm = context.packageManager
+        val standardIntent = pm.getLaunchIntentForPackage(packageName)
+        if (standardIntent?.component != null) {
+            componentName = standardIntent.component!!.flattenToShortString()
+        } else {
+            try {
+                val queryIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setPackage(packageName)
+                val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    PackageManager.ResolveInfoFlags.of((PackageManager.MATCH_DISABLED_COMPONENTS or PackageManager.MATCH_UNINSTALLED_PACKAGES).toLong())
+                } else {
+                    @Suppress("DEPRECATION")
+                    PackageManager.MATCH_DISABLED_COMPONENTS or PackageManager.MATCH_UNINSTALLED_PACKAGES
+                }
+                val resolves = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    pm.queryIntentActivities(queryIntent, flags as PackageManager.ResolveInfoFlags)
+                } else {
+                    @Suppress("DEPRECATION")
+                    pm.queryIntentActivities(queryIntent, flags as Int)
+                }
+                resolves.firstOrNull()?.activityInfo?.let {
+                    componentName = ComponentName(it.packageName, it.name).flattenToShortString()
+                }
+            } catch (_: Exception) {}
+        }
 
         val startCmd = if (componentName.isNotBlank()) {
             val qComp = ShellUtils.shellQuote(componentName)
             "am start -n $qComp -a android.intent.action.MAIN -c android.intent.category.LAUNCHER --activity-brought-to-front"
         } else {
             """
-            comp=${'$'}(cmd package resolve-activity --brief $qPkg 2>/dev/null | tail -n 1)
+            comp=${'$'}(cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER $qPkg 2>/dev/null | grep -E "^[a-zA-Z0-9_.]+/.*" | tail -n 1)
             if [ -n "${'$'}comp" ] && [ "${'$'}comp" != "No activity found" ]; then
                 am start -n "${'$'}comp" -a android.intent.action.MAIN -c android.intent.category.LAUNCHER --activity-brought-to-front
             else
@@ -496,10 +579,18 @@ object FreezerManager {
             cmd package unsuspend --user 0 $qPkg 2>/dev/null
             pm unsuspend $qPkg 2>/dev/null
             pm enable $qPkg 2>/dev/null
+            am unfreeze --sticky $qPkg 2>/dev/null
             am unfreeze $qPkg 2>/dev/null
-            cmd appops set $qPkg RUN_IN_BACKGROUND allow
-            cmd appops set $qPkg RUN_ANY_IN_BACKGROUND allow
-            am set-standby-bucket $qPkg active
+            pids=${'$'}(pgrep -f "^$packageName" 2>/dev/null || pidof "$packageName" 2>/dev/null)
+            if [ -n "${'$'}pids" ]; then
+                for p in ${'$'}pids; do
+                    kill -CONT ${'$'}p 2>/dev/null
+                    echo 0 > /proc/${'$'}p/oom_score_adj 2>/dev/null
+                done
+            fi
+            cmd appops set $qPkg RUN_IN_BACKGROUND allow 2>/dev/null
+            cmd appops set $qPkg RUN_ANY_IN_BACKGROUND allow 2>/dev/null
+            am set-standby-bucket $qPkg active 2>/dev/null
             $startCmd
         """.trimIndent()
 
@@ -515,6 +606,7 @@ object FreezerManager {
     fun saveFrozenApps(context: Context, packages: Set<String>) {
         val prefs = context.getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE)
         prefs.edit().putStringSet("frozen_apps", packages).apply()
+        AppEventService.invalidateLabelCache()
     }
 
     fun addAppToFreezer(context: Context, packageName: String) {
@@ -539,11 +631,17 @@ object FreezerManager {
             prefs.edit().putStringSet("special_freeze_apps", special).apply()
         }
 
+        val fgsImmune = prefs.getStringSet("fgs_immune_apps", emptySet())?.toMutableSet() ?: mutableSetOf()
+        if (fgsImmune.remove(packageName)) {
+            prefs.edit().putStringSet("fgs_immune_apps", fgsImmune).apply()
+        }
+
         val custom = prefs.getStringSet("custom_widget_apps", emptySet())?.toMutableSet() ?: mutableSetOf()
         if (custom.remove(packageName)) {
             prefs.edit().putStringSet("custom_widget_apps", custom).apply()
         }
 
+        AppEventService.invalidateLabelCache()
         unfreezeApp(packageName)
         FreezerWidgetProvider.updateAllWidgets(context)
         SpecialFreezerWidgetProvider.updateAllWidgets(context)
@@ -589,6 +687,42 @@ object FreezerManager {
         val set = prefs.getStringSet("special_freeze_apps", emptySet())?.toMutableSet() ?: mutableSetOf()
         if (enable) set.add(packageName) else set.remove(packageName)
         prefs.edit().putStringSet("special_freeze_apps", set).apply()
+        AppEventService.invalidateLabelCache()
+    }
+
+    fun getFgsImmuneApps(context: Context): Set<String> {
+        val prefs = context.getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE)
+        return prefs.getStringSet("fgs_immune_apps", emptySet()) ?: emptySet()
+    }
+
+    fun saveFgsImmuneApps(context: Context, apps: Set<String>) {
+        val prefs = context.getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putStringSet("fgs_immune_apps", apps).apply()
+    }
+
+    fun isFgsImmunityEnabled(context: Context, packageName: String): Boolean {
+        return getFgsImmuneApps(context).contains(packageName)
+    }
+
+    fun setFgsImmunity(context: Context, packageName: String, enable: Boolean) {
+        val prefs = context.getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE)
+        val set = prefs.getStringSet("fgs_immune_apps", emptySet())?.toMutableSet() ?: mutableSetOf()
+        if (enable) set.add(packageName) else set.remove(packageName)
+        prefs.edit().putStringSet("fgs_immune_apps", set).apply()
+    }
+
+    fun toggleFgsImmunity(context: Context, packageName: String): Boolean {
+        val prefs = context.getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE)
+        val set = prefs.getStringSet("fgs_immune_apps", emptySet())?.toMutableSet() ?: mutableSetOf()
+        val newState = if (set.contains(packageName)) {
+            set.remove(packageName)
+            false
+        } else {
+            set.add(packageName)
+            true
+        }
+        prefs.edit().putStringSet("fgs_immune_apps", set).apply()
+        return newState
     }
 
     val KNOWN_EQUALIZERS = listOf(
@@ -692,11 +826,12 @@ object FreezerManager {
      */
     fun isAppFrozen(packageName: String): Boolean {
         if (packageName.isBlank()) return false
-        val out = ShellUtils.fastCmdResult("dumpsys activity processes | grep -E '$packageName.*(freeze=true|frozen)' 2>/dev/null", 1000)
+        if (kernelFrozenPackages.contains(packageName)) return true
+        val out = ShellUtils.fastCmdResult("dumpsys activity processes $packageName 2>/dev/null | grep -iE 'isFrozen=true|freeze=true'", 1000)
         if (out.isNotBlank()) return true
-        val bucket = ShellUtils.fastCmdResult("am get-standby-bucket $packageName 2>/dev/null", 800).trim()
-        if (bucket == "45" || bucket == "restricted" || bucket == "50") return true
         val suspended = ShellUtils.fastCmdResult("dumpsys package $packageName 2>/dev/null | grep -i 'suspended=true'", 800).trim()
-        return suspended.isNotBlank()
+        if (suspended.isNotBlank()) return true
+        val bucket = ShellUtils.fastCmdResult("am get-standby-bucket $packageName 2>/dev/null", 800).trim()
+        return (bucket == "45" || bucket == "restricted" || bucket == "50")
     }
 }
