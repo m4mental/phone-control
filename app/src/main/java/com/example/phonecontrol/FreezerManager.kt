@@ -486,7 +486,7 @@ object FreezerManager {
      */
     fun getCurrentlyFocusedWindowInfo(): String {
         return try {
-            ShellUtils.fastCmdResult("dumpsys window | grep 'mCurrentFocus' 2>/dev/null", 1000)
+            ShellUtils.fastCmdResult("dumpsys window | grep -E 'mCurrentFocus|mFocusedApp' 2>/dev/null", 1000)
         } catch (e: Exception) {
             ""
         }
@@ -526,22 +526,45 @@ object FreezerManager {
     fun launchApp(context: Context, packageName: String) {
         if (!ShellUtils.isValidPackageName(packageName)) return
         
-        // 1. Instantly register active session & grant 15-second absolute immunity
+        // 1. Instantly register active session & grant 30-second absolute immunity
         registerAppOpen(packageName)
         kernelFrozenPackages.remove(packageName)
 
         val qPkg = ShellUtils.shellQuote(packageName)
 
-        // 2. Resolve target launcher activity component name if possible
-        val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
-        val componentName = launchIntent?.component?.flattenToShortString() ?: ""
+        // 2. Resolve target launcher activity component name (including suspended/disabled components)
+        var componentName = ""
+        val pm = context.packageManager
+        val standardIntent = pm.getLaunchIntentForPackage(packageName)
+        if (standardIntent?.component != null) {
+            componentName = standardIntent.component!!.flattenToShortString()
+        } else {
+            try {
+                val queryIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setPackage(packageName)
+                val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    PackageManager.ResolveInfoFlags.of((PackageManager.MATCH_DISABLED_COMPONENTS or PackageManager.MATCH_UNINSTALLED_PACKAGES).toLong())
+                } else {
+                    @Suppress("DEPRECATION")
+                    PackageManager.MATCH_DISABLED_COMPONENTS or PackageManager.MATCH_UNINSTALLED_PACKAGES
+                }
+                val resolves = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    pm.queryIntentActivities(queryIntent, flags as PackageManager.ResolveInfoFlags)
+                } else {
+                    @Suppress("DEPRECATION")
+                    pm.queryIntentActivities(queryIntent, flags as Int)
+                }
+                resolves.firstOrNull()?.activityInfo?.let {
+                    componentName = ComponentName(it.packageName, it.name).flattenToShortString()
+                }
+            } catch (_: Exception) {}
+        }
 
         val startCmd = if (componentName.isNotBlank()) {
             val qComp = ShellUtils.shellQuote(componentName)
             "am start -n $qComp -a android.intent.action.MAIN -c android.intent.category.LAUNCHER --activity-brought-to-front"
         } else {
             """
-            comp=${'$'}(cmd package resolve-activity --brief $qPkg 2>/dev/null | tail -n 1)
+            comp=${'$'}(cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER $qPkg 2>/dev/null | grep -E "^[a-zA-Z0-9_.]+/.*" | tail -n 1)
             if [ -n "${'$'}comp" ] && [ "${'$'}comp" != "No activity found" ]; then
                 am start -n "${'$'}comp" -a android.intent.action.MAIN -c android.intent.category.LAUNCHER --activity-brought-to-front
             else

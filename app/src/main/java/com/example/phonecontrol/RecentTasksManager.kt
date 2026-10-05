@@ -91,9 +91,11 @@ object RecentTasksManager {
             lastKnownRecents = pkgs
             lastQueryTimestamp = now
 
-            // Synchronize activeRecentsPackages with actual system tasks
+            // Synchronize activeRecentsPackages with actual system tasks while strictly preserving newly launched apps
             if (pkgs.isNotEmpty()) {
-                activeRecentsPackages.retainAll(pkgs)
+                activeRecentsPackages.retainAll { p ->
+                    pkgs.contains(p) || FreezerManager.isRecentlyLaunched(p, 30000L)
+                }
                 activeRecentsPackages.addAll(pkgs)
             }
 
@@ -244,12 +246,19 @@ object RecentTasksManager {
 
     fun isIgnoredSystemPackage(pkg: String): Boolean {
         if (pkg.isBlank()) return true
-        return pkg.contains("launcher", ignoreCase = true) ||
-               pkg.contains("home", ignoreCase = true) ||
-               pkg == "com.android.systemui" ||
-               pkg == "android" ||
-               pkg == "com.android.settings" ||
-               pkg == "com.google.android.googlequicksearchbox" ||
-               pkg == "com.example.phonecontrol"
+        val lower = pkg.lowercase()
+        return lower.endsWith(".launcher") ||
+               lower.contains(".launcher.") ||
+               lower.endsWith(".home") ||
+               lower == "com.nothing.launcher" ||
+               lower == "com.google.android.apps.nexuslauncher" ||
+               lower == "com.android.launcher3" ||
+               lower == "com.miui.home" ||
+               lower == "com.sec.android.app.launcher" ||
+               lower == "com.android.systemui" ||
+               lower == "android" ||
+               lower == "com.android.settings" ||
+               lower == "com.google.android.googlequicksearchbox" ||
+               lower == "com.example.phonecontrol"
     }
 }

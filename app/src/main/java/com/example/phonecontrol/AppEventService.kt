@@ -37,9 +37,15 @@ class AppEventService : AccessibilityService() {
             appLabelToPackageMap.clear()
             val allFrozen = FreezerManager.getSpecialFreezeApps(this) + FreezerManager.getFrozenApps(this)
             val counts = mutableMapOf<String, MutableList<String>>()
+            val flags = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                android.content.pm.PackageManager.MATCH_DISABLED_COMPONENTS or android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES
+            } else {
+                @Suppress("DEPRECATION")
+                android.content.pm.PackageManager.GET_DISABLED_COMPONENTS or android.content.pm.PackageManager.GET_UNINSTALLED_PACKAGES
+            }
             for (pkg in allFrozen) {
                 try {
-                    val appInfo = packageManager.getApplicationInfo(pkg, 0)
+                    val appInfo = packageManager.getApplicationInfo(pkg, flags)
                     val l = packageManager.getApplicationLabel(appInfo).toString().trim().lowercase()
                     if (l.isNotEmpty()) {
                         counts.getOrPut(l) { mutableListOf() }.add(pkg)
@@ -58,8 +64,9 @@ class AppEventService : AccessibilityService() {
         return appLabelToPackageMap[clean] // Exact, unique match only!
     }
 
-    private fun isLauncherPackage(pkgName: String, clsName: String): Boolean {
-        if (pkgName.isBlank()) return false
+    private var cachedHomePackage: String? = null
+
+    private fun getKnownHomePackages(): Set<String> {
         val now = System.currentTimeMillis()
         if (now - lastLauncherQueryTime > 60000 || launcherPackages.isEmpty()) {
             launcherPackages.clear()
@@ -75,9 +82,23 @@ class AppEventService : AccessibilityService() {
                     info.activityInfo?.packageName?.let { launcherPackages.add(it) }
                 }
             } catch (_: Exception) {}
+            try {
+                val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+                val res = packageManager.resolveActivity(homeIntent, 0)
+                res?.activityInfo?.packageName?.let {
+                    cachedHomePackage = it
+                    launcherPackages.add(it)
+                }
+            } catch (_: Exception) {}
             lastLauncherQueryTime = now
         }
-        return launcherPackages.contains(pkgName) || isHomeOrLauncher(pkgName, clsName)
+        return launcherPackages
+    }
+
+    private fun isLauncherPackage(pkgName: String, clsName: String): Boolean {
+        if (pkgName.isBlank()) return false
+        val homePkgs = getKnownHomePackages()
+        return homePkgs.contains(pkgName) || (cachedHomePackage != null && pkgName == cachedHomePackage)
     }
 
     private fun dispatchRecentsCheck() {
@@ -94,25 +115,17 @@ class AppEventService : AccessibilityService() {
         }
     }
 
-    private var cachedHomePackage: String? = null
-
     private fun isHomeOrLauncher(pkgName: String, clsName: String): Boolean {
         if (pkgName.isBlank()) return false
-        if (pkgName.contains("launcher", ignoreCase = true) || 
-            pkgName.contains("home", ignoreCase = true) || 
-            clsName.contains("Recents", ignoreCase = true) ||
-            clsName.contains("Overview", ignoreCase = true) ||
-            clsName.contains("Launcher", ignoreCase = true)) {
+        val homePkgs = getKnownHomePackages()
+        if (homePkgs.contains(pkgName) || (cachedHomePackage != null && pkgName == cachedHomePackage)) {
             return true
         }
-        if (cachedHomePackage == null) {
-            try {
-                val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-                val res = packageManager.resolveActivity(homeIntent, 0)
-                cachedHomePackage = res?.activityInfo?.packageName
-            } catch (_: Exception) {}
+        // Recents / Overview hosted inside SystemUI
+        if (pkgName == "com.android.systemui" && (clsName.contains("Recents", ignoreCase = true) || clsName.contains("Overview", ignoreCase = true))) {
+            return true
         }
-        return pkgName == cachedHomePackage
+        return false
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {

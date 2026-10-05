@@ -883,7 +883,7 @@ class AutoTweakService : Service() {
     }
 
     private fun scheduleBackgroundAppFreeze(pkg: String) {
-        if (pkg.isBlank() || pkg == packageName || pkg.contains("launcher", ignoreCase = true) || pkg.contains("home", ignoreCase = true) || pkg == "com.android.systemui") return
+        if (pkg.isBlank() || pkg == packageName || RecentTasksManager.isIgnoredSystemPackage(pkg)) return
         if (!FreezerManager.isAutoFreezeEnabled(this)) return
 
         val frozenApps = FreezerManager.getFrozenApps(this) + FreezerManager.getSpecialFreezeApps(this)
@@ -971,7 +971,7 @@ class AutoTweakService : Service() {
         scheduleBackgroundAppFreeze(previousPkg)
 
         // 4. Fallback verification for Recents swipe: When returning to launcher/home, re-check recents after 500ms
-        if (newPkg.contains("launcher", ignoreCase = true) || newPkg.contains("home", ignoreCase = true)) {
+        if (RecentTasksManager.isIgnoredSystemPackage(newPkg)) {
             equalizerFreezeHandler?.postDelayed({
                 tweakExecutor.execute {
                     reevaluatePerAppHierarchy(newPkg)
@@ -987,9 +987,7 @@ class AutoTweakService : Service() {
         freezerExecutor.execute {
             // 1. Register foreground app if it's a real user application (grants 0ms immunity + unfreezes)
             if (currentForeground.isNotBlank() &&
-                !currentForeground.contains("launcher", ignoreCase = true) &&
-                !currentForeground.contains("home", ignoreCase = true) &&
-                currentForeground != "com.android.systemui" &&
+                !RecentTasksManager.isIgnoredSystemPackage(currentForeground) &&
                 currentForeground != packageName
             ) {
                 FreezerManager.registerAppOpen(currentForeground)
@@ -1033,15 +1031,17 @@ class AutoTweakService : Service() {
 
         // 1. Collect all live packages in Recent Tasks + In-Memory Active Sessions + Current Foreground
         val recentPkgs = FreezerManager.getRecentPackages(forceRefresh = true).toMutableSet()
-        FreezerManager.activeSessionApps.retainAll(recentPkgs)
+        FreezerManager.activeSessionApps.retainAll { p ->
+            recentPkgs.contains(p) || FreezerManager.isRecentlyLaunched(p, 30000L)
+        }
         recentPkgs.addAll(FreezerManager.activeSessionApps)
-        if (foregroundPkg.isNotBlank() && !foregroundPkg.contains("launcher", ignoreCase = true) && foregroundPkg != "com.android.systemui" && foregroundPkg != packageName) {
+        if (foregroundPkg.isNotBlank() && !RecentTasksManager.isIgnoredSystemPackage(foregroundPkg) && foregroundPkg != packageName) {
             recentPkgs.add(foregroundPkg)
             FreezerManager.activeSessionApps.add(foregroundPkg)
         }
 
         // Check if current foreground app itself has an explicit profile (user actively inside it)
-        val isEligibleFg = foregroundPkg.isNotBlank() && foregroundPkg != packageName && !foregroundPkg.contains("launcher", ignoreCase = true) && foregroundPkg != "com.android.systemui"
+        val isEligibleFg = foregroundPkg.isNotBlank() && foregroundPkg != packageName && !RecentTasksManager.isIgnoredSystemPackage(foregroundPkg)
         val isGameInForeground = isEligibleFg && games.contains(foregroundPkg)
         val isGameTurboMaster = turboPrefs.getBoolean("game_turbo_enabled", false)
 
@@ -1401,7 +1401,7 @@ class AutoTweakService : Service() {
         // 3. Normal Global Mode (Targeted Apps Only is OFF)
         StudioDspManager.setBypass(this, false)
 
-        val isEligibleFg = foregroundPkg.isNotBlank() && foregroundPkg != packageName && !foregroundPkg.contains("launcher", ignoreCase = true) && foregroundPkg != "com.android.systemui"
+        val isEligibleFg = foregroundPkg.isNotBlank() && foregroundPkg != packageName && !RecentTasksManager.isIgnoredSystemPackage(foregroundPkg)
         val fgEqPreset = if (isEligibleFg) {
             PowerampPresetManager.getAppPreset(this, foregroundPkg)
                 ?: PerAppManager.getConfig(this, foregroundPkg)?.eqPreset?.takeIf { it.isNotBlank() && it != "Default" && it != "Default (System)" }
