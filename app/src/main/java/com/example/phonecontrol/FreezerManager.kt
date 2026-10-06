@@ -24,7 +24,7 @@ object FreezerManager {
      * Guaranteed 0ms immunity from freeze/force-stop and instant unfreeze.
      * Non-blocking (ANR-Proof): Unfreeze script executes on dedicated background thread.
      */
-    fun registerAppOpen(packageName: String) {
+    fun registerAppOpen(context: Context? = null, packageName: String) {
         if (packageName.isBlank()) return
         activeSessionApps.add(packageName)
         RecentTasksManager.onAppOpened(packageName)
@@ -32,9 +32,25 @@ object FreezerManager {
         val now = System.currentTimeMillis()
         lastLaunchTime = now
         launchTimestamps[packageName] = now
-        freezerExecutor.execute {
-            unfreezeApp(packageName)
+
+        // Check if the app is actually in freezer or kernel-frozen before triggering shell unfreeze
+        val shouldUnfreeze = if (context != null) {
+            kernelFrozenPackages.contains(packageName) ||
+            getFrozenApps(context).contains(packageName) ||
+            getSpecialFreezeApps(context).contains(packageName)
+        } else {
+            kernelFrozenPackages.contains(packageName)
         }
+
+        if (shouldUnfreeze) {
+            freezerExecutor.execute {
+                unfreezeApp(context, packageName)
+            }
+        }
+    }
+
+    fun registerAppOpen(packageName: String) {
+        registerAppOpen(null, packageName)
     }
 
     fun isRecentlyLaunched(packageName: String, gracePeriodMs: Long = 30000L): Boolean {
@@ -285,13 +301,38 @@ object FreezerManager {
     /**
      * Sweep to clean up any legacy pm suspend states from standard freezer apps,
      * while strictly PRESERVING special freeze suspended apps.
+     * Uses a one-time migration preference and only queries apps actually suspended in PM.
      */
     fun cleanLegacySuspendedApps(context: Context) {
+        val prefs = context.getSharedPreferences("freezer_prefs", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("legacy_suspended_cleaned_v2", false)) return
+
         val standardApps = getFrozenApps(context) - getSpecialFreezeApps(context)
-        if (standardApps.isEmpty()) return
-        val pkgList = standardApps.joinToString(" ") { ShellUtils.shellQuote(it) }
+        if (standardApps.isEmpty()) {
+            prefs.edit().putBoolean("legacy_suspended_cleaned_v2", true).apply()
+            return
+        }
+
+        val pm = context.packageManager
+        val actuallySuspended = standardApps.filter { pkg ->
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    pm.isPackageSuspended(pkg)
+                } else false
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        if (actuallySuspended.isEmpty()) {
+            prefs.edit().putBoolean("legacy_suspended_cleaned_v2", true).apply()
+            return
+        }
+
+        val pkgList = actuallySuspended.joinToString(" ") { ShellUtils.shellQuote(it) }
         freezerExecutor.execute {
             ShellUtils.fastCmd("for p in $pkgList; do cmd package unsuspend --user 0 \$p 2>/dev/null; pm unsuspend \$p 2>/dev/null; done")
+            prefs.edit().putBoolean("legacy_suspended_cleaned_v2", true).apply()
         }
     }
 
@@ -370,60 +411,85 @@ object FreezerManager {
 
     /**
      * Resumes an app instantly on open.
+     * Special Freeze: Unsuspends package in PM.
+     * Normal Freeze: Unfreezes cgroup/kernel process (ZERO pm calls, preventing AMS change kill).
      */
-    fun unfreezeApp(packageName: String) {
+    fun unfreezeApp(context: Context? = null, packageName: String) {
         if (packageName.isBlank()) return
         kernelFrozenPackages.remove(packageName)
         val qPkg = ShellUtils.shellQuote(packageName)
-        val script = """
-            cmd package unsuspend --user 0 $qPkg 2>/dev/null
-            pm unsuspend $qPkg 2>/dev/null
-            pm enable $qPkg 2>/dev/null
-            am unfreeze --sticky $qPkg 2>/dev/null
-            am unfreeze $qPkg 2>/dev/null
-            pids=${'$'}(pgrep -f "^$packageName" 2>/dev/null || pidof "$packageName" 2>/dev/null)
-            if [ -n "${'$'}pids" ]; then
-                for p in ${'$'}pids; do
-                    kill -CONT ${'$'}p 2>/dev/null
-                    echo 0 > /proc/${'$'}p/oom_score_adj 2>/dev/null
-                done
-            fi
-            cmd appops set $qPkg RUN_IN_BACKGROUND allow 2>/dev/null
-            cmd appops set $qPkg RUN_ANY_IN_BACKGROUND allow 2>/dev/null
-            am set-standby-bucket $qPkg active 2>/dev/null
-        """.trimIndent()
-        ShellUtils.fastCmd(script)
-    }
+        val isSpecial = if (context != null) isSpecialFreeze(context, packageName) else false
 
-    /**
-     * Batch Unfreezes multiple apps.
-     */
-    fun unfreezeMultipleApps(packages: Collection<String>) {
-        if (packages.isEmpty()) return
-        for (pkg in packages) {
-            kernelFrozenPackages.remove(pkg)
-        }
-        val pkgList = packages.joinToString(" ") { ShellUtils.shellQuote(it) }
-        val script = """
-            for pkg in $pkgList; do
-                cmd package unsuspend --user 0 "${'$'}pkg" 2>/dev/null
-                pm unsuspend "${'$'}pkg" 2>/dev/null
-                pm enable "${'$'}pkg" 2>/dev/null
-                am unfreeze --sticky "${'$'}pkg" 2>/dev/null
-                am unfreeze "${'$'}pkg" 2>/dev/null
-                pids=${'$'}(pgrep -f "^${'$'}pkg" 2>/dev/null || pidof "${'$'}pkg" 2>/dev/null)
+        val script = if (isSpecial) {
+            """
+                cmd package unsuspend --user 0 $qPkg 2>/dev/null
+                pm unsuspend $qPkg 2>/dev/null
+                cmd appops set $qPkg RUN_IN_BACKGROUND allow 2>/dev/null
+                cmd appops set $qPkg RUN_ANY_IN_BACKGROUND allow 2>/dev/null
+                am set-standby-bucket $qPkg active 2>/dev/null
+            """.trimIndent()
+        } else {
+            """
+                am unfreeze --sticky $qPkg 2>/dev/null
+                am unfreeze $qPkg 2>/dev/null
+                pids=${'$'}(pgrep -f "^$packageName" 2>/dev/null || pidof "$packageName" 2>/dev/null)
                 if [ -n "${'$'}pids" ]; then
                     for p in ${'$'}pids; do
                         kill -CONT ${'$'}p 2>/dev/null
                         echo 0 > /proc/${'$'}p/oom_score_adj 2>/dev/null
                     done
                 fi
-                cmd appops set "${'$'}pkg" RUN_IN_BACKGROUND allow 2>/dev/null
-                cmd appops set "${'$'}pkg" RUN_ANY_IN_BACKGROUND allow 2>/dev/null
-                am set-standby-bucket "${'$'}pkg" active 2>/dev/null
-            done
-        """.trimIndent()
+                cmd appops set $qPkg RUN_IN_BACKGROUND allow 2>/dev/null
+                cmd appops set $qPkg RUN_ANY_IN_BACKGROUND allow 2>/dev/null
+                am set-standby-bucket $qPkg active 2>/dev/null
+            """.trimIndent()
+        }
         ShellUtils.fastCmd(script)
+    }
+
+    fun unfreezeApp(packageName: String) {
+        unfreezeApp(null, packageName)
+    }
+
+    /**
+     * Batch Unfreezes multiple apps.
+     */
+    fun unfreezeMultipleApps(context: Context? = null, packages: Collection<String>) {
+        if (packages.isEmpty()) return
+        for (pkg in packages) {
+            kernelFrozenPackages.remove(pkg)
+        }
+        val specialApps = if (context != null) getSpecialFreezeApps(context) else emptySet()
+        val specialToUnsuspend = packages.filter { specialApps.contains(it) }
+        val specialPkgList = specialToUnsuspend.joinToString(" ") { ShellUtils.shellQuote(it) }
+        val allPkgList = packages.joinToString(" ") { ShellUtils.shellQuote(it) }
+
+        val script = buildString {
+            if (specialToUnsuspend.isNotEmpty()) {
+                appendLine("for pkg in $specialPkgList; do cmd package unsuspend --user 0 \"\$pkg\" 2>/dev/null; pm unsuspend \"\$pkg\" 2>/dev/null; done")
+            }
+            appendLine("""
+                for pkg in $allPkgList; do
+                    am unfreeze --sticky "${'$'}pkg" 2>/dev/null
+                    am unfreeze "${'$'}pkg" 2>/dev/null
+                    pids=${'$'}(pgrep -f "^${'$'}pkg" 2>/dev/null || pidof "${'$'}pkg" 2>/dev/null)
+                    if [ -n "${'$'}pids" ]; then
+                        for p in ${'$'}pids; do
+                            kill -CONT ${'$'}p 2>/dev/null
+                            echo 0 > /proc/${'$'}p/oom_score_adj 2>/dev/null
+                        done
+                    fi
+                    cmd appops set "${'$'}pkg" RUN_IN_BACKGROUND allow 2>/dev/null
+                    cmd appops set "${'$'}pkg" RUN_ANY_IN_BACKGROUND allow 2>/dev/null
+                    am set-standby-bucket "${'$'}pkg" active 2>/dev/null
+                done
+            """.trimIndent())
+        }
+        ShellUtils.fastCmd(script)
+    }
+
+    fun unfreezeMultipleApps(packages: Collection<String>) {
+        unfreezeMultipleApps(null, packages)
     }
 
     @Volatile private var cachedRecentPackages: Set<String> = emptySet()
@@ -527,10 +593,11 @@ object FreezerManager {
         if (!ShellUtils.isValidPackageName(packageName)) return
         
         // 1. Instantly register active session & grant 30-second absolute immunity
-        registerAppOpen(packageName)
+        registerAppOpen(context, packageName)
         kernelFrozenPackages.remove(packageName)
 
         val qPkg = ShellUtils.shellQuote(packageName)
+        val isSpecial = isSpecialFreeze(context, packageName)
 
         // 2. Resolve target launcher activity component name (including suspended/disabled components)
         var componentName = ""
@@ -561,38 +628,48 @@ object FreezerManager {
 
         val startCmd = if (componentName.isNotBlank()) {
             val qComp = ShellUtils.shellQuote(componentName)
-            "am start -n $qComp -a android.intent.action.MAIN -c android.intent.category.LAUNCHER --activity-brought-to-front"
+            "am start -n $qComp -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10200000"
         } else {
             """
             comp=${'$'}(cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER $qPkg 2>/dev/null | grep -E "^[a-zA-Z0-9_.]+/.*" | tail -n 1)
             if [ -n "${'$'}comp" ] && [ "${'$'}comp" != "No activity found" ]; then
-                am start -n "${'$'}comp" -a android.intent.action.MAIN -c android.intent.category.LAUNCHER --activity-brought-to-front
+                am start -n "${'$'}comp" -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10200000
             else
                 monkey -p $qPkg -c android.intent.category.LAUNCHER 1
             fi
             """.trimIndent()
         }
 
-        // 3. Atomically unsuspend, enable, unfreeze, and launch in root shell asynchronously with 0ms UI delay
-        // Sequential shell execution guarantees pm unsuspend finishes BEFORE am start, preventing SuspendedAppActivity
-        val launchScript = """
-            cmd package unsuspend --user 0 $qPkg 2>/dev/null
-            pm unsuspend $qPkg 2>/dev/null
-            pm enable $qPkg 2>/dev/null
-            am unfreeze --sticky $qPkg 2>/dev/null
-            am unfreeze $qPkg 2>/dev/null
-            pids=${'$'}(pgrep -f "^$packageName" 2>/dev/null || pidof "$packageName" 2>/dev/null)
-            if [ -n "${'$'}pids" ]; then
-                for p in ${'$'}pids; do
-                    kill -CONT ${'$'}p 2>/dev/null
-                    echo 0 > /proc/${'$'}p/oom_score_adj 2>/dev/null
-                done
-            fi
-            cmd appops set $qPkg RUN_IN_BACKGROUND allow 2>/dev/null
-            cmd appops set $qPkg RUN_ANY_IN_BACKGROUND allow 2>/dev/null
-            am set-standby-bucket $qPkg active 2>/dev/null
-            $startCmd
-        """.trimIndent()
+        // 3. Atomically unfreeze and launch in root shell asynchronously with 0ms UI delay.
+        // For special freeze apps: unsuspend + 150ms buffer to allow PMS to settle before process starts.
+        // For normal freezer apps: unfreeze cgroup v2 without touching PackageManager (prevents PMS change kill).
+        val launchScript = if (isSpecial) {
+            """
+                cmd package unsuspend --user 0 $qPkg 2>/dev/null
+                pm unsuspend $qPkg 2>/dev/null
+                sleep 0.15
+                cmd appops set $qPkg RUN_IN_BACKGROUND allow 2>/dev/null
+                cmd appops set $qPkg RUN_ANY_IN_BACKGROUND allow 2>/dev/null
+                am set-standby-bucket $qPkg active 2>/dev/null
+                $startCmd
+            """.trimIndent()
+        } else {
+            """
+                am unfreeze --sticky $qPkg 2>/dev/null
+                am unfreeze $qPkg 2>/dev/null
+                pids=${'$'}(pgrep -f "^$packageName" 2>/dev/null || pidof "$packageName" 2>/dev/null)
+                if [ -n "${'$'}pids" ]; then
+                    for p in ${'$'}pids; do
+                        kill -CONT ${'$'}p 2>/dev/null
+                        echo 0 > /proc/${'$'}p/oom_score_adj 2>/dev/null
+                    done
+                fi
+                cmd appops set $qPkg RUN_IN_BACKGROUND allow 2>/dev/null
+                cmd appops set $qPkg RUN_ANY_IN_BACKGROUND allow 2>/dev/null
+                am set-standby-bucket $qPkg active 2>/dev/null
+                $startCmd
+            """.trimIndent()
+        }
 
         ShellUtils.fastCmd(launchScript)
         TweakManager.triggerTurboBoost()
@@ -642,7 +719,7 @@ object FreezerManager {
         }
 
         AppEventService.invalidateLabelCache()
-        unfreezeApp(packageName)
+        unfreezeApp(context, packageName)
         FreezerWidgetProvider.updateAllWidgets(context)
         SpecialFreezerWidgetProvider.updateAllWidgets(context)
     }
@@ -811,7 +888,6 @@ object FreezerManager {
     fun instantUnfreezeEqualizer(packageName: String) {
         if (packageName.isBlank()) return
         val script = """
-            pm enable "$packageName" 2>/dev/null
             am unfreeze "$packageName" 2>/dev/null
             am set-standby-bucket "$packageName" active 2>/dev/null
             for p in $(pidof "$packageName"); do

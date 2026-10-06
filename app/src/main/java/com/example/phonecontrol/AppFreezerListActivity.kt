@@ -420,7 +420,7 @@ class AppFreezerListActivity : AppCompatActivity() {
                     }
                     1 -> {
                         thread {
-                            FreezerManager.unfreezeApp(pkg)
+                            FreezerManager.unfreezeApp(this, pkg)
                             runOnUiThread {
                                 refreshList()
                                 notifyWidgets()
@@ -489,7 +489,7 @@ class AppFreezerListActivity : AppCompatActivity() {
                         thread {
                             ShellUtils.fastCmd("cmd package unsuspend --user 0 $pkg 2>/dev/null; pm unsuspend $pkg 2>/dev/null")
                             FreezerManager.setSpecialFreeze(this, pkg, false)
-                            FreezerManager.unfreezeApp(pkg)
+                            FreezerManager.unfreezeApp(this, pkg)
                             runOnUiThread {
                                 refreshList()
                                 notifyWidgets()

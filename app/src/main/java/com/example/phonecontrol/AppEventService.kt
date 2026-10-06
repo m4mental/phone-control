@@ -151,7 +151,7 @@ class AppEventService : AccessibilityService() {
             if (cleanLabel.isNotBlank()) {
                 val targetPkg = getPackageForExactUniqueLabel(cleanLabel)
                 if (targetPkg != null) {
-                    FreezerManager.registerAppOpen(targetPkg)
+                    FreezerManager.registerAppOpen(this, targetPkg)
                     if (combined.contains("Disabled ", ignoreCase = true) ||
                         combined.contains("Paused ", ignoreCase = true) ||
                         FreezerManager.isSpecialFreeze(this, targetPkg)) {
@@ -201,7 +201,7 @@ class AppEventService : AccessibilityService() {
         // Instant session registration: Protect app from freeze & unfreeze immediately
         val isHomeOrRecents = isHomeOrLauncher(pkgName, clsName)
         if (!isHomeOrRecents && pkgName != packageName) {
-            FreezerManager.registerAppOpen(pkgName)
+            FreezerManager.registerAppOpen(this, pkgName)
         }
 
         // When returning to launcher / home screen, trigger instant recents check
