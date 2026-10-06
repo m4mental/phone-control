@@ -990,7 +990,7 @@ class AutoTweakService : Service() {
                 !RecentTasksManager.isIgnoredSystemPackage(currentForeground) &&
                 currentForeground != packageName
             ) {
-                FreezerManager.registerAppOpen(currentForeground)
+                FreezerManager.registerAppOpen(this@AutoTweakService, currentForeground)
             }
 
             // 2. Sync all alive recents tasks into activeSessionApps
