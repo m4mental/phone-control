@@ -12,7 +12,12 @@ object MultitaskingManager {
         "io.github.sds100.keymapper.debug",
         "com.keymapper",
         "com.example.phonecontrol",
-        "com.google.android.gms"
+        "com.google.android.gms",
+        "com.whatsapp",
+        "com.whatsapp.w4b",
+        "org.telegram.messenger",
+        "org.thunderdog.challegram",
+        "org.thoughtcrime.securesms"
     )
 
     private const val PREF_KEY_UNIVERSAL_WHITELIST = "universal_protected_whitelist"
@@ -57,8 +62,8 @@ object MultitaskingManager {
         context.getSharedPreferences("multitasking_prefs", Context.MODE_PRIVATE)
             .edit().putStringSet("user_whitelist", current).apply()
 
-        // Grant comprehensive kernel, doze, appops & standby exemptions immediately
-        grantFullExemption(packageName)
+        // Grant comprehensive kernel, doze, appops, netpolicy & standby exemptions immediately
+        grantFullExemption(packageName, context)
     }
 
     fun removeAppFromWhitelist(context: Context, packageName: String) {
@@ -78,13 +83,18 @@ object MultitaskingManager {
     }
 
     /**
-     * Applies full 7-point kernel and system exemption for an app.
+     * Applies full 9-point kernel, doze, app-idle, netpolicy, appops and standby exemption for an app.
      * Batched via fastBatchCmd to eliminate timeouts and prevent shell locks.
      */
-    fun grantFullExemption(packageName: String) {
+    fun grantFullExemption(packageName: String, context: Context? = null) {
         thread {
-            val batchCommands = listOf(
+            val uid = try {
+                context?.packageManager?.getApplicationInfo(packageName, 0)?.uid
+            } catch (e: Exception) { null }
+
+            val batchCommands = mutableListOf(
                 "dumpsys deviceidle whitelist +$packageName 2>/dev/null",
+                "cmd deviceidle whitelist +$packageName 2>/dev/null",
                 "dumpsys deviceidle except-idle-whitelist +$packageName 2>/dev/null",
                 "cmd appops set $packageName RUN_IN_BACKGROUND allow 2>/dev/null",
                 "cmd appops set $packageName RUN_ANY_IN_BACKGROUND allow 2>/dev/null",
@@ -93,6 +103,12 @@ object MultitaskingManager {
                 "am set-standby-bucket $packageName active 2>/dev/null",
                 "cmd activity set-inactive $packageName false 2>/dev/null"
             )
+            if (uid != null && uid > 0) {
+                batchCommands.add("cmd netpolicy add restrict-background-whitelist $uid 2>/dev/null")
+                batchCommands.add("cmd netpolicy add app-idle-whitelist $uid 2>/dev/null")
+            } else {
+                batchCommands.add("pkg_uid=\$(pm list packages -U 2>/dev/null | grep \"package:$packageName \" | sed -n 's/.*uid://p'); if [ -n \"\$pkg_uid\" ]; then cmd netpolicy add restrict-background-whitelist \$pkg_uid 2>/dev/null; cmd netpolicy add app-idle-whitelist \$pkg_uid 2>/dev/null; fi")
+            }
             ShellUtils.fastBatchCmd(batchCommands)
         }
     }

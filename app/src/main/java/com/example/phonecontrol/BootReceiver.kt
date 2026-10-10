@@ -20,8 +20,14 @@ class BootReceiver : BroadcastReceiver() {
                 }
 
                 // Aggressive root-level activation
-                ShellUtils.runAsRoot("dumpsys deviceidle whitelist +com.example.phonecontrol; am set-standby-bucket com.example.phonecontrol active 2>/dev/null")
+                ShellUtils.runAsRoot("dumpsys deviceidle whitelist +com.example.phonecontrol; cmd deviceidle whitelist +com.example.phonecontrol 2>/dev/null; am set-standby-bucket com.example.phonecontrol active 2>/dev/null; dumpsys deviceidle unforce 2>/dev/null; settings put global master_sync_enabled 1 2>/dev/null; settings put system power_sleep_tight_activated 0 2>/dev/null")
                 AppEventService.enableViaRoot(context.packageName)
+
+                // Enforce comprehensive exemption for protected apps (WhatsApp, GMS, KeyMapper, user whitelist) on boot
+                val allSafeApps = MultitaskingManager.getUserWhitelist(context) + MultitaskingManager.protectedApps
+                for (safePkg in allSafeApps) {
+                    MultitaskingManager.grantFullExemption(safePkg, context)
+                }
                 
                 val prefs = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
 

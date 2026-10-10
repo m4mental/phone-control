@@ -280,11 +280,11 @@ Maintains clean, uncluttered application lifecycles:
 
 To eliminate app kill issues with critical utilities (such as **Key Mapper**, accessibility gesture tools, alarms, and messaging apps), Phone Control features a **Universal Protected Whitelist Engine** managed via `MultitaskingManager.kt`.
 
-Adding an application once to the Universal Whitelist automatically grants an unbroken **7-Layer Kernel & OS Exemption**:
+Adding an application once to the Universal Whitelist automatically grants an unbroken **9-Layer Kernel & OS Exemption**:
 
 ```kotlin
 // 1. Android Standard DeviceIdle Doze Whitelist
-dumpsys deviceidle whitelist +$packageName
+dumpsys deviceidle whitelist +$packageName; cmd deviceidle whitelist +$packageName
 
 // 2. Android Deep Idle Sleep Exemption
 dumpsys deviceidle except-idle-whitelist +$packageName
@@ -303,6 +303,12 @@ am set-standby-bucket $packageName active
 
 // 7. Prevent Inactivity Marking
 cmd activity set-inactive $packageName false
+
+// 8. Metered Network Background Permit (Unrestricted Mobile Data / 5G)
+cmd netpolicy add restrict-background-whitelist $uid
+
+// 9. Android App-Idle Exemption (Prevents Service Idle Kill)
+cmd netpolicy add app-idle-whitelist $uid
 ```
 
 ---

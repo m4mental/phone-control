@@ -581,7 +581,7 @@ class AutoTweakService : Service() {
             if (isServiceDestroyed) return@execute
             AppEventService.enableViaRoot(packageName)
             if (isServiceDestroyed) return@execute
-            ShellUtils.fastCmd("dumpsys deviceidle whitelist +$packageName; am set-standby-bucket $packageName active 2>/dev/null; settings put global master_sync_enabled 1 2>/dev/null; settings put system power_sleep_tight_activated 0 2>/dev/null")
+            ShellUtils.fastCmd("dumpsys deviceidle whitelist +$packageName; cmd deviceidle whitelist +$packageName 2>/dev/null; am set-standby-bucket $packageName active 2>/dev/null; settings put global master_sync_enabled 1 2>/dev/null; settings put system power_sleep_tight_activated 0 2>/dev/null; dumpsys deviceidle unforce 2>/dev/null")
             if (isServiceDestroyed) return@execute
             ThermalManager.checkAndRecoverCooldown(this)
             checkAndRecoverBootTurbo(this@AutoTweakService)
@@ -1710,7 +1710,7 @@ class AutoTweakService : Service() {
         // 2. Guarantee Whitelist & Accessibility Exemption (Evaluated first to protect real-time push apps)
         val allSafeApps = MultitaskingManager.getUserWhitelist(this@AutoTweakService) + MultitaskingManager.protectedApps
         for (pkg in allSafeApps) {
-            MultitaskingManager.grantFullExemption(pkg)
+            MultitaskingManager.grantFullExemption(pkg, this@AutoTweakService)
         }
 
         // 3. Super Doze & Sync Logic with Whitelist Notification Guard
@@ -1867,7 +1867,7 @@ class AutoTweakService : Service() {
         cancelScreenOffFreeze()
         
         Log.d("AutoTweak", "Screen ON Event - Instant 0ms Async Wakeup")
-        ShellUtils.fastCmd("echo 'on' > /data/local/tmp/pc_screen")
+        ShellUtils.fastCmd("echo 'on' > /data/local/tmp/pc_screen; dumpsys deviceidle unforce 2>/dev/null; cmd deviceidle unforce 2>/dev/null")
 
         // 1. Instant 0ms Atomic Wakeup Boost (Unpark cores, 3.5s MediaTek GED GPU boost, schedutil ramp)
         TweakManager.triggerTemporaryWakeupBoost()
