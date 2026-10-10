@@ -54,7 +54,11 @@ class PackageInstallActivity : AppCompatActivity() {
 
         val action = intent.action
         val isConflictReentry = intent.getBooleanExtra("extra_from_conflict", false)
-        if (!isConflictReentry && action != Intent.ACTION_VIEW && action != Intent.ACTION_SEND) {
+        val isSupportedAction = action == Intent.ACTION_VIEW || 
+                               action == Intent.ACTION_SEND || 
+                               action == "android.intent.action.INSTALL_PACKAGE" ||
+                               action == Intent.ACTION_INSTALL_PACKAGE
+        if (!isConflictReentry && !isSupportedAction) {
             finish()
             return
         }
@@ -86,7 +90,11 @@ class PackageInstallActivity : AppCompatActivity() {
 
         val action = intent.action
         val isConflictReentry = intent.getBooleanExtra("extra_from_conflict", false)
-        if (!isConflictReentry && action != Intent.ACTION_VIEW && action != Intent.ACTION_SEND) {
+        val isSupportedAction = action == Intent.ACTION_VIEW || 
+                               action == Intent.ACTION_SEND || 
+                               action == "android.intent.action.INSTALL_PACKAGE" ||
+                               action == Intent.ACTION_INSTALL_PACKAGE
+        if (!isConflictReentry && !isSupportedAction) {
             finish()
             return
         }
@@ -314,7 +322,10 @@ class PackageInstallActivity : AppCompatActivity() {
         tvIncomingVer.text = "v${inspection.incomingVersionName} (Build ${inspection.incomingVersionCode})"
         if (inspection.isInstalled) {
             tvInstalledVer.text = "v${inspection.installedVersionName ?: "?"} (Build ${inspection.installedVersionCode ?: 0})"
-            if (inspection.isDowngrade) {
+            if (inspection.isSignatureMismatch) {
+                tvInstallType.text = "⚠️ Signature Conflict (Mod/Re-signed APK) - Overwrite Required"
+                tvInstallType.setTextColor(Color.parseColor("#FF9800"))
+            } else if (inspection.isDowngrade) {
                 tvInstallType.text = "🔴 Version Downgrade (Older than installed build)"
                 tvInstallType.setTextColor(Color.parseColor("#FF5252"))
             } else if (inspection.isSameVersion) {
@@ -365,7 +376,13 @@ class PackageInstallActivity : AppCompatActivity() {
         }
 
         btnInstall.isEnabled = true
-        btnInstall.text = if (inspection.isGhostPackage) "👻 Clean & Install with Root" else "⚡ Install with Root"
+        btnInstall.text = if (inspection.isGhostPackage) {
+            "👻 Clean & Install with Root"
+        } else if (inspection.isSignatureMismatch) {
+            "⚡ Resolve Conflict & Install"
+        } else {
+            "⚡ Install with Root"
+        }
         btnInstall.setOnClickListener {
             if (inspection.isGhostPackage) {
                 androidx.appcompat.app.AlertDialog.Builder(this)
@@ -378,6 +395,17 @@ class PackageInstallActivity : AppCompatActivity() {
                     }
                     .setNegativeButton("Cancel", null)
                     .show()
+            } else if (inspection.isSignatureMismatch) {
+                val conflictRes = PackageInstallerManager.InstallResult(
+                    success = false,
+                    message = "Signature conflict detected between installed version and incoming APK",
+                    failureTitle = "Signature Mismatch Conflict",
+                    failureExplanation = "The incoming APK has a different signing certificate from the version currently installed on your phone (common with Modded, Patched, or different release-key APKs).\n\nAndroid blocks updates across differing signatures. To proceed safely, Phone Control will back up your app data, cleanly remove the older build, and install this build with root.",
+                    conflictPackage = inspection.packageName,
+                    rawOutput = "INSTALL_FAILED_UPDATE_INCOMPATIBLE: Signatures do not match",
+                    isSignatureConflict = true
+                )
+                showConflictForceDialog(uri, fileName, inspection, conflictRes, installSheetDialog)
             } else {
                 btnInstall.isEnabled = false
                 btnInstall.text = "⚡ Installing with Root..."
@@ -545,6 +573,12 @@ class PackageInstallActivity : AppCompatActivity() {
 
         val isDupPerm = result.failureTitle?.contains("Duplicate Permission", ignoreCase = true) == true ||
                         result.rawOutput.contains("INSTALL_FAILED_DUPLICATE_PERMISSION", ignoreCase = true)
+        val isProviderConflict = result.failureTitle?.contains("Provider Conflict", ignoreCase = true) == true ||
+                        result.rawOutput.contains("INSTALL_FAILED_CONFLICTING_PROVIDER", ignoreCase = true)
+        val isSigConflict = result.failureTitle?.contains("Signature", ignoreCase = true) == true ||
+                        result.rawOutput.contains("INSTALL_FAILED_UPDATE_INCOMPATIBLE", ignoreCase = true) ||
+                        result.rawOutput.contains("signatures do not match", ignoreCase = true) ||
+                        result.rawOutput.contains("INSTALL_FAILED_SHARED_USER_INCOMPATIBLE", ignoreCase = true)
 
         fun updateBackupUi(checked: Boolean) {
             cbAutoBackup?.isChecked = checked
@@ -554,14 +588,14 @@ class PackageInstallActivity : AppCompatActivity() {
                 tvBackupTitle?.setTextColor(Color.parseColor("#00E676"))
                 tvBackupDesc?.text = "Archives accounts, databases & settings to restore in 1-click. Uncheck for a fresh clean install."
                 tvBackupDesc?.setTextColor(Color.parseColor("#C8E6C9"))
-                btnProceed.text = if (isDupPerm) "⚡ Replace Conflict & Install (Safe)" else "⚡ Force Install (Safe)"
+                btnProceed.text = if (isDupPerm || isProviderConflict) "⚡ Replace Conflict & Install (Safe)" else "⚡ Force Install (Safe)"
             } else {
                 layoutBackupToggle?.setBackgroundColor(Color.parseColor("#1E1E24"))
                 tvBackupTitle?.text = "⚠️ No Backup (Fresh Clean Install)"
                 tvBackupTitle?.setTextColor(Color.parseColor("#FF9800"))
-                tvBackupDesc?.text = if (isDupPerm) "Removes the conflicting signature package and installs this new build cleanly." else "Previous app data will be deleted. The new build will start in completely fresh default state."
+                tvBackupDesc?.text = if (isDupPerm || isProviderConflict) "Removes the conflicting package and installs this new build cleanly." else "Previous app data will be deleted. The new build will start in completely fresh default state."
                 tvBackupDesc?.setTextColor(Color.parseColor("#FFE0B2"))
-                btnProceed.text = if (isDupPerm) "⚡ Clean Reinstall & Replace Conflict" else "⚡ Force Install (Clean)"
+                btnProceed.text = if (isDupPerm || isProviderConflict) "⚡ Clean Reinstall & Replace Conflict" else "⚡ Force Install (Clean)"
             }
         }
 
@@ -579,8 +613,10 @@ class PackageInstallActivity : AppCompatActivity() {
 
         tvHeaderTitle.text = result.failureTitle ?: "Installation Stoppage Detected"
         tvReasonTitle.text = result.failureTitle ?: "Conflict Occurred"
-        tvReasonExplanation.text = if (isDupPerm && !result.conflictPackage.isNullOrBlank()) {
-            "Another app installed on your phone ('${result.conflictPackage}') owns a signature permission that conflicts with this APK. Android blocks co-existence unless the conflicting app is replaced.\n\nTapping below will automatically uninstall the conflicting build and cleanly install this APK."
+        tvReasonExplanation.text = if ((isDupPerm || isProviderConflict) && !result.conflictPackage.isNullOrBlank()) {
+            "Another app installed on your phone ('${result.conflictPackage}') conflicts with this APK. Android blocks co-existence unless the conflicting app is replaced.\n\nTapping below will automatically uninstall the conflicting build and cleanly install this APK."
+        } else if (isSigConflict) {
+            "The APK has a different signing certificate or is a modified/re-signed build compared to the app already on your phone. Android requires replacing the previous installation to proceed.\n\nTapping below will back up existing data, purge the old conflicting build across all users, and install this build cleanly."
         } else {
             result.failureExplanation ?: result.message
         }

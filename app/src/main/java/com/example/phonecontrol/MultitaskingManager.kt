@@ -8,16 +8,8 @@ object MultitaskingManager {
      * Default core apps that must NEVER be killed or restricted during sleep/standby.
      */
     val protectedApps = listOf(
-        "io.github.sds100.keymapper",
-        "io.github.sds100.keymapper.debug",
-        "com.keymapper",
         "com.example.phonecontrol",
-        "com.google.android.gms",
-        "com.whatsapp",
-        "com.whatsapp.w4b",
-        "org.telegram.messenger",
-        "org.thunderdog.challegram",
-        "org.thoughtcrime.securesms"
+        "com.google.android.gms"
     )
 
     private const val PREF_KEY_UNIVERSAL_WHITELIST = "universal_protected_whitelist"
