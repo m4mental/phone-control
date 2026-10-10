@@ -252,6 +252,9 @@ object MasterManager {
 
         UpdateShieldManager.setMasterEnabled(context, false)
         PackageInstallerManager.setDefaultInstallerEnabled(context, false)
+        DynamicPrivacyManager.unlockAllGuardedApps(context)
+        context.getSharedPreferences("dynamic_privacy_prefs", Context.MODE_PRIVATE).edit().clear().apply()
+        editor.putBoolean("dynamic_privacy_enabled", false)
 
         editor.putString("selected_mode", "rbBalance")
         editor.apply()

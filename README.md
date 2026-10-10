@@ -88,7 +88,9 @@ Engineered to deliver aggressive battery preservation through distinct Android a
   * Includes 1-Click instant action buttons: **`APPLY RESTRICTED BUCKETS NOW`** and **`RESET ALL APPS TO ACTIVE BUCKET`**.
 * 🌙 **Super Doze Deep Sleep [Kernel / CPU Hardware Layer]:**
   * Activates deep CPU C-States (Core Parking & 400MHz idle frequencies) on MediaTek Dimensity architecture.
-  * Suppresses background Google Cloud master synchronization (`master_sync_enabled 0`).
+  * Suppresses background Google Cloud master synchronization (`master_sync_enabled 0`) with protected messenger safeguards (default OFF to preserve instant push delivery).
+  * Automatically counteracts Nothing OS Sleep Standby Optimization (`power_sleep_tight_activated 0`) to prevent overnight cellular/Wi-Fi radio dropouts.
+  * Universal Protected Whitelist automatically keeps GMS push sockets (`com.google.android.gms`), WhatsApp, and critical messengers exempt from background suppression.
   * Blocks non-critical kernel wakelocks (`wlan_wake`, `wlan_rx_wake`) to achieve near **0% overnight battery drop**.
 * 🔌 **Charging Protection & Hardware Bypass Lab:**
   * **Configurable Battery Charge Limit:** Automatically stops charging at predefined thresholds (e.g., 80%) to prolong battery lifespan.
@@ -175,6 +177,11 @@ Provides granular control over network modems and system telemetry:
   * **Smart Port Auto-Sleep Engine (Anti-Drain & Security Guard):** Event-driven monitor in `AutoTweakService` that automatically suspends the listening ADB daemon port when disconnected from Wi-Fi, Mobile Hotspot, or USB Tethering networks, preventing battery drain over cellular (Mobile Data) and offline standby, protected by a 15-second anti-flapping debounce delay.
   * **Instant Auto-Reopen on Network Recovery:** Reopens listening ports immediately when connecting to Wi-Fi, starting a Mobile Hotspot, or plugging into USB Tethering, broadcasting real-time network roaming alerts and IP/port status toasts.
   * **Quick Settings (QS) Tile Integration:** Custom `WirelessAdbTileService` displays live `<ip>:<port>` status and provides 1-tap toggling directly from the Android Quick Settings shade.
+* 🛡️ **Dynamic Privacy Guard (Zero-Leak Background Permission Revocation Engine):**
+  * **Automated Runtime Permission Stripping:** The instant monitored applications transition into the background or the device screen turns OFF, sensitive Android runtime AppOps permissions (**Camera**, **Microphone**, **Fine/Coarse Location**, **Clipboard Reading**) are automatically revoked.
+  * **0ms Foreground Restoration:** Instantly restores full permissions when the user launches or switches back to the application, ensuring a seamless user experience with zero manual permission dialog prompts.
+  * **Dedicated Management Screen (`DynamicPrivacyActivity`):** Interactive UI featuring real-time app search, per-permission toggles, live granted/revoked badges, and category quick-filters (Social, Tools, All).
+  * **Master Integration & Boot Persistence:** Fully integrated with `MasterManager` hierarchy for unified atomic state control and fail-safe persistence across device reboots.
 
 ---
 
