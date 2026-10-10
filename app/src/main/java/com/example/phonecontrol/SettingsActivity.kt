@@ -988,6 +988,7 @@ class SettingsActivity : AppCompatActivity() {
                 iconRes = R.drawable.ic_hub_security,
                 description = "TCP BBR latency booster, Data Firewall & 5G Tower Lock",
                 subFeatures = listOf(
+                    SubFeature("Dynamic Privacy Guard", "dynamic_privacy_enabled", "Auto-revokes Camera, Mic, GPS & Clipboard when apps exit foreground.", false, R.drawable.ic_sub_privacy),
                     SubFeature("Network Booster (TCP BBR)", "network_priority_enabled", "Enables TCP BBR congestion control and prioritizes low-latency traffic.", false, R.drawable.ic_sub_network),
                     SubFeature("Per-App Data Firewall", "firewall_enabled", "Restricts background network access for selected applications.", false, R.drawable.ic_sub_firewall),
                     SubFeature("Home 5G Tower Lock", DaemonManager.PREF_TOWER_LOCK_ENABLED, "Locks modem to specific carrier frequency bands to stabilize 5G reception indoors.", false, R.drawable.ic_sub_tower)
@@ -1174,12 +1175,23 @@ class SettingsActivity : AppCompatActivity() {
 
             subView.setOnClickListener {
                 if (isCategoryEnabled) {
-                    swSub.isChecked = !swSub.isChecked
+                    when (sub.prefKey) {
+                        "dynamic_privacy_enabled" -> {
+                            startActivity(Intent(this@SettingsActivity, DynamicPrivacyActivity::class.java))
+                        }
+                        else -> {
+                            swSub.isChecked = !swSub.isChecked
+                        }
+                    }
                 }
             }
 
             subView.setOnLongClickListener {
                 when (sub.prefKey) {
+                    "dynamic_privacy_enabled" -> {
+                        startActivity(Intent(this@SettingsActivity, DynamicPrivacyActivity::class.java))
+                        true
+                    }
                     "update_shield_enabled" -> {
                         startActivity(Intent(this@SettingsActivity, UpdateShieldActivity::class.java))
                         true
@@ -1221,6 +1233,10 @@ class SettingsActivity : AppCompatActivity() {
                             Toast.LENGTH_SHORT
                         ).show()
                     }
+                } else if (sub.prefKey == "dynamic_privacy_enabled") {
+                    DynamicPrivacyManager.setMasterEnabled(this@SettingsActivity, isChecked)
+                    val msg = if (isChecked) "🛡️ Dynamic Privacy Guard active" else "Dynamic Privacy Guard paused"
+                    Toast.makeText(this@SettingsActivity, msg, Toast.LENGTH_SHORT).show()
                 } else if (sub.prefKey == "update_shield_enabled") {
                     UpdateShieldManager.setMasterEnabled(this@SettingsActivity, isChecked)
                     val msg = if (isChecked) "🛡️ Play Store Update Shield active" else "Play Store Update Shield paused"
@@ -1398,6 +1414,9 @@ class SettingsActivity : AppCompatActivity() {
                 }
                 "update_shield_enabled" -> {
                     UpdateShieldManager.setMasterEnabled(this, false)
+                }
+                "dynamic_privacy_enabled" -> {
+                    DynamicPrivacyManager.setMasterEnabled(this, false)
                 }
                 "wireless_adb_enabled" -> {
                     WirelessAdbManager.disable(this)

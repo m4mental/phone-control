@@ -581,7 +581,7 @@ class AutoTweakService : Service() {
             if (isServiceDestroyed) return@execute
             AppEventService.enableViaRoot(packageName)
             if (isServiceDestroyed) return@execute
-            ShellUtils.fastCmd("dumpsys deviceidle whitelist +$packageName; am set-standby-bucket $packageName active 2>/dev/null")
+            ShellUtils.fastCmd("dumpsys deviceidle whitelist +$packageName; am set-standby-bucket $packageName active 2>/dev/null; settings put global master_sync_enabled 1 2>/dev/null; settings put system power_sleep_tight_activated 0 2>/dev/null")
             if (isServiceDestroyed) return@execute
             ThermalManager.checkAndRecoverCooldown(this)
             checkAndRecoverBootTurbo(this@AutoTweakService)
@@ -963,6 +963,9 @@ class AutoTweakService : Service() {
 
         // 1. TOP PRIORITY: Apply Tweak & Per-App Profile IMMEDIATELY (0ms latency)!
         reevaluatePerAppHierarchy(newPkg)
+
+        // 🛡️ DYNAMIC PRIVACY GUARD: Revoke background permissions for previous app, restore for foreground app
+        DynamicPrivacyManager.onForegroundAppTransition(this, previousPkg, newPkg)
 
         // 2. BACKGROUND FREEZER DISPATCH:
         triggerFreezerDispatch(newPkg)
@@ -1704,9 +1707,21 @@ class AutoTweakService : Service() {
             TweakManager.setClusterParking(true, deep = false)
         }
 
-        // 2. Super Doze & Sync Logic with State Preservation
+        // 2. Guarantee Whitelist & Accessibility Exemption (Evaluated first to protect real-time push apps)
+        val allSafeApps = MultitaskingManager.getUserWhitelist(this@AutoTweakService) + MultitaskingManager.protectedApps
+        for (pkg in allSafeApps) {
+            MultitaskingManager.grantFullExemption(pkg)
+        }
+
+        // 3. Super Doze & Sync Logic with Whitelist Notification Guard
         if (isSuperDoze || isForceDoze) {
-            if (isSuperDoze && superDozePrefs.getBoolean("sync_off_enabled", true)) {
+            val isSyncCutoffConfigured = superDozePrefs.getBoolean("sync_off_enabled", false)
+            val hasWhitelistedMessagingApp = allSafeApps.any { pkg ->
+                pkg.contains("whatsapp") || pkg.contains("telegram") || pkg.contains("signal") ||
+                pkg.contains("gmail") || pkg.contains("discord") || pkg.contains("talk") ||
+                pkg == "com.whatsapp"
+            }
+            if (isSuperDoze && isSyncCutoffConfigured && !hasWhitelistedMessagingApp) {
                 val currentSync = try {
                     android.content.ContentResolver.getMasterSyncAutomatically()
                 } catch (e: Exception) {
@@ -1716,6 +1731,9 @@ class AutoTweakService : Service() {
                 if (currentSync) {
                     ShellUtils.fastCmd("settings put global master_sync_enabled 0")
                 }
+            } else {
+                // If any messaging app is in whitelist or sync cutoff is off, strictly keep Master Sync active!
+                ShellUtils.fastCmd("settings put global master_sync_enabled 1")
             }
             if (isSuperDoze && superDozePrefs.getBoolean("radio_off_enabled", false)) {
                 val currentData = ShellUtils.runAsRoot("settings get global mobile_data").output.trim() == "1"
@@ -1726,10 +1744,13 @@ class AutoTweakService : Service() {
             }
         }
 
-        // 3. Block Kernel Wakelocks
+        // Disable Nothing OS sleep standby optimization cutoff so cellular/Wi-Fi radio is never suspended overnight
+        ShellUtils.fastCmd("settings put system power_sleep_tight_activated 0 2>/dev/null")
+
+        // 4. Block Kernel Wakelocks
         TweakManager.applyWakelockBlocker(true)
 
-        // 4. Sensor Logic
+        // 5. Sensor Logic
         val killSensorsActive = prefs.getBoolean("battery_kill_sensors", false)
         val privacySensorsActive = prefs.getBoolean("battery_privacy_sensors", false)
         val indivBlockActive = prefs.getBoolean(DaemonManager.PREF_BLOCK_GYRO, false) || 
@@ -1741,19 +1762,16 @@ class AutoTweakService : Service() {
             SensorManager.setSensorsEnabled(this@AutoTweakService, false)
         }
 
-        // 5. GPS Auto-Saver on Screen OFF with State Preservation
+        // 🛡️ DYNAMIC PRIVACY GUARD: Lock all guarded apps on Screen OFF
+        DynamicPrivacyManager.onScreenOff(this@AutoTweakService)
+
+        // 6. GPS Auto-Saver on Screen OFF with State Preservation
         if (prefs.getBoolean("gps_auto_saver_enabled", false)) {
             val currentLocMode = TweakManager.getLocationMode(this@AutoTweakService)
             prefs.edit().putInt("user_saved_location_mode", currentLocMode).apply()
             if (currentLocMode != 0) {
                 TweakManager.setLocationMode(0)
             }
-        }
-
-        // 6. Guarantee Whitelist & Accessibility Exemption
-        val allSafeApps = MultitaskingManager.getUserWhitelist(this@AutoTweakService) + MultitaskingManager.protectedApps
-        for (pkg in allSafeApps) {
-            MultitaskingManager.grantFullExemption(pkg)
         }
 
         // 7. Standby Guard
@@ -1854,6 +1872,9 @@ class AutoTweakService : Service() {
         // 1. Instant 0ms Atomic Wakeup Boost (Unpark cores, 3.5s MediaTek GED GPU boost, schedutil ramp)
         TweakManager.triggerTemporaryWakeupBoost()
 
+        // 🛡️ DYNAMIC PRIVACY GUARD: Restore foreground app permissions on Screen ON
+        DynamicPrivacyManager.onScreenOn(this@AutoTweakService, lastForegroundApp)
+
         // 2. Force reset lastAiMode so active screen-on mode is 100% guaranteed to apply immediately
         lastAiMode = ""
 
@@ -1885,12 +1906,8 @@ class AutoTweakService : Service() {
         val isSuperDoze = prefs.getBoolean("super_doze_enabled", false)
 
         if (isSuperDoze) {
-            if (superDozePrefs.getBoolean("sync_off_enabled", true)) {
-                val savedSync = superDozePrefs.getBoolean("user_saved_sync_state", false)
-                if (savedSync) {
-                    ShellUtils.fastCmd("settings put global master_sync_enabled 1")
-                }
-            }
+            // Unconditionally ensure Master Sync is active
+            ShellUtils.fastCmd("settings put global master_sync_enabled 1")
             if (superDozePrefs.getBoolean("radio_off_enabled", false)) {
                 val savedData = superDozePrefs.getBoolean("user_saved_mobile_data", false)
                 if (savedData) {

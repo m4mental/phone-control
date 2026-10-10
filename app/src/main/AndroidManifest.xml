@@ -271,6 +271,11 @@
             android:exported="false"
             android:theme="@style/Theme.PhoneControl" />
 
+        <activity
+            android:name=".DynamicPrivacyActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PhoneControl" />
+
 
         <service
             android:name=".BackupService"

@@ -36,7 +36,7 @@ class SuperDozeActivity : AppCompatActivity() {
 
         swParking.isChecked = prefs.getBoolean("deep_parking_enabled", true)
         swRadio.isChecked = prefs.getBoolean("radio_off_enabled", false)
-        swSync.isChecked = prefs.getBoolean("sync_off_enabled", true)
+        swSync.isChecked = prefs.getBoolean("sync_off_enabled", false)
 
         swParking.setOnCheckedChangeListener { _, isC -> 
             prefs.edit().putBoolean("deep_parking_enabled", isC).apply() 
