@@ -1031,11 +1031,11 @@ object TweakManager {
 
     /**
      * 3. Kernel Wakelock Blocker
-     * Prevents specific hardware drivers from waking the device.
+     * Prevents non-essential hardware drivers from waking the device.
+     * Preserves Wi-Fi/Radio wakelocks (wlan_rx_wake, etc.) to guarantee 0ms instant push notifications (WhatsApp, Telegram, FCM).
      */
     fun applyWakelockBlocker(enabled: Boolean) {
         val list = listOf(
-            "wlan_rx_wake", "wlan_ctrl_wake", "wlan_wake",
             "sensor_ind", "msm_fastrpc_wakelock", "IPA_WS"
         )
         for (wl in list) {

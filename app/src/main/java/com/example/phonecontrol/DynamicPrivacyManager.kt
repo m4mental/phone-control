@@ -245,7 +245,8 @@ object DynamicPrivacyManager {
         for (pkgInfo in installed) {
             val pkg = pkgInfo.packageName
             val isSystem = (pkgInfo.applicationInfo != null && (pkgInfo.applicationInfo!!.flags and ApplicationInfo.FLAG_SYSTEM) != 0)
-            if (pkg == context.packageName) continue
+            // 0. Never auto-guard apps that are in the protected or universal user whitelist (e.g. WhatsApp, KeyMapper)
+            if (MultitaskingManager.isProtected(pkg, context)) continue
 
             // 1. Check known popular sensitive apps
             if (POPULAR_SENSITIVE_PACKAGES.contains(pkg)) {
