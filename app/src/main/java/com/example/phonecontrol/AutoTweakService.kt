@@ -205,24 +205,24 @@ class AutoTweakService : Service() {
         }
     }
 
-    private fun handleSmartNetworkSwitch(isWifiNow: Boolean) {
+    private fun handleSmartNetworkSwitch(isWifiNow: Boolean, isValidated: Boolean = true) {
         tweakExecutor.execute {
             val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
             if (!prefs.getBoolean("smart_switch_enabled", false)) return@execute
 
-            if (isWifiNow) {
+            if (isWifiNow && isValidated) {
                 if (isWifiCurrentlyConnected == true) return@execute
                 isWifiCurrentlyConnected = true
-                Log.d("AutoTweak", "📶 WiFi Connected -> Auto-disabling Mobile Data")
+                Log.d("AutoTweak", "📶 WiFi Connected & Validated -> Auto-disabling Mobile Data")
                 val dataState = ShellUtils.runAsRoot("settings get global mobile_data").output.trim()
                 if (dataState == "1" || prefs.getBoolean("data_was_on_before_wifi", false)) {
                     prefs.edit().putBoolean("data_was_on_before_wifi", true).apply()
                 }
                 ShellUtils.fastCmd("settings put global mobile_data 0; svc data disable")
-            } else {
+            } else if (!isWifiNow || !isValidated) {
                 if (isWifiCurrentlyConnected == false) return@execute
                 isWifiCurrentlyConnected = false
-                Log.d("AutoTweak", "📶 WiFi Lost/Disconnected -> Restoring Mobile Data")
+                Log.d("AutoTweak", "📶 WiFi Lost/Unvalidated -> Restoring Mobile Data")
                 // Full-proof enable for Android 14 / Nothing OS (both settings and telephony/svc)
                 ShellUtils.fastCmd("settings put global mobile_data 1; svc data enable")
                 prefs.edit().putBoolean("data_was_on_before_wifi", false).apply()
@@ -310,15 +310,19 @@ class AutoTweakService : Service() {
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             val caps = connectivityManager.getNetworkCapabilities(network)
-            if (caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true) {
-                handleSmartNetworkSwitch(true)
+            val isWifi = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+            val isValidated = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+            if (isWifi) {
+                handleSmartNetworkSwitch(true, isValidated)
             }
             handleWirelessAdbSmartPort()
         }
 
         override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
-            if (networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
-                handleSmartNetworkSwitch(true)
+            val isWifi = networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+            val isValidated = networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+            if (isWifi) {
+                handleSmartNetworkSwitch(true, isValidated)
             }
             handleWirelessAdbSmartPort()
         }
@@ -330,7 +334,7 @@ class AutoTweakService : Service() {
         override fun onLost(network: Network) {
             val stillConnected = isWifiActive()
             if (!stillConnected) {
-                handleSmartNetworkSwitch(false)
+                handleSmartNetworkSwitch(false, false)
             }
             handleWirelessAdbSmartPort()
         }
@@ -353,7 +357,9 @@ class AutoTweakService : Service() {
     private val wifiStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             val isConnected = isWifiActive()
-            handleSmartNetworkSwitch(isConnected)
+            val caps = connectivityManager.getNetworkCapabilities(connectivityManager.activeNetwork)
+            val isValidated = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+            handleSmartNetworkSwitch(isConnected, isValidated)
             handleWirelessAdbSmartPort()
         }
     }

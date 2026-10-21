@@ -1331,7 +1331,7 @@ object TweakManager {
 
         if (tcpEnabled) {
             val cmds = listOf(
-                "sysctl -w net.ipv4.tcp_timestamps=0",
+                "sysctl -w net.ipv4.tcp_timestamps=1",
                 "sysctl -w net.ipv4.tcp_sack=1",
                 "sysctl -w net.ipv4.tcp_window_scaling=1",
                 "sysctl -w net.core.rmem_max=16777216",
@@ -1340,7 +1340,9 @@ object TweakManager {
                 "sysctl -w net.ipv4.tcp_wmem='4096 65536 16777216'",
                 "sysctl -w net.ipv4.tcp_fastopen=3",
                 "sysctl -w net.core.default_qdisc=fq_codel",
-                "sysctl -w net.ipv4.tcp_congestion_control=bbr"
+                "sysctl -w net.ipv4.tcp_congestion_control=bbr",
+                "sysctl -w net.ipv6.conf.all.disable_ipv6=0",
+                "sysctl -w net.ipv6.conf.default.disable_ipv6=0"
             )
             for (cmd in cmds) ShellUtils.fastCmd(cmd)
         }
@@ -1348,9 +1350,10 @@ object TweakManager {
         if (lowLatencyEnabled) {
             ShellUtils.fastCmd("settings put global wifi_scan_throttle_enabled 1")
             ShellUtils.fastCmd("cmd wifi set-scan-throttle enabled")
-            ShellUtils.fastCmd("sysctl -w net.ipv6.conf.all.disable_ipv6=1")
+            // Crucial: Keep IPv6 fully active on 4G/5G (Jio/Airtel) so push sockets (FCM & WhatsApp) are never broken
+            ShellUtils.fastCmd("sysctl -w net.ipv6.conf.all.disable_ipv6=0; sysctl -w net.ipv6.conf.default.disable_ipv6=0")
         } else {
-            ShellUtils.fastCmd("sysctl -w net.ipv6.conf.all.disable_ipv6=0")
+            ShellUtils.fastCmd("sysctl -w net.ipv6.conf.all.disable_ipv6=0; sysctl -w net.ipv6.conf.default.disable_ipv6=0")
         }
     }
 
