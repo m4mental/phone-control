@@ -95,6 +95,8 @@ Engineered to deliver aggressive battery preservation through distinct Android a
 * 🔌 **Charging Protection & Hardware Bypass Lab:**
   * **Configurable Battery Charge Limit:** Automatically stops charging at predefined thresholds (e.g., 80%) to prolong battery lifespan.
   * **Direct Hardware Bypass Charging:** Powers the device directly from the charger without cycling the battery cell, preventing heat buildup during intensive gaming sessions.
+  * **Protected Fuel Gauge IC Architecture:** Safely throttles charging current via native MediaTek PMIC controllers (`primary_chg`, `mtk-master-charger`, and `sc_ibat_limit`) while keeping `/sys/class/power_supply/battery/disable` permanently active (`0`), preventing fuel gauge desynchronization (50% freeze) and eliminating PMIC brownout power-loss shutdowns.
+  * **Adaptive High-Temperature Fast Charge Throttling:** Real-time thermal protection that automatically throttles fast charging current to 1000mA when battery temperature exceeds 46°C, restoring full charging speed once cooled below 42°C.
   * **USB Fast Charge Force:** Overrides USB power limits on low-output charging ports.
 * 🛡️ **Hardware Sensor Firewall:**
   * Permanent individual blocking switches for **5 hardware sensors**: NFC, Gyroscope, Magnetometer/Compass, Motion Accelerometer, and Ambient Light.
@@ -161,8 +163,10 @@ Provides granular control over network modems and system telemetry:
     * 🟣 **`SUSPENDED`** (`#E040FB`) — Packages suspended via `pm suspend`.
     * ⚪ **`STOPPED`** (`#888888`) — Standard stopped processes.
   * **1-Tap Unhide & Full System Restore:** Unified restore command (`pm default-state --user 0`, `pm unhide`, `pm enable`, `pm unsuspend`) that restores launcher icons and restores the "Open" button in Google Play Store.
-* 🛡️ **Per-App Network Firewall:**
-  * Individual per-app internet blocking (Wi-Fi and Cellular) via `iptables` packet filtering.
+* 🛡️ **Per-App Network Firewall & Multi-Profile Traffic Shaper:**
+  * **Multi-Profile Isolation:** Granularly controls network traffic across Main Profile (User 0), Dual Apps (User 999), and Android 15/16 Private Space (User 10+) with color-coded profile badges and individual UID routing.
+  * **Individual Cellular & Wi-Fi Blocking:** Instant hardware-level iptables rules blocking either Wi-Fi, Mobile Data, or both per package.
+  * **Dedicated Quick Settings (QS) Tiles:** Toggle firewall rules on the fly directly from the notification shade for frequently blocked apps without opening the application.
 * 🌐 **Private DNS Switcher & Ad-Blocker + Quick Settings Tile:**
   * **Zero VPN Overhead:** Manipulates Android's global secure DNS framework (`settings put global private_dns_mode` & `private_dns_specifier`) with 0% battery impact or throughput slowdowns.
   * **Built-in DNS Providers:**
@@ -247,8 +251,13 @@ Maintains clean, uncluttered application lifecycles:
   * **Stoppage Diagnostics & Safe Force Install:**
     * When Android blocks an installation, an interactive diagnostic sheet explains the root cause in plain language (Signature mismatch conflict, version downgrade protection, deprecated target SDK).
     * **Zero Data Loss Guarantee:** Archives `/data/data/<pkg>` with `tar -czf` before force reinstallation, providing a 1-click **Restore Data** button upon completion.
-* 🗑️ **Root Bloatware Debloater:**
-  * Safely disables or uninstalls carrier bloatware and unnecessary pre-installed OEM system packages.
+* ⚙️ **Deep App Component Manager (`ComponentManagerActivity`):**
+  * **Granular Component-Level Control:** Inspects all declared Activities, Services, Broadcast Receivers, and Content Providers inside any installed application.
+  * **Telemetry & Tracking Disablement:** Force-disables background analytics services, boot receivers, and push listeners (`pm disable <pkg>/<component>`) without uninstalling or breaking the main app.
+  * **Live Status Badges:** Visual indicators highlighting enabled vs disabled components with 1-tap instant toggle and batch search.
+* 🗑️ **Universal Android Debloater (UAD) Database & Bloatware Remover:**
+  * **Community-Verified Safety Tiers:** Categorizes pre-installed carrier and OEM system bloatware into `Recommended`, `Advanced`, `Expert`, and `Unsafe` based on the open-source Universal Android Debloater standard.
+  * **Safe Freezing & Deep Uninstallation:** Allows 1-click freezing, user-0 uninstallation, or complete disabling with zero bootloop risk and instant 1-tap restore.
 * 📦 **Installed App Extractor & Backup (.apk / .apks Split Bundle):**
   * **Intelligent Package Extraction:** Lists all user and system applications with real-time package size, version code, and split count.
   * **Split Bundle Packaging (`.apks`):** Compresses modern multi-split Google Play apps (base APK + architecture libraries + language configs) into standard `.apks` zip archives using high-throughput Java `ZipOutputStream`.
