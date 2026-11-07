@@ -215,6 +215,24 @@ class RunningServicesActivity : AppCompatActivity() {
             val specialFrozenApps = FreezerManager.getSpecialFreezeApps(this@RunningServicesActivity)
             val userWhitelist = MultitaskingManager.getUserWhitelist(this@RunningServicesActivity)
 
+            // Batch-query OOM scores for all PIDs in a single fast shell execution
+            val allPids = rawGroups.values.flatten().map { it.pid }.filter { it > 0 }.distinct()
+            val oomScores = mutableMapOf<Int, Int>()
+            if (allPids.isNotEmpty()) {
+                val batchCmd = "for p in ${allPids.joinToString(" ")}; do [ -f /proc/\$p/oom_score_adj ] && echo \"\$p:\$(cat /proc/\$p/oom_score_adj 2>/dev/null)\"; done"
+                val out = ShellUtils.fastCmdResult(batchCmd, 2000)
+                for (line in out.lines()) {
+                    val parts = line.split(":")
+                    if (parts.size == 2) {
+                        val p = parts[0].trim().toIntOrNull()
+                        val adj = parts[1].trim().toIntOrNull()
+                        if (p != null && adj != null) {
+                            oomScores[p] = adj
+                        }
+                    }
+                }
+            }
+
             val resultGroups = mutableListOf<AppServicesGroup>()
 
             for ((pkg, srvList) in rawGroups) {
@@ -223,7 +241,13 @@ class RunningServicesActivity : AppCompatActivity() {
                     cached
                 } else {
                     try {
-                        val appInfo = pm.getApplicationInfo(pkg, 0)
+                        val flags = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                            PackageManager.MATCH_DISABLED_COMPONENTS or PackageManager.MATCH_UNINSTALLED_PACKAGES
+                        } else {
+                            @Suppress("DEPRECATION")
+                            PackageManager.GET_DISABLED_COMPONENTS or PackageManager.GET_UNINSTALLED_PACKAGES
+                        }
+                        val appInfo = pm.getApplicationInfo(pkg, flags)
                         val name = pm.getApplicationLabel(appInfo).toString()
                         val ic = pm.getApplicationIcon(appInfo)
                         val sys = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
@@ -238,8 +262,7 @@ class RunningServicesActivity : AppCompatActivity() {
                 val pids = srvList.map { it.pid }.filter { it > 0 }.distinct()
                 var bestAdj = 999
                 for (p in pids) {
-                    val adjStr = ShellUtils.fastCmdResult("cat /proc/$p/oom_score_adj 2>/dev/null", 1000).trim()
-                    val adjVal = adjStr.toIntOrNull()
+                    val adjVal = oomScores[p]
                     if (adjVal != null && adjVal < bestAdj) {
                         bestAdj = adjVal
                     }

@@ -21,6 +21,7 @@
         android:layout_height="wrap_content"
         android:layout_weight="1"
         android:layout_marginStart="14dp"
+        android:layout_marginEnd="8dp"
         android:orientation="vertical">
 
         <TextView
@@ -29,7 +30,7 @@
             android:layout_height="wrap_content"
             android:text="System App"
             android:textColor="#FFFFFF"
-            android:textSize="15sp"
+            android:textSize="14sp"
             android:textStyle="bold"
             android:maxLines="1"
             android:ellipsize="end" />
@@ -43,14 +44,26 @@
             android:textSize="11sp"
             android:maxLines="1"
             android:ellipsize="end"
-            android:layout_marginTop="2dp" />
+            android:layout_marginTop="1dp" />
+
+        <TextView
+            android:id="@+id/tvBloatDesc"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Reason for debloat"
+            android:textColor="#AAAAAA"
+            android:textSize="11sp"
+            android:maxLines="2"
+            android:ellipsize="end"
+            android:layout_marginTop="2dp"
+            android:visibility="gone" />
 
         <TextView
             android:id="@+id/tvBloatBadge"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="[CORE OS - PROTECTED]"
-            android:textColor="#FF5252"
+            android:text="[SAFE DEBLOAT]"
+            android:textColor="#00E676"
             android:textSize="10sp"
             android:textStyle="bold"
             android:layout_marginTop="3dp"

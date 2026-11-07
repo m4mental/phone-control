@@ -264,17 +264,54 @@ class AppExtractorActivity : AppCompatActivity() {
         val format = if (app.isSplit) "Split Bundle (.apks)" else "Standalone (.apk)"
         val size = AppExtractorManager.formatSize(app.totalSize)
 
+        val options = arrayOf(
+            "⚡ Extract APK ($format)",
+            "💾 Full App + Data Backup (.backup.tar.gz)",
+            "🚀 Extract & Share APK"
+        )
+
         MaterialAlertDialogBuilder(this)
-            .setTitle("📦 Extract ${app.appName}?")
-            .setMessage("Package: ${app.packageName}\nVersion: v${app.versionName} (${app.versionCode})\nFormat: $format\nTotal Size: $size\n\nDestination: ${AppExtractorManager.EXTRACT_DIR}/")
-            .setPositiveButton("⚡ EXTRACT") { _, _ ->
-                performExtraction(app, autoShare = false)
-            }
-            .setNeutralButton("🚀 EXTRACT & SHARE") { _, _ ->
-                performExtraction(app, autoShare = true)
+            .setTitle("📦 ${app.appName}")
+            .setMessage("Package: ${app.packageName}\nVersion: v${app.versionName} (${app.versionCode})\nApp Size: $size")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> performExtraction(app, autoShare = false)
+                    1 -> performFullBackup(app)
+                    2 -> performExtraction(app, autoShare = true)
+                }
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+    private fun performFullBackup(app: AppExtractorManager.AppItem) {
+        val progressDialog = MaterialAlertDialogBuilder(this)
+            .setTitle("Backing up ${app.appName}")
+            .setMessage("Starting full backup...")
+            .setCancelable(false)
+            .create()
+        progressDialog.show()
+
+        thread {
+            val result = AppExtractorManager.backupAppWithData(this, app) { progressMsg ->
+                runOnUiThread {
+                    progressDialog.setMessage(progressMsg)
+                }
+            }
+
+            runOnUiThread {
+                progressDialog.dismiss()
+                if (result.success && result.outputPath != null) {
+                    showExtractionSuccessDialog(app, result.outputPath)
+                } else {
+                    MaterialAlertDialogBuilder(this)
+                        .setTitle("Backup Failed")
+                        .setMessage(result.message)
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+            }
+        }
     }
 
     private fun promptBatchExtract(apps: List<AppExtractorManager.AppItem>) {

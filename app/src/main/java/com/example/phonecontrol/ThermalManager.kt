@@ -16,9 +16,13 @@ object ThermalManager {
 
     fun setThrottlingEnabled(enabled: Boolean) {
         val value = if (enabled) "1" else "0"
-        ShellUtils.fastCmd("echo $value > $MTK_THERMAL_SWITCH")
-        if (!enabled) ShellUtils.fastCmd("echo 16 > $THERMAL_CONFIG_PATH")
-        else ShellUtils.fastCmd("echo 0 > $THERMAL_CONFIG_PATH")
+        val mode = if (enabled) "enabled" else "disabled"
+        val cmds = listOf(
+            "echo $value > $MTK_THERMAL_SWITCH 2>/dev/null",
+            if (!enabled) "echo 16 > $THERMAL_CONFIG_PATH 2>/dev/null" else "echo 0 > $THERMAL_CONFIG_PATH 2>/dev/null",
+            "for z in /sys/class/thermal/thermal_zone*; do [ -f \"\$z/mode\" ] && echo $mode > \"\$z/mode\" 2>/dev/null; done"
+        )
+        ShellUtils.fastCmd(cmds.joinToString("; "))
     }
 
     /**

@@ -52,6 +52,7 @@ class AutoTweakService : Service() {
     @Volatile private var isPerAppBypassActive = false
     @Volatile private var isPerAppDndActive = false
     @Volatile private var isChargingCutOffActive = false
+    @Volatile private var isThermalChargingThrottled = false
     @Volatile private var isFloatingWindowActive = false
     @Volatile private var isScreenOn = true
     @Volatile private var isWakeupBoosting = false
@@ -405,13 +406,28 @@ class AutoTweakService : Service() {
                 tweakExecutor.execute {
                     val prefs = getSharedPreferences("prefs", MODE_PRIVATE)
                     
-                    // 1. Thermal check
+                    // 1. Thermal check & High-Temp Charging Throttle (>= 46°C -> limit to 1000mA)
                     val tempCelsius = tempTenths / 10
                     if (tempCelsius > 0) {
                         ThermalManager.applyAdaptiveThrottling(this@AutoTweakService, tempCelsius)
                     }
 
-                    // 2. Autonomous Battery Charging Cut-off Enforcer (Hysteresis Loop)
+                    if (plugged != 0) {
+                        if (tempCelsius >= 46 && !isThermalChargingThrottled && !isChargingCutOffActive) {
+                            Log.w("AutoTweak", "🔥 Battery high temperature (${tempCelsius}°C >= 46°C) while charging! Throttling charge current to 1000mA.")
+                            BatteryManager.setChargeCurrent(1000)
+                            isThermalChargingThrottled = true
+                        } else if (tempCelsius <= 42 && isThermalChargingThrottled) {
+                            Log.i("AutoTweak", "❄️ Battery temperature cooled down (${tempCelsius}°C <= 42°C). Restoring normal charging current.")
+                            BatteryManager.restoreChargeCurrent()
+                            isThermalChargingThrottled = false
+                        }
+                    } else if (isThermalChargingThrottled) {
+                        BatteryManager.restoreChargeCurrent()
+                        isThermalChargingThrottled = false
+                    }
+
+                    // 2. Autonomous Battery Charging Cut-off Enforcer (Hysteresis Loop: Stop at limit%, Resume at limit% - 5)
                     val isLimitEnabled = prefs.getBoolean("battery_limit_enabled", false)
                     val limitPercent = prefs.getInt("battery_limit_percent", 80)
                     if (level >= 0 && scale > 0) {
@@ -422,8 +438,8 @@ class AutoTweakService : Service() {
                                     Log.d("AutoTweak", "⚡ Battery limit reached ($battPct% >= $limitPercent%) -> Cutting off charging!")
                                     BatteryManager.setChargingEnabled(false)
                                     isChargingCutOffActive = true
-                                } else if (battPct <= (limitPercent - 3) && isChargingCutOffActive) {
-                                    Log.d("AutoTweak", "⚡ Battery dropped below threshold ($battPct% <= ${limitPercent - 3}%) -> Resuming charging!")
+                                } else if (battPct <= (limitPercent - 5) && isChargingCutOffActive) {
+                                    Log.d("AutoTweak", "⚡ Battery dropped below threshold ($battPct% <= ${limitPercent - 5}%) -> Resuming charging!")
                                     BatteryManager.setChargingEnabled(true)
                                     isChargingCutOffActive = false
                                 }
@@ -520,7 +536,11 @@ class AutoTweakService : Service() {
             addAction(Intent.ACTION_PACKAGE_REMOVED)
             addDataScheme("package")
         }
-        registerReceiver(packageReceiver, packageFilter)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(packageReceiver, packageFilter, RECEIVER_EXPORTED)
+        } else {
+            registerReceiver(packageReceiver, packageFilter)
+        }
 
         // Check initial WiFi state upon service startup
         if (isWifiActive()) {
@@ -893,7 +913,8 @@ class AutoTweakService : Service() {
         if (!FreezerManager.isAutoFreezeEnabled(this)) return
 
         val frozenApps = FreezerManager.getFrozenApps(this) + FreezerManager.getSpecialFreezeApps(this)
-        if (!frozenApps.contains(pkg)) return
+        val targetKeys = frozenApps.filter { it == pkg || it.startsWith("$pkg:") }
+        if (targetKeys.isEmpty()) return
 
         // Cancel any pending freeze job for this package if any
         cancelBackgroundAppFreeze(pkg)
@@ -910,8 +931,6 @@ class AutoTweakService : Service() {
                 val isAudio = FreezerManager.getActivePlayingAudioPackages(this@AutoTweakService).contains(pkg)
                 val allSafeApps = MultitaskingManager.getUserWhitelist(this@AutoTweakService) + MultitaskingManager.protectedApps
 
-                val isSpecial = FreezerManager.isSpecialFreeze(this@AutoTweakService, pkg)
-
                 // 🛡️ RECENT TASKS IMMUNITY: If user still has the app in Recents (multitasking), do NOT kill it!
                 if (RecentTasksManager.isAppInRecents(pkg)) {
                     Log.d("AutoTweak", "🛡️ Multitasking Guard: $pkg is alive in Recents -> Skipping background freeze")
@@ -924,19 +943,19 @@ class AutoTweakService : Service() {
                     return@execute
                 }
 
-                val isFgsImmune = FreezerManager.isFgsImmunityEnabled(this@AutoTweakService, pkg)
-
-                // 🛡️ SMART ACTIVE TASK / DOWNLOAD GUARD:
-                // Only exempt if the app has explicit FGS / Download immunity permission!
-                if (!isSpecial && isFgsImmune && RecentTasksManager.hasActiveForegroundTask(pkg)) {
-                    Log.d("AutoTweak", "🛡️ Smart FGS Guard: $pkg has FGS immunity & actively downloading/syncing -> Skipping background freeze")
-                    return@execute
-                }
-
                 if (!isStillForeground && !isVisible && !isAudio && !allSafeApps.contains(pkg)) {
-                    Log.d("AutoTweak", "❄️ Autonomous Background Freeze -> Hibernating orphan process $pkg after ${delayMs}ms settling")
-                    FreezerManager.removeActiveSession(pkg)
-                    FreezerManager.freezeApp(this@AutoTweakService, pkg, force = true)
+                    for (targetKey in targetKeys) {
+                        val isSpecial = FreezerManager.isSpecialFreeze(this@AutoTweakService, targetKey)
+                        val isFgsImmune = FreezerManager.isFgsImmunityEnabled(this@AutoTweakService, targetKey)
+                        if (!isSpecial && isFgsImmune && RecentTasksManager.hasActiveForegroundTask(pkg)) {
+                            Log.d("AutoTweak", "🛡️ Smart FGS Guard: $targetKey has FGS immunity & actively downloading/syncing -> Skipping background freeze")
+                            continue
+                        }
+                        Log.d("AutoTweak", "❄️ Autonomous Background Freeze -> Hibernating orphan process $targetKey after ${delayMs}ms settling")
+                        FreezerManager.removeActiveSession(targetKey)
+                        FreezerManager.removeActiveSession(pkg)
+                        FreezerManager.freezeApp(this@AutoTweakService, targetKey, force = true)
+                    }
                     SpecialFreezerWidgetProvider.updateAllWidgets(this@AutoTweakService)
                     FreezerWidgetProvider.updateAllWidgets(this@AutoTweakService)
                 }
@@ -1229,7 +1248,7 @@ class AutoTweakService : Service() {
             }
         } else {
             // NO configured apps in Recents or Foreground -> REVERT TO GLOBAL BASELINE!
-            val wasPerApp = isPerAppActive || isGameTurboActive || activePerAppMergedConfig != null || GameTurboManager.isGameTurboActive
+            val wasPerApp = isPerAppActive || isGameTurboActive || activePerAppMergedConfig != null || GameTurboManager.isGameTurboActive || prefs.contains("active_per_app_mode")
             if (wasPerApp) {
                 Log.d("AutoTweak", "⚡ All configured apps closed & removed from Recents -> Instant Revert to Global Mode")
                 if (GameTurboManager.isGameTurboActive) {
@@ -1839,27 +1858,28 @@ class AutoTweakService : Service() {
             // Screen is OFF: Retain apps that are active in Recents, remove closed ones
             FreezerManager.activeSessionApps.retainAll(RecentTasksManager.getLiveRecentPackages(forceRefresh = false))
 
-            for (pkg in frozenApps) {
+            for (entry in frozenApps) {
+                val (pkg, userId) = FreezerManager.parsePackageKey(entry)
                 // If app is currently alive in Recents, do NOT kill it! Restrict standby bucket for battery savings only.
                 if (RecentTasksManager.isAppInRecents(pkg)) {
-                    ShellUtils.fastCmd("am set-standby-bucket '$pkg' restricted 2>/dev/null")
+                    ShellUtils.fastCmd("am set-standby-bucket --user $userId '$pkg' restricted 2>/dev/null; am set-standby-bucket '$pkg' restricted 2>/dev/null")
                     continue
                 }
 
-                val isSpecial = FreezerManager.isSpecialFreeze(this@AutoTweakService, pkg)
-                val isFgsImmune = FreezerManager.isFgsImmunityEnabled(this@AutoTweakService, pkg)
+                val isSpecial = FreezerManager.isSpecialFreeze(this@AutoTweakService, entry)
+                val isFgsImmune = FreezerManager.isFgsImmunityEnabled(this@AutoTweakService, entry)
 
                 // 🛡️ Smart FGS Guard: If app is actively downloading in background with screen OFF, ONLY exempt if it has FGS immunity!
                 if (!isSpecial && isFgsImmune && RecentTasksManager.hasActiveForegroundTask(pkg)) {
-                    Log.d("AutoTweak", "🛡️ Smart FGS Guard: Exempting active downloader '$pkg' with FGS immunity from Screen-Off freeze")
+                    Log.d("AutoTweak", "🛡️ Smart FGS Guard: Exempting active downloader '$entry' with FGS immunity from Screen-Off freeze")
                     continue
                 }
 
                 // EXEMPT ONLY the active music player; hibernate all other apps immediately!
-                if (!allSafeApps.contains(pkg) && !activeAudioApps.contains(pkg)) {
-                    FreezerManager.freezeApp(this@AutoTweakService, pkg, force = true, isExplicitDismiss = true)
+                if (!allSafeApps.contains(entry) && !allSafeApps.contains(pkg) && !activeAudioApps.contains(pkg)) {
+                    FreezerManager.freezeApp(this@AutoTweakService, entry, force = true, isExplicitDismiss = true)
                 } else if (activeAudioApps.contains(pkg)) {
-                    Log.d("AutoTweak", "🎵 Smart Media Guard: Exempting active music app '$pkg' from Screen-Off freeze")
+                    Log.d("AutoTweak", "🎵 Smart Media Guard: Exempting active music app '$entry' from Screen-Off freeze")
                 }
             }
 

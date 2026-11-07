@@ -45,7 +45,8 @@ class AppEventService : AccessibilityService() {
             }
             for (pkg in allFrozen) {
                 try {
-                    val appInfo = packageManager.getApplicationInfo(pkg, flags)
+                    val (realPkg, _) = FreezerManager.parsePackageKey(pkg)
+                    val appInfo = packageManager.getApplicationInfo(realPkg, flags)
                     val l = packageManager.getApplicationLabel(appInfo).toString().trim().lowercase()
                     if (l.isNotEmpty()) {
                         counts.getOrPut(l) { mutableListOf() }.add(pkg)

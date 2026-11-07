@@ -32,13 +32,21 @@ object GameTurboManager {
     fun applyTouchSampling(context: Context, enabled: Boolean) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putBoolean("game_turbo_touch_sampling", enabled).apply()
-        if (enabled) {
-            ShellUtils.fastCmd("settings put secure touch_game_mode 1 2>/dev/null")
-            ShellUtils.fastCmd("settings put system touch_game_mode 1 2>/dev/null")
-        } else {
-            ShellUtils.fastCmd("settings put secure touch_game_mode 0 2>/dev/null")
-            ShellUtils.fastCmd("settings put system touch_game_mode 0 2>/dev/null")
-        }
+        val valStr = if (enabled) "1" else "0"
+        val cmds = listOf(
+            "settings put secure touch_game_mode $valStr 2>/dev/null",
+            "settings put system touch_game_mode $valStr 2>/dev/null",
+            // Nothing Phone (2a) & FocalTech IC hardware touch booster
+            "for node in /sys/class/input/input*/device/fts_game_mode; do [ -f \"\$node\" ] && echo $valStr > \"\$node\" 2>/dev/null; done",
+            "for node in /sys/class/input/input*/device/fts_edge_mode; do [ -f \"\$node\" ] && echo $valStr > \"\$node\" 2>/dev/null; done",
+            "for node in /sys/class/input/input*/device/fts_fast_diff_mode; do [ -f \"\$node\" ] && echo $valStr > \"\$node\" 2>/dev/null; done",
+            // Universal OEM & Kernel touch rate nodes (Xiaomi, OnePlus, Realme, MediaTek, Samsung)
+            "echo $valStr > /sys/class/touch/touch_dev/game_mode 2>/dev/null",
+            "echo $valStr > /proc/touchpanel/game_switch_enable 2>/dev/null",
+            "echo $valStr > /sys/devices/virtual/touch/touch_dev/bump_sample_rate 2>/dev/null",
+            "echo $valStr > /sys/class/input/touchscreen/game_mode 2>/dev/null"
+        )
+        ShellUtils.fastCmd(cmds.joinToString("; "))
     }
 
     /**

@@ -75,10 +75,18 @@ class BootReceiver : BroadcastReceiver() {
                         val blockedPkgs = firewallPrefs.getStringSet("blocked_packages", emptySet()) ?: emptySet()
                         if (blockedPkgs.isNotEmpty()) {
                             val pm = context.packageManager
-                            for (pkg in blockedPkgs) {
+                            for (entry in blockedPkgs) {
                                 try {
-                                    val uid = pm.getApplicationInfo(pkg, 0).uid
-                                    TweakManager.setFirewallRule(uid, true)
+                                    val storedUid = firewallPrefs.getInt("uid_$entry", -1)
+                                    val uid = if (storedUid != -1) {
+                                        storedUid
+                                    } else {
+                                        val pkg = if (entry.contains(":")) entry.substringBefore(":") else entry
+                                        pm.getApplicationInfo(pkg, 0).uid
+                                    }
+                                    val blockWifi = firewallPrefs.getBoolean("block_wifi_$entry", true)
+                                    val blockData = firewallPrefs.getBoolean("block_data_$entry", true)
+                                    TweakManager.setFirewallRule(uid, blockWifi, blockData)
                                 } catch (_: Exception) {}
                             }
                         }
@@ -144,6 +152,7 @@ class BootReceiver : BroadcastReceiver() {
                     if (UpdateShieldManager.isMasterEnabled(context)) {
                         UpdateShieldManager.enforceAllShields(context)
                     }
+                    FirewallManager.updateAllTiles(context)
                 }
 
                 // Start AutoTweakService to reconcile post-boot turbo expiry and start maintenance

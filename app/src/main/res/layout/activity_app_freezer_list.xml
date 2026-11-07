@@ -28,6 +28,63 @@
         app:tabMode="fixed"
         app:tabGravity="fill" />
 
+    <HorizontalScrollView
+        android:id="@+id/scrollFreezerFilter"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:scrollbars="none"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="6dp"
+        android:paddingBottom="6dp"
+        android:background="#101010">
+
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/chipGroupFreezerFilter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:singleSelection="true"
+            app:selectionRequired="true">
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chipFreezerAll"
+                style="@style/Widget.MaterialComponents.Chip.Choice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="ALL"
+                android:textColor="@android:color/white"
+                android:checked="true"
+                app:chipBackgroundColor="#222222" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chipFreezerMain"
+                style="@style/Widget.MaterialComponents.Chip.Choice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="📱 MAIN"
+                android:textColor="#00BFA5"
+                app:chipBackgroundColor="#1A2E2B" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chipFreezerDual"
+                style="@style/Widget.MaterialComponents.Chip.Choice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="👥 DUAL / CLONE"
+                android:textColor="#FF9800"
+                app:chipBackgroundColor="#2E231A" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chipFreezerPrivate"
+                style="@style/Widget.MaterialComponents.Chip.Choice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🔒 PRIVATE SPACE"
+                android:textColor="#E91E63"
+                app:chipBackgroundColor="#2E1A23" />
+        </com.google.android.material.chip.ChipGroup>
+    </HorizontalScrollView>
+
     <androidx.viewpager2.widget.ViewPager2
         android:id="@+id/viewPagerFreezer"
         android:layout_width="match_parent"

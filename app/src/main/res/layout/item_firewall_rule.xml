@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="#161618"
+    android:layout_marginBottom="8dp"
+    android:padding="12dp">
+
+    <!-- Top App Info Row -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <ImageView
+            android:id="@+id/ivAppIcon"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:scaleType="fitCenter" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:layout_marginStart="12dp">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:id="@+id/tvAppName"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@android:color/white"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvCategoryBadge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:paddingHorizontal="6dp"
+                    android:paddingVertical="1dp"
+                    android:textSize="9.5sp"
+                    android:textStyle="bold"
+                    android:background="#2A2A2A"
+                    android:textColor="#00BFA5" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/tvPackageName"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#888888"
+                android:textSize="11.5sp" />
+
+            <TextView
+                android:id="@+id/tvAppStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#FF5252"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:layout_marginTop="2dp" />
+        </LinearLayout>
+
+        <!-- Unblock / Remove Button -->
+        <ImageButton
+            android:id="@+id/btnRemoveRule"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_menu_delete"
+            android:contentDescription="Remove App" />
+    </LinearLayout>
+
+    <!-- Divider -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#242426"
+        android:layout_marginTop="10dp"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Action Buttons: Wi-Fi & Mobile Data Independent Toggles -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <!-- Wi-Fi Toggle -->
+        <Button
+            android:id="@+id/btnToggleWifi"
+            android:layout_width="0dp"
+            android:layout_height="38dp"
+            android:layout_weight="1"
+            android:layout_marginEnd="6dp"
+            android:backgroundTint="#331515"
+            android:textColor="#FF5252"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:text="🛜 WI-FI: BLOCKED" />
+
+        <!-- Mobile Data Toggle -->
+        <Button
+            android:id="@+id/btnToggleData"
+            android:layout_width="0dp"
+            android:layout_height="38dp"
+            android:layout_weight="1"
+            android:layout_marginStart="6dp"
+            android:backgroundTint="#331515"
+            android:textColor="#FF5252"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:text="📶 DATA: BLOCKED" />
+    </LinearLayout>
+
+    <!-- Bottom Row: Quick Tile & Speed Limiter -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="8dp">
+
+        <Button
+            android:id="@+id/btnQuickTile"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:layout_marginEnd="4dp"
+            android:backgroundTint="#152433"
+            android:textColor="#60A5FA"
+            android:textSize="10.5sp"
+            android:textStyle="bold"
+            android:text="⚡ QUICK TILE" />
+
+        <Button
+            android:id="@+id/btnSpeedLimit"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:layout_marginStart="4dp"
+            android:backgroundTint="#241B35"
+            android:textColor="#C084FC"
+            android:textSize="10.5sp"
+            android:textStyle="bold"
+            android:text="🚀 SPEED: MAX" />
+    </LinearLayout>
+
+</LinearLayout>

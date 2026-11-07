@@ -3,6 +3,8 @@ package com.example.phonecontrol
 import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
+import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.util.Log
@@ -50,8 +52,71 @@ object PackageInstallerManager {
         val isDowngrade: Boolean,
         val isSameVersion: Boolean,
         val isGhostPackage: Boolean = false,
-        val isSignatureMismatch: Boolean = false
+        val isSignatureMismatch: Boolean = false,
+        val isRootModule: Boolean = false,
+        val moduleAuthor: String? = null,
+        val moduleDescription: String? = null,
+        val hasHighRiskPermissions: Boolean = false,
+        val totalPermissionsCount: Int = 0,
+        val allPermissions: List<String> = emptyList()
     )
+
+    data class DeviceUser(
+        val id: Int,
+        val name: String,
+        val isRunning: Boolean
+    )
+
+    fun getDeviceUsers(): List<DeviceUser> {
+        val list = mutableListOf<DeviceUser>()
+        val res = ShellUtils.runAsRoot("pm list users", 5000)
+        if (res.isSuccess) {
+            val regex = Regex("""UserInfo\{(\d+):([^:]+):[0-9a-fA-F]+\}(\s+running)?""")
+            for (match in regex.findAll(res.output)) {
+                val id = match.groupValues[1].toIntOrNull() ?: continue
+                val name = match.groupValues[2].trim()
+                val isRunning = match.groupValues[3].isNotBlank()
+                list.add(DeviceUser(id, name, isRunning))
+            }
+        }
+        if (list.isEmpty()) {
+            list.add(DeviceUser(0, "Owner", true))
+        }
+        return list
+    }
+
+    /**
+     * Checks if a split APK matches current device architecture (ABI) and display density.
+     */
+    fun isSplitRecommended(splitName: String, context: Context): Boolean {
+        val lower = splitName.lowercase()
+        // 1. Base / master APKs are mandatory
+        if (lower.startsWith("base") || lower == "base" || lower.contains("master")) return true
+
+        // 2. ABI / CPU Architecture matching
+        val supportedAbis = android.os.Build.SUPPORTED_ABIS.map { it.lowercase().replace("-", "_") }
+        val primaryAbi = supportedAbis.firstOrNull() ?: "arm64_v8a"
+        val allKnownAbis = listOf("arm64_v8a", "armeabi_v7a", "armeabi", "x86_64", "x86", "mips", "mips64")
+        val foundAbi = allKnownAbis.firstOrNull { lower.contains(it) || lower.contains(it.replace("_", "-")) }
+        if (foundAbi != null) {
+            return supportedAbis.contains(foundAbi) && (foundAbi == primaryAbi || !supportedAbis.contains(primaryAbi))
+        }
+
+        // 3. Screen density matching
+        val densityDpi = context.resources.displayMetrics.densityDpi
+        val densityMap = mapOf(
+            "ldpi" to 120, "mdpi" to 160, "tvdpi" to 213, "hdpi" to 240,
+            "xhdpi" to 320, "xxhdpi" to 480, "xxxhdpi" to 640
+        )
+        val foundDensity = densityMap.keys.firstOrNull { lower.contains(it) }
+        if (foundDensity != null) {
+            val splitDpi = densityMap[foundDensity] ?: 480
+            return Math.abs(densityDpi - splitDpi) <= 160
+        }
+
+        // 4. Languages, features, etc. remain included by default
+        return true
+    }
 
     fun createFallbackInspection(fileName: String): ApkInspection {
         val cleanName = fileName.substringBeforeLast(".")
@@ -79,7 +144,10 @@ object PackageInstallerManager {
             isDowngrade = false,
             isSameVersion = false,
             isGhostPackage = false,
-            isSignatureMismatch = false
+            isSignatureMismatch = false,
+            isRootModule = false,
+            moduleAuthor = null,
+            moduleDescription = null
         )
     }
 
@@ -216,7 +284,25 @@ object PackageInstallerManager {
         }
     }
 
-    private val SENSITIVE_PERMISSION_MAP = mapOf(
+    val SENSITIVE_PERMISSION_MAP = mapOf(
+        // High-Risk Privileged & System
+        "android.permission.BIND_ACCESSIBILITY_SERVICE" to "♿ Accessibility Service",
+        "android.permission.WRITE_SECURE_SETTINGS" to "⚙️ Write Secure Settings",
+        "android.permission.INTERACT_ACROSS_USERS" to "👤 Cross-User Control",
+        "android.permission.INTERACT_ACROSS_USERS_FULL" to "👤 Full Cross-User Control",
+        "android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" to "🔔 Notification Listener",
+        "android.permission.ACCESS_NOTIFICATION_POLICY" to "🔕 Do Not Disturb Control",
+        "android.permission.BIND_DEVICE_ADMIN" to "🛡️ Device Admin Rights",
+        "android.permission.DEVICE_POWER" to "⚡ Device Power Control",
+        "android.permission.REBOOT" to "🔄 Device Reboot",
+        "android.permission.REQUEST_INSTALL_PACKAGES" to "📦 Install Other Apps",
+        "android.permission.DUMP" to "🧠 System Memory Dump",
+        "android.permission.READ_LOGS" to "📜 System Logs (Logcat)",
+        "com.termux.permission.RUN_COMMAND" to "💻 Run Termux Commands",
+        "rikka.shizuku.permission.USE_SHIZUKU" to "⚡ Shizuku Privileged API",
+        "moe.shizuku.manager.permission.API_V23" to "⚡ Shizuku Service Access",
+
+        // Privacy & Device Sensors
         "android.permission.CAMERA" to "📷 Camera",
         "android.permission.RECORD_AUDIO" to "🎙️ Microphone",
         "android.permission.ACCESS_FINE_LOCATION" to "📍 Precise Location",
@@ -229,6 +315,8 @@ object PackageInstallerManager {
         "android.permission.READ_SMS" to "💬 SMS (Read)",
         "android.permission.SEND_SMS" to "💬 SMS (Send)",
         "android.permission.RECEIVE_SMS" to "💬 SMS (Receive)",
+
+        // Storage & Device State
         "android.permission.READ_EXTERNAL_STORAGE" to "📁 Storage (Read)",
         "android.permission.WRITE_EXTERNAL_STORAGE" to "📁 Storage (Write)",
         "android.permission.MANAGE_EXTERNAL_STORAGE" to "📁 Full Storage Access",
@@ -237,8 +325,31 @@ object PackageInstallerManager {
         "android.permission.READ_MEDIA_AUDIO" to "🎵 Audio Files",
         "android.permission.SYSTEM_ALERT_WINDOW" to "🪟 Draw Over Apps",
         "android.permission.PACKAGE_USAGE_STATS" to "📊 Usage Statistics",
-        "android.permission.BIND_ACCESSIBILITY_SERVICE" to "♿ Accessibility Service",
         "android.permission.QUERY_ALL_PACKAGES" to "🔍 Query All Apps"
+    )
+
+    val HIGH_RISK_PERMISSIONS = setOf(
+        "android.permission.BIND_ACCESSIBILITY_SERVICE",
+        "android.permission.WRITE_SECURE_SETTINGS",
+        "android.permission.INTERACT_ACROSS_USERS",
+        "android.permission.INTERACT_ACROSS_USERS_FULL",
+        "android.permission.BIND_NOTIFICATION_LISTENER_SERVICE",
+        "android.permission.BIND_DEVICE_ADMIN",
+        "android.permission.REQUEST_INSTALL_PACKAGES",
+        "android.permission.DUMP",
+        "android.permission.READ_LOGS",
+        "android.permission.DEVICE_POWER",
+        "android.permission.REBOOT",
+        "com.termux.permission.RUN_COMMAND",
+        "rikka.shizuku.permission.USE_SHIZUKU",
+        "moe.shizuku.manager.permission.API_V23",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.READ_SMS",
+        "android.permission.SEND_SMS",
+        "android.permission.RECEIVE_SMS",
+        "android.permission.MANAGE_EXTERNAL_STORAGE"
     )
 
     data class StoppageDiagnostic(
@@ -386,31 +497,115 @@ object PackageInstallerManager {
                     }
                 }
             } else {
-                // Zip bundle (.apks, .xapk, .apkm, .aab, etc.): extract base APK and detect all split modules
+                // Zip bundle (.apks, .xapk, .apkm, .aab, or Magisk/KernelSU/APatch root module .zip)
                 val inspectExtractDir = File(context.cacheDir, "inspect_bundle_${System.currentTimeMillis()}")
                 inspectExtractDir.mkdirs()
                 var hasDirectManifest = false
+                var modulePropText: String? = null
+                var moduleIconDrawable: Drawable? = null
                 try {
                     openPackageStream(context, uri)?.use { stream ->
                         ZipInputStream(stream).use { zis ->
                             var entry = zis.nextEntry
                             while (entry != null) {
                                 val name = entry.name.lowercase()
-                                if (name == "androidmanifest.xml") {
-                                    hasDirectManifest = true
-                                }
-                                if (!entry.isDirectory && name.endsWith(".apk")) {
-                                    val cleanName = File(entry.name).nameWithoutExtension
-                                    detectedSplits.add(cleanName)
-                                    val out = File(inspectExtractDir, File(entry.name).name)
-                                    FileOutputStream(out).use { fos ->
-                                        zis.copyTo(fos)
+                                val cleanEntryName = entry.name.trimStart('/')
+                                if (!entry.isDirectory) {
+                                    if (cleanEntryName.equals("module.prop", ignoreCase = true) ||
+                                        (cleanEntryName.endsWith("/module.prop", ignoreCase = true) && cleanEntryName.count { it == '/' } == 1)) {
+                                        modulePropText = zis.bufferedReader(Charsets.UTF_8).readText()
+                                    } else if (cleanEntryName.equals("icon.png", ignoreCase = true) ||
+                                        (cleanEntryName.endsWith("/icon.png", ignoreCase = true) && cleanEntryName.count { it == '/' } == 1)) {
+                                        try {
+                                            val bmp = BitmapFactory.decodeStream(zis)
+                                            if (bmp != null) {
+                                                moduleIconDrawable = BitmapDrawable(context.resources, bmp)
+                                            }
+                                        } catch (_: Exception) {}
+                                    } else if (name == "androidmanifest.xml") {
+                                        hasDirectManifest = true
+                                    } else if (name.endsWith(".apk")) {
+                                        val cleanName = File(entry.name).nameWithoutExtension
+                                        detectedSplits.add(cleanName)
+                                        val out = File(inspectExtractDir, File(entry.name).name)
+                                        FileOutputStream(out).use { fos ->
+                                            zis.copyTo(fos)
+                                        }
                                     }
                                 }
                                 zis.closeEntry()
                                 entry = zis.nextEntry
                             }
                         }
+                    }
+
+                    // If module.prop was found, this is a Magisk / KernelSU / APatch Root Module!
+                    if (!modulePropText.isNullOrBlank()) {
+                        val props = mutableMapOf<String, String>()
+                        modulePropText?.lines()?.forEach { line ->
+                            val trimmed = line.trim()
+                            if (trimmed.isNotBlank() && !trimmed.startsWith("#") && trimmed.contains("=")) {
+                                val key = trimmed.substringBefore("=").trim()
+                                val value = trimmed.substringAfter("=").trim()
+                                props[key] = value
+                            }
+                        }
+
+                        val modId = props["id"] ?: fileName.substringBeforeLast(".")
+                        val modName = props["name"] ?: modId
+                        val modVersion = props["version"] ?: "1.0"
+                        val modVersionCode = props["versionCode"]?.toLongOrNull() ?: 1L
+                        val modAuthor = props["author"] ?: "Unknown"
+                        val modDesc = props["description"] ?: "Magisk / KernelSU / APatch Root Module"
+
+                        val sizeBytes = try {
+                            context.contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize } ?: 0L
+                        } catch (_: Exception) { 0L }
+                        val sizeFormatted = String.format(java.util.Locale.US, "%.1f MB", sizeBytes / (1024.0 * 1024.0))
+
+                        // Check if module is currently installed in /data/adb/modules/<modId>
+                        val qModId = ShellUtils.shellQuote(modId)
+                        val installedCheck = ShellUtils.runAsRoot("[ -d /data/adb/modules/$qModId ] && echo 'installed'", 3000)
+                        val isModInstalled = installedCheck.output.contains("installed")
+                        var installedModVer: String? = null
+                        var installedModVerCode: Long? = null
+                        if (isModInstalled) {
+                            val readModProp = ShellUtils.runAsRoot("cat /data/adb/modules/$qModId/module.prop 2>/dev/null", 3000)
+                            readModProp.output.lines().forEach { l ->
+                                if (l.startsWith("version=")) installedModVer = l.substringAfter("version=").trim()
+                                if (l.startsWith("versionCode=")) installedModVerCode = l.substringAfter("versionCode=").trim().toLongOrNull()
+                            }
+                        }
+
+                        return ApkInspection(
+                            appName = modName,
+                            packageName = modId,
+                            sharedUserId = null,
+                            splitNames = emptyList(),
+                            incomingVersionName = modVersion,
+                            incomingVersionCode = modVersionCode,
+                            installedVersionName = installedModVer,
+                            installedVersionCode = installedModVerCode,
+                            minSdk = 0,
+                            minSdkLabel = "Magisk / KSU",
+                            targetSdk = 0,
+                            targetSdkLabel = "Root System",
+                            maxSdk = null,
+                            maxSdkLabel = "APatch / Any",
+                            packageTypeLabel = "🔥 Root Module (.zip)",
+                            fileSizeFormatted = sizeFormatted,
+                            icon = moduleIconDrawable,
+                            sensitivePermissions = listOf("⚡ Root Execution", "🗂️ System Overlay/Hooks"),
+                            trackers = emptyList(),
+                            isInstalled = isModInstalled,
+                            isDowngrade = isModInstalled && installedModVerCode != null && modVersionCode < installedModVerCode!!,
+                            isSameVersion = isModInstalled && installedModVerCode != null && modVersionCode == installedModVerCode!!,
+                            isGhostPackage = false,
+                            isSignatureMismatch = false,
+                            isRootModule = true,
+                            moduleAuthor = modAuthor,
+                            moduleDescription = modDesc
+                        )
                     }
 
                     val extractedApks = inspectExtractDir.listFiles { _, name -> name.endsWith(".apk", ignoreCase = true) } ?: emptyArray()
@@ -544,10 +739,14 @@ object PackageInstallerManager {
             // Permissions
             val requestedPerms = pkgInfo.requestedPermissions ?: emptyArray()
             val sensitiveList = mutableListOf<String>()
+            var hasHighRisk = false
             for (perm in requestedPerms) {
                 val label = SENSITIVE_PERMISSION_MAP[perm]
                 if (label != null && !sensitiveList.contains(label)) {
                     sensitiveList.add(label)
+                }
+                if (HIGH_RISK_PERMISSIONS.contains(perm)) {
+                    hasHighRisk = true
                 }
             }
 
@@ -595,7 +794,13 @@ object PackageInstallerManager {
                 isDowngrade = isDowngrade,
                 isSameVersion = isSameVersion,
                 isGhostPackage = isGhostPackage,
-                isSignatureMismatch = isSignatureMismatch
+                isSignatureMismatch = isSignatureMismatch,
+                isRootModule = false,
+                moduleAuthor = null,
+                moduleDescription = null,
+                hasHighRiskPermissions = hasHighRisk,
+                totalPermissionsCount = requestedPerms.size,
+                allPermissions = requestedPerms.toList()
             )
         } catch (e: Exception) {
             Log.e("PackageInstaller", "Error inspecting APK", e)
@@ -803,6 +1008,154 @@ object PackageInstallerManager {
         return false
     }
 
+    /**
+     * Flashes a Magisk / KernelSU / APatch root module (.zip).
+     * Automatically detects available root manager CLI (ksud, apd, magisk) and executes flashing.
+     */
+    fun flashRootModule(
+        context: Context,
+        uri: Uri,
+        fileName: String,
+        onProgress: (String, Int) -> Unit
+    ): InstallResult {
+        val opId = "${System.currentTimeMillis()}_${java.util.UUID.randomUUID().toString().take(8)}"
+        val stagingDir = File("/data/local/tmp/pc_module_$opId")
+        val qStagingDir = ShellUtils.shellQuote(stagingDir.absolutePath)
+        ShellUtils.runAsRoot("mkdir -p $qStagingDir && chmod 755 $qStagingDir", 10000)
+
+        val tempZip = File(context.cacheDir, "temp_mod_${System.currentTimeMillis()}.zip")
+        try {
+            onProgress("📥 Reading root module archive: $fileName...", 15)
+            openPackageStream(context, uri)?.use { input ->
+                FileOutputStream(tempZip).use { output ->
+                    input.copyTo(output)
+                }
+            } ?: return InstallResult(false, "Could not read module file stream", "")
+
+            val stagedZip = File(stagingDir, "module.zip")
+            val qStagedZip = ShellUtils.shellQuote(stagedZip.absolutePath)
+            val qTempZip = ShellUtils.shellQuote(tempZip.absolutePath)
+            onProgress("📦 Staging module archive in root partition...", 35)
+            ShellUtils.runAsRoot("cp $qTempZip $qStagedZip && chmod 644 $qStagedZip", 30000)
+            tempZip.delete()
+
+            onProgress("🔥 Detecting root manager (KernelSU / APatch / Magisk)...", 50)
+            val flashScript = """
+                if command -v ksud >/dev/null 2>&1; then
+                    echo "[PhoneControl] Flashing with KernelSU (ksud)..."
+                    ksud module install $qStagedZip
+                elif [ -x /data/adb/ksu/bin/ksud ]; then
+                    echo "[PhoneControl] Flashing with /data/adb/ksu/bin/ksud..."
+                    /data/adb/ksu/bin/ksud module install $qStagedZip
+                elif [ -x /data/adb/ksud ]; then
+                    echo "[PhoneControl] Flashing with /data/adb/ksud..."
+                    /data/adb/ksud module install $qStagedZip
+                elif command -v apd >/dev/null 2>&1; then
+                    echo "[PhoneControl] Flashing with APatch (apd)..."
+                    apd module install $qStagedZip
+                elif [ -x /data/adb/apd/bin/apd ]; then
+                    echo "[PhoneControl] Flashing with /data/adb/apd/bin/apd..."
+                    /data/adb/apd/bin/apd module install $qStagedZip
+                elif [ -x /data/adb/apd ]; then
+                    echo "[PhoneControl] Flashing with /data/adb/apd..."
+                    /data/adb/apd module install $qStagedZip
+                elif [ -x /data/adb/ap/bin/apd ]; then
+                    echo "[PhoneControl] Flashing with /data/adb/ap/bin/apd..."
+                    /data/adb/ap/bin/apd module install $qStagedZip
+                elif command -v magisk >/dev/null 2>&1; then
+                    echo "[PhoneControl] Flashing with Magisk..."
+                    magisk --install-module $qStagedZip
+                elif [ -x /data/adb/magisk/magisk ]; then
+                    echo "[PhoneControl] Flashing with /data/adb/magisk/magisk..."
+                    /data/adb/magisk/magisk --install-module $qStagedZip
+                else
+                    echo "[PhoneControl] Falling back to magisk --install-module..."
+                    magisk --install-module $qStagedZip
+                fi
+            """.trimIndent()
+
+            onProgress("⚡ Executing module installation script...", 70)
+            val result = ShellUtils.runAsRoot(flashScript, 120000)
+            val output = result.output
+
+            val isSuccess = result.exitCode == 0 && (
+                output.contains("success", ignoreCase = true) ||
+                output.contains("done", ignoreCase = true) ||
+                output.contains("reboot", ignoreCase = true) ||
+                output.contains("installed", ignoreCase = true) ||
+                (!output.contains("fail", ignoreCase = true) && !output.contains("abort", ignoreCase = true))
+            )
+
+            if (isSuccess) {
+                onProgress("✅ Module flashed successfully! (Reboot required)", 100)
+                return InstallResult(
+                    success = true,
+                    message = "Module installed successfully!\nPlease reboot your device to apply module changes.",
+                    rawOutput = output
+                )
+            } else {
+                return InstallResult(
+                    success = false,
+                    message = "Module flashing failed with exit code ${result.exitCode}",
+                    rawOutput = output,
+                    failureTitle = "Module Flash Failed",
+                    failureExplanation = if (output.isNotBlank()) output else "The root manager returned exit code ${result.exitCode}"
+                )
+            }
+        } catch (e: Exception) {
+            Log.e("PackageInstaller", "flashRootModule failed", e)
+            return InstallResult(false, "Module flashing exception: ${e.message}", e.stackTraceToString())
+        } finally {
+            try { if (tempZip.exists()) tempZip.delete() } catch (_: Exception) {}
+            ShellUtils.runAsRoot("rm -rf $qStagingDir", 10000)
+        }
+    }
+
+    private fun applyPostInstallOptimizations(
+        result: InstallResult,
+        autoGrantPermissions: Boolean,
+        enableDexOpt: Boolean,
+        bypassRestrictedSettings: Boolean,
+        onProgress: (String, Int) -> Unit
+    ) {
+        if (!result.success || result.installedPackage.isNullOrBlank() || !ShellUtils.isValidPackageName(result.installedPackage)) return
+        val pkg = result.installedPackage
+        val qPkg = ShellUtils.shellQuote(pkg)
+
+        // 1. Bypass Android 13+ Restricted Settings via AppOps (InstallerX Root Feature)
+        if (bypassRestrictedSettings) {
+            onProgress("🛡️ Permitting Restricted Settings (Accessibility & Notifications)...", 96)
+            try {
+                ShellUtils.runAsRoot("appops set $qPkg ACCESS_RESTRICTED_SETTINGS allow 2>/dev/null", 5000)
+            } catch (e: Exception) {
+                Log.w("PackageInstaller", "Failed to bypass restricted settings: ${e.message}")
+            }
+        }
+
+        // 2. Dex2Oat speed-profile compilation (InstallerX Root Feature)
+        if (enableDexOpt) {
+            onProgress("⚡ Optimizing dex bytecode (speed-profile compilation)...", 98)
+            try {
+                ShellUtils.runAsRoot("cmd package compile -m speed-profile $qPkg 2>/dev/null", 20000)
+            } catch (e: Exception) {
+                Log.w("PackageInstaller", "DexOpt compilation failed: ${e.message}")
+            }
+        }
+
+        // 3. Fallback runtime permission grant
+        if (autoGrantPermissions) {
+            try {
+                val dumpRes = ShellUtils.runAsRoot("dumpsys package $qPkg | grep -A 200 'requested permissions:'", 5000).output
+                Regex("android\\.permission\\.[A-Z0-9_]+").findAll(dumpRes).forEach { match ->
+                    val perm = match.value
+                    ShellUtils.runAsRoot("pm grant $qPkg $perm 2>/dev/null", 2000)
+                }
+            } catch (e: Exception) {
+                Log.w("PackageInstaller", "Fallback permission grant failed: ${e.message}")
+            }
+        }
+    }
+
     fun installPackage(
         context: Context,
         uri: Uri,
@@ -811,9 +1164,78 @@ object PackageInstallerManager {
         autoBackup: Boolean = true,
         onProgress: (String) -> Unit
     ): InstallResult {
-        return installPackage(context, uri, fileName, forceReinstall, autoBackup, null) { text, _ ->
+        return installPackage(
+            context = context,
+            uri = uri,
+            fileName = fileName,
+            forceReinstall = forceReinstall,
+            autoBackup = autoBackup,
+            selectedSplits = null,
+            autoGrantPermissions = false,
+            enableDexOpt = true,
+            bypassRestrictedSettings = true,
+            dontKillApp = false
+        ) { text, _ ->
             onProgress(text)
         }
+    }
+
+    fun installPackage(
+        context: Context,
+        uri: Uri,
+        fileName: String,
+        forceReinstall: Boolean = false,
+        autoBackup: Boolean = true,
+        selectedSplits: Set<String>? = null,
+        onProgress: (String, Int) -> Unit
+    ): InstallResult {
+        return installPackage(
+            context = context,
+            uri = uri,
+            fileName = fileName,
+            forceReinstall = forceReinstall,
+            autoBackup = autoBackup,
+            selectedSplits = selectedSplits,
+            autoGrantPermissions = false,
+            enableDexOpt = true,
+            bypassRestrictedSettings = true,
+            dontKillApp = false,
+            targetUserId = "0",
+            installerSource = "com.android.vending",
+            onProgress = onProgress
+        )
+    }
+
+    fun installPackage(
+        context: Context,
+        uri: Uri,
+        fileName: String,
+        forceReinstall: Boolean = false,
+        autoBackup: Boolean = true,
+        selectedSplits: Set<String>? = null,
+        autoGrantPermissions: Boolean = false,
+        enableDexOpt: Boolean = true,
+        bypassRestrictedSettings: Boolean = true,
+        dontKillApp: Boolean = false,
+        targetUserId: String = "0",
+        spoofPlayStore: Boolean,
+        onProgress: (String, Int) -> Unit
+    ): InstallResult {
+        return installPackage(
+            context = context,
+            uri = uri,
+            fileName = fileName,
+            forceReinstall = forceReinstall,
+            autoBackup = autoBackup,
+            selectedSplits = selectedSplits,
+            autoGrantPermissions = autoGrantPermissions,
+            enableDexOpt = enableDexOpt,
+            bypassRestrictedSettings = bypassRestrictedSettings,
+            dontKillApp = dontKillApp,
+            targetUserId = targetUserId,
+            installerSource = if (spoofPlayStore) "com.android.vending" else null,
+            onProgress = onProgress
+        )
     }
 
     /**
@@ -821,6 +1243,7 @@ object PackageInstallerManager {
      * Supports: .apk, .apks, .apkm, .xapk, .aab, and split .zip bundles.
      * When forceReinstall = true, automatically backs up previous app data before pm uninstall.
      * Allows selecting specific splits to save device storage.
+     * Incorporates Pro Root Features (auto-grant permissions, restricted settings bypass, Dex2Oat speed-profile, Play Store spoofing, multi-user targeting).
      */
     fun installPackage(
         context: Context,
@@ -829,6 +1252,12 @@ object PackageInstallerManager {
         forceReinstall: Boolean = false,
         autoBackup: Boolean = true,
         selectedSplits: Set<String>? = null,
+        autoGrantPermissions: Boolean = false,
+        enableDexOpt: Boolean = true,
+        bypassRestrictedSettings: Boolean = true,
+        dontKillApp: Boolean = false,
+        targetUserId: String = "0",
+        installerSource: String? = "com.android.vending",
         onProgress: (String, Int) -> Unit
     ): InstallResult {
         val opId = "${System.currentTimeMillis()}_${java.util.UUID.randomUUID().toString().take(8)}"
@@ -890,10 +1319,16 @@ object PackageInstallerManager {
 
             tempInput.delete()
 
+            val grantFlag = if (autoGrantPermissions) "-g " else ""
+            val dontKillFlag = if (dontKillApp) "--dont-kill " else ""
+            val spoofFlag = if (!installerSource.isNullOrBlank() && installerSource != "none") "-i $installerSource " else ""
+            val userFlag = if (targetUserId == "all") "--user all " else if (targetUserId.isNotBlank() && targetUserId != "current") "--user $targetUserId " else ""
+            val baseInstallFlags = "-r -d -t --bypass-low-target-sdk-block $grantFlag$dontKillFlag$spoofFlag$userFlag"
+
             // 1. Single APK Direct Install
             if (lowerName.endsWith(".apk")) {
                 onProgress("⚡ Executing root force install (APK)...", 60)
-                val cmd = "pm install -r -d -t --bypass-low-target-sdk-block " + ShellUtils.shellQuote(stagedInput.absolutePath)
+                val cmd = "pm install $baseInstallFlags" + ShellUtils.shellQuote(stagedInput.absolutePath)
                 var result = ShellUtils.runAsRoot(cmd, 60000)
 
                 val dupPermMatch = Regex("already owned by ([a-zA-Z0-9_.]+)", RegexOption.IGNORE_CASE).find(result.output)
@@ -995,7 +1430,9 @@ object PackageInstallerManager {
                 }
 
                 onProgress("✅ Installation finished!", 100)
-                return handleInstallOutput(context, result, stagedInput.absolutePath, isSplit = false, installedPackage = detectedPkg, backupPath = autoBackupPath, incomingCode = incomingCode, installedCode = currentCode)
+                val installRes = handleInstallOutput(context, result, stagedInput.absolutePath, isSplit = false, installedPackage = detectedPkg, backupPath = autoBackupPath, incomingCode = incomingCode, installedCode = currentCode)
+                applyPostInstallOptimizations(installRes, autoGrantPermissions, enableDexOpt, bypassRestrictedSettings, onProgress)
+                return installRes
             }
 
             // 2. Split APKs / Bundles (.apks, .apkm, .xapk, .aab, .zip)
@@ -1088,7 +1525,7 @@ object PackageInstallerManager {
             // If only 1 APK inside the bundle
             if (apkFiles.size == 1) {
                 onProgress("⚡ Installing single APK from bundle...", 70)
-                val cmd = "pm install -r -d -t --bypass-low-target-sdk-block " + ShellUtils.shellQuote(apkFiles[0])
+                val cmd = "pm install $baseInstallFlags" + ShellUtils.shellQuote(apkFiles[0])
                 var result = ShellUtils.runAsRoot(cmd, 60000)
 
                 val singlePkg = bundlePkg ?: try {
@@ -1164,12 +1601,14 @@ object PackageInstallerManager {
                     setupObbFiles(extractDir, finalSinglePkg, onProgress)
                 }
                 onProgress("✅ Installation finished!", 100)
-                return handleInstallOutput(context, result, apkFiles[0], isSplit = false, installedPackage = finalSinglePkg, backupPath = autoBackupPath, incomingCode = bundleIncomingCode, installedCode = currentCode)
+                val installRes = handleInstallOutput(context, result, apkFiles[0], isSplit = false, installedPackage = finalSinglePkg, backupPath = autoBackupPath, incomingCode = bundleIncomingCode, installedCode = currentCode)
+                applyPostInstallOptimizations(installRes, autoGrantPermissions, enableDexOpt, bypassRestrictedSettings, onProgress)
+                return installRes
             }
 
             // Multiple Split APKs -> Use pm install-create session API
             onProgress("🔄 Creating Android package install session for ${apkFiles.size} splits...", 55)
-            val createSessionResult = ShellUtils.runAsRoot("pm install-create -r -d -t --bypass-low-target-sdk-block --user 0", 20000)
+            val createSessionResult = ShellUtils.runAsRoot("pm install-create $baseInstallFlags", 20000)
             val sessionOutput = createSessionResult.output.trim()
 
             val sessionRegex = "\\[(\\d+)\\]".toRegex()
@@ -1273,7 +1712,7 @@ object PackageInstallerManager {
                     purgePackageCompletely(targetToBackup)
                 }
                 onProgress("🔄 Re-creating session for clean installation...", 96)
-                val retrySession = ShellUtils.runAsRoot("pm install-create -r -d -t --bypass-low-target-sdk-block --user 0", 20000).output.trim()
+                val retrySession = ShellUtils.runAsRoot("pm install-create $baseInstallFlags", 20000).output.trim()
                 val retrySessionId = sessionRegex.find(retrySession)?.groupValues?.get(1)?.toLongOrNull()?.toString()
                 if (retrySessionId != null) {
                     for ((index, apkPath) in apkFiles.withIndex()) {
@@ -1307,7 +1746,9 @@ object PackageInstallerManager {
             }
 
             onProgress("✅ Installation finished!", 100)
-            return handleInstallOutput(context, commitResult, "", isSplit = true, installedPackage = finalSplitPkg, backupPath = autoBackupPath, incomingCode = bundleIncomingCode, installedCode = currentCode)
+            val installRes = handleInstallOutput(context, commitResult, "", isSplit = true, installedPackage = finalSplitPkg, backupPath = autoBackupPath, incomingCode = bundleIncomingCode, installedCode = currentCode)
+            applyPostInstallOptimizations(installRes, autoGrantPermissions, enableDexOpt, bypassRestrictedSettings, onProgress)
+            return installRes
         } catch (e: Exception) {
             Log.e("PackageInstaller", "Install failed", e)
             return InstallResult(false, "Installation exception: ${e.message}", e.stackTraceToString())

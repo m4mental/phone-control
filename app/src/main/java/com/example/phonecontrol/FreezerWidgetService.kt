@@ -24,9 +24,25 @@ class FreezerRemoteViewsFactory(private val context: Context) : RemoteViewsServi
     override fun onCreate() {}
 
     override fun onDataSetChanged() {
+        FreezerManager.pruneUninstalledPackages(context)
         val set = FreezerManager.getFrozenApps(context) + FreezerManager.getSpecialFreezeApps(context)
+        val pm = context.packageManager
+        val queryFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            PackageManager.MATCH_DISABLED_COMPONENTS or PackageManager.MATCH_UNINSTALLED_PACKAGES
+        } else {
+            @Suppress("DEPRECATION")
+            PackageManager.GET_DISABLED_COMPONENTS or PackageManager.GET_UNINSTALLED_PACKAGES
+        }
+        val validApps = set.filter { pkg ->
+            try {
+                pm.getApplicationInfo(pkg, queryFlags)
+                true
+            } catch (_: Exception) {
+                false
+            }
+        }
         frozenAppsList.clear()
-        frozenAppsList.addAll(set.sorted())
+        frozenAppsList.addAll(validApps.sorted())
     }
 
     override fun onDestroy() {
@@ -44,9 +60,10 @@ class FreezerRemoteViewsFactory(private val context: Context) : RemoteViewsServi
         try {
             // CRITICAL: Must use MATCH_DISABLED_COMPONENTS to see icons of frozen apps
             val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                PackageManager.MATCH_DISABLED_COMPONENTS
+                PackageManager.MATCH_DISABLED_COMPONENTS or PackageManager.MATCH_UNINSTALLED_PACKAGES
             } else {
-                PackageManager.GET_DISABLED_COMPONENTS
+                @Suppress("DEPRECATION")
+                PackageManager.GET_DISABLED_COMPONENTS or PackageManager.GET_UNINSTALLED_PACKAGES
             }
             
             val appInfo = pm.getApplicationInfo(pkg, flags)
@@ -62,9 +79,9 @@ class FreezerRemoteViewsFactory(private val context: Context) : RemoteViewsServi
             views.setOnClickFillInIntent(R.id.widget_item_root, fillInIntent)
             views.setOnClickFillInIntent(R.id.widget_app_icon, fillInIntent)
             views.setOnClickFillInIntent(R.id.widget_app_name, fillInIntent)
-            
+            views.setViewVisibility(R.id.widget_item_root, android.view.View.VISIBLE)
         } catch (e: Exception) {
-            views.setTextViewText(R.id.widget_app_name, "Hidden")
+            views.setViewVisibility(R.id.widget_item_root, android.view.View.GONE)
         }
 
         return views

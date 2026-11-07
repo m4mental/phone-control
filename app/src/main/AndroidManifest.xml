@@ -208,9 +208,10 @@
                 <data android:pathPattern=".*\\..*\\.aab" />
             </intent-filter>
 
-            <!-- 5. Android Share Intent Action (ACTION_SEND) -->
+            <!-- 5. Android Share Intent Action (ACTION_SEND & ACTION_SEND_MULTIPLE for Batch Installs) -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
                 <category android:name="android.intent.category.DEFAULT" />
 
                 <data android:scheme="content" />
@@ -219,6 +220,7 @@
                 <data android:mimeType="application/xapk-package-archive" />
                 <data android:mimeType="application/apks-package-archive" />
                 <data android:mimeType="application/vnd.android.package-bundle" />
+                <data android:mimeType="*/*" />
             </intent-filter>
         </activity>
 
@@ -281,7 +283,11 @@
         <service
             android:name=".BackupService"
             android:foregroundServiceType="specialUse"
-            android:exported="false" />
+            android:exported="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Application and data backup and restore operations" />
+        </service>
 
         <activity
             android:name=".DozeWhitelistActivity"
@@ -310,6 +316,11 @@
 
         <activity
             android:name=".AppExtractorActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PhoneControl" />
+
+        <activity
+            android:name=".ComponentManagerActivity"
             android:exported="false"
             android:theme="@style/Theme.PhoneControl" />
 
@@ -425,6 +436,74 @@
             android:exported="true"
             android:label="Private DNS"
             android:icon="@drawable/ic_qs_private_dns"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <!-- Master Data Firewall QS Tile (1-Tap Pause / Restore Internet for all Configured Apps) -->
+        <service
+            android:name=".FirewallMasterTileService"
+            android:exported="true"
+            android:label="Data Firewall"
+            android:icon="@drawable/ic_sub_firewall"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <!-- Dynamic Per-App Firewall Tiles (Dedicated 1-Tap Control per Configured App) -->
+        <service
+            android:name=".AppFirewallTile1Service"
+            android:exported="true"
+            android:label="Firewall Slot 1"
+            android:icon="@drawable/ic_sub_firewall"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".AppFirewallTile2Service"
+            android:exported="true"
+            android:label="Firewall Slot 2"
+            android:icon="@drawable/ic_sub_firewall"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".AppFirewallTile3Service"
+            android:exported="true"
+            android:label="Firewall Slot 3"
+            android:icon="@drawable/ic_sub_firewall"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".AppFirewallTile4Service"
+            android:exported="true"
+            android:label="Firewall Slot 4"
+            android:icon="@drawable/ic_sub_firewall"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".AppFirewallTile5Service"
+            android:exported="true"
+            android:label="Firewall Slot 5"
+            android:icon="@drawable/ic_sub_firewall"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />

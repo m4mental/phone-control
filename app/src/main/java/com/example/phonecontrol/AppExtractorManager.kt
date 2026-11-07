@@ -14,6 +14,7 @@ import java.util.zip.ZipOutputStream
 object AppExtractorManager {
     private const val TAG = "AppExtractorManager"
     const val EXTRACT_DIR = "/sdcard/PHONE_CONTROL/extracted_apks"
+    const val BACKUP_DIR = "/sdcard/PHONE_CONTROL/backups"
 
     data class AppItem(
         val appName: String,
@@ -158,10 +159,11 @@ object AppExtractorManager {
 
             onProgress("🗜️ Compressing splits into standard .apks bundle...")
             var zipSuccess = false
+            val localZip = File(context.cacheDir, "temp_bundle_${System.currentTimeMillis()}.apks")
             try {
                 val stagingFiles = staging.listFiles()?.filter { it.isFile } ?: emptyList()
                 if (stagingFiles.isNotEmpty()) {
-                    ZipOutputStream(java.io.BufferedOutputStream(FileOutputStream(outApks))).use { zos ->
+                    ZipOutputStream(java.io.BufferedOutputStream(FileOutputStream(localZip))).use { zos ->
                         val buffer = ByteArray(64 * 1024)
                         for (f in stagingFiles) {
                             val entry = ZipEntry(f.name)
@@ -175,14 +177,19 @@ object AppExtractorManager {
                             zos.closeEntry()
                         }
                     }
-                    ShellUtils.runAsRoot("chmod 775 '$outApks'", 5000)
-                    zipSuccess = File(outApks).exists() && File(outApks).length() > 0
+                    if (localZip.exists() && localZip.length() > 0) {
+                        val qLocal = ShellUtils.shellQuote(localZip.absolutePath)
+                        val qOut = ShellUtils.shellQuote(outApks)
+                        val copyRes = ShellUtils.runAsRoot("cp $qLocal $qOut && chmod 775 $qOut", 15000)
+                        zipSuccess = copyRes.exitCode == 0
+                    }
                 }
             } catch (ze: Exception) {
                 Log.e(TAG, "Zip creation failed", ze)
             } finally {
+                try { if (localZip.exists()) localZip.delete() } catch (_: Exception) {}
                 // Cleanup staging
-                ShellUtils.runAsRoot("rm -rf '${staging.absolutePath}'", 10000)
+                ShellUtils.runAsRoot("rm -rf " + ShellUtils.shellQuote(staging.absolutePath), 10000)
             }
 
             if (zipSuccess) {
@@ -200,6 +207,114 @@ object AppExtractorManager {
         } catch (e: Exception) {
             Log.e(TAG, "Extraction failed for ${app.packageName}", e)
             return ExtractResult(false, null, "Extraction error: ${e.message}")
+        }
+    }
+
+    /**
+     * Backs up complete app APKs (including all splits) and /data/data app data into .backup.tar.gz
+     */
+    fun backupAppWithData(context: Context, app: AppItem, onProgress: (String) -> Unit): ExtractResult {
+        try {
+            onProgress("📁 Preparing backup directory...")
+            ShellUtils.runAsRoot("mkdir -p '$BACKUP_DIR' && chmod 777 '$BACKUP_DIR'", 5000)
+
+            val safeName = app.appName.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+            val safeVersion = app.versionName.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+            val baseFileName = "${safeName}_v${safeVersion}_${app.packageName}"
+            val outArchive = "$BACKUP_DIR/$baseFileName.backup.tar.gz"
+
+            onProgress("⏸️ Pausing application session...")
+            ShellUtils.runAsRoot("am force-stop ${app.packageName}", 5000)
+
+            val staging = File(context.cacheDir, "backup_staging_${System.currentTimeMillis()}")
+            ShellUtils.runAsRoot("mkdir -p '${staging.absolutePath}/apks' '${staging.absolutePath}/data'", 5000)
+
+            // 1. Copy APKs
+            onProgress("📤 Archiving application APKs (${app.apkPaths.size} files)...")
+            for (p in app.apkPaths) {
+                val fName = File(p).name
+                ShellUtils.runAsRoot("cp '$p' '${staging.absolutePath}/apks/$fName'", 15000)
+            }
+
+            // 2. Archive data directory excluding caches
+            onProgress("💾 Archiving application data (/data/data/${app.packageName})...")
+            val dataPath = "/data/data/${app.packageName}"
+            val copyDataCmd = "if [ -d '$dataPath' ]; then cp -r '$dataPath' '${staging.absolutePath}/data/'; rm -rf '${staging.absolutePath}/data/${app.packageName}/cache' '${staging.absolutePath}/data/${app.packageName}/code_cache'; fi"
+            ShellUtils.runAsRoot(copyDataCmd, 30000)
+
+            // 3. Compress into .backup.tar.gz
+            onProgress("🗜️ Compressing complete application bundle...")
+            val tarCmd = "cd '${staging.absolutePath}' && tar -czf '$outArchive' apks data && chmod 775 '$outArchive'"
+            val res = ShellUtils.runAsRoot(tarCmd, 60000)
+
+            // Cleanup staging
+            ShellUtils.runAsRoot("rm -rf '${staging.absolutePath}'", 10000)
+
+            if (res.exitCode == 0 && File(outArchive).exists()) {
+                val bSize = File(outArchive).length()
+                return ExtractResult(true, outArchive, "Complete backup created (${formatSize(bSize)}).")
+            } else {
+                return ExtractResult(false, null, "Failed to create backup archive: ${res.output}")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Backup failed for ${app.packageName}", e)
+            return ExtractResult(false, null, "Backup error: ${e.message}")
+        }
+    }
+
+    /**
+     * Restores application APKs and /data/data state from a .backup.tar.gz archive.
+     */
+    fun restoreAppWithData(context: Context, packageName: String, backupFilePath: String, onProgress: (String) -> Unit): Boolean {
+        try {
+            onProgress("📦 Unpacking backup archive...")
+            val staging = File(context.cacheDir, "restore_staging_${System.currentTimeMillis()}")
+            ShellUtils.runAsRoot("mkdir -p '${staging.absolutePath}'", 5000)
+
+            val untarCmd = "tar -xzf '$backupFilePath' -C '${staging.absolutePath}'"
+            val res = ShellUtils.runAsRoot(untarCmd, 60000)
+            if (res.exitCode != 0) {
+                ShellUtils.runAsRoot("rm -rf '${staging.absolutePath}'", 5000)
+                return false
+            }
+
+            // 1. Install APKs if present
+            onProgress("📲 Installing application APKs...")
+            val apksFolder = "${staging.absolutePath}/apks"
+            val installCmd = "pm install-create -r -t -d -g"
+            val sessionRes = ShellUtils.runAsRoot(installCmd, 10000)
+            val sessionId = Regex("\\[(\\d+)\\]").find(sessionRes.output)?.groupValues?.get(1)
+
+            if (sessionId != null) {
+                val writeCmd = "for f in '$apksFolder'/*.apk; do pm install-write -S \$(stat -c %s \"\$f\") $sessionId \$(basename \"\$f\") \"\$f\"; done"
+                ShellUtils.runAsRoot(writeCmd, 30000)
+                ShellUtils.runAsRoot("pm install-commit $sessionId", 30000)
+            } else {
+                ShellUtils.runAsRoot("pm install -r -d -g '$apksFolder'/*.apk", 30000)
+            }
+
+            // 2. Restore app data
+            onProgress("📥 Restoring app data & fixing permissions...")
+            ShellUtils.runAsRoot("am force-stop $packageName", 5000)
+
+            val uidRes = ShellUtils.fastCmdResult("dumpsys package $packageName | grep userId= | head -n 1", 3000)
+            val uid = Regex("userId=(\\d+)").find(uidRes)?.groupValues?.get(1) ?: "10000"
+
+            val restoreDataCmd = """
+                if [ -d '${staging.absolutePath}/data/$packageName' ]; then
+                    cp -r -p '${staging.absolutePath}/data/$packageName'/* '/data/data/$packageName/' 2>/dev/null
+                    chown -R $uid:$uid '/data/data/$packageName'
+                    chmod -R 771 '/data/data/$packageName'
+                    restorecon -R '/data/data/$packageName'
+                fi
+            """.trimIndent()
+            ShellUtils.runAsRoot(restoreDataCmd, 30000)
+
+            ShellUtils.runAsRoot("rm -rf '${staging.absolutePath}'", 5000)
+            return true
+        } catch (e: Exception) {
+            Log.e(TAG, "Restore failed for $packageName", e)
+            return false
         }
     }
 

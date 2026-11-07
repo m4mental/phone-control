@@ -793,9 +793,18 @@ class AdbShellActivity : AppCompatActivity() {
     }
 
     private fun loadHistory() {
+        commandHistory.clear()
         val prefs = getSharedPreferences("adb_history", MODE_PRIVATE)
-        val historySet = prefs.getStringSet("history", emptySet())
-        if (historySet != null) {
+        val historyJson = prefs.getString("history_ordered", null)
+        if (!historyJson.isNullOrBlank()) {
+            try {
+                val array = org.json.JSONArray(historyJson)
+                for (i in 0 until array.length()) {
+                    commandHistory.add(array.getString(i))
+                }
+            } catch (_: Exception) {}
+        } else {
+            val historySet = prefs.getStringSet("history", emptySet()) ?: emptySet()
             commandHistory.addAll(historySet)
         }
     }
@@ -805,7 +814,8 @@ class AdbShellActivity : AppCompatActivity() {
         commandHistory.add(0, cmd)
         if (commandHistory.size > 50) commandHistory.removeAt(commandHistory.size - 1)
         val prefs = getSharedPreferences("adb_history", MODE_PRIVATE)
-        prefs.edit().putStringSet("history", commandHistory.toSet()).apply()
+        val array = org.json.JSONArray(commandHistory)
+        prefs.edit().putString("history_ordered", array.toString()).apply()
         historyIndex = -1
     }
 

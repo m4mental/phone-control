@@ -62,7 +62,7 @@ object RecentTasksManager {
 
         return try {
             val output = ShellUtils.fastCmdResult(
-                "dumpsys activity recents | grep -m 50 -E 'mHiddenTasks|Recent #[0-9]+:|realActivity=|baseActivity=|topActivity=|cmp=|I=|Task\\{' 2>/dev/null",
+                "dumpsys activity recents | grep -v 'mHiddenTasks' | grep -m 50 -E 'Recent #[0-9]+:|realActivity=|baseActivity=|topActivity=|cmp=|I=|Task\\{' 2>/dev/null",
                 1500
             )
             if (output.isBlank()) {
@@ -77,6 +77,7 @@ object RecentTasksManager {
             )
 
             for (line in output.lineSequence()) {
+                if (line.contains("mHiddenTasks")) continue
                 for (r in regexes) {
                     val m = r.find(line)
                     if (m != null) {
@@ -97,6 +98,8 @@ object RecentTasksManager {
                     pkgs.contains(p) || FreezerManager.isRecentlyLaunched(p, 30000L)
                 }
                 activeRecentsPackages.addAll(pkgs)
+            } else {
+                activeRecentsPackages.retainAll { p -> FreezerManager.isRecentlyLaunched(p, 30000L) }
             }
 
             pkgs
@@ -123,7 +126,9 @@ object RecentTasksManager {
      * guaranteeing dynamic immunity from freeze/kill even if not in Recents.
      */
     fun hasActiveForegroundTask(packageName: String, maxCacheAgeMs: Long = 800L): Boolean {
-        if (packageName.isBlank() || isIgnoredSystemPackage(packageName)) return false
+        if (packageName.isBlank()) return false
+        val (pkg, userId) = FreezerManager.parsePackageKey(packageName)
+        if (pkg.isBlank() || isIgnoredSystemPackage(pkg)) return false
 
         val now = System.currentTimeMillis()
         val cached = activeForegroundTaskCache[packageName]
@@ -132,10 +137,22 @@ object RecentTasksManager {
         }
 
         return try {
+            val userCheck = if (userId != 0) {
+                """
+                uid_min=${userId * 100000}
+                uid_max=${(userId + 1) * 100000}
+                p_uid=${'$'}(grep -m 1 "^Uid:" /proc/${'$'}p/status 2>/dev/null | awk '{print ${'$'}2}')
+                if [ -z "${'$'}p_uid" ] || [ "${'$'}p_uid" -lt "${'$'}uid_min" ] || [ "${'$'}p_uid" -ge "${'$'}uid_max" ]; then
+                    continue
+                fi
+                """.trimIndent()
+            } else ""
+
             val script = """
                 active=0
-                pids=${'$'}(pgrep -f "^$packageName" 2>/dev/null || pidof "$packageName" 2>/dev/null)
+                pids=${'$'}(pgrep -f "^$pkg" 2>/dev/null || pidof "$pkg" 2>/dev/null)
                 for p in ${'$'}pids; do
+                    $userCheck
                     adj=${'$'}(cat /proc/${'$'}p/oom_score_adj 2>/dev/null)
                     if [ -n "${'$'}adj" ] && [ "${'$'}adj" -le 250 ]; then
                         active=1
@@ -143,7 +160,7 @@ object RecentTasksManager {
                     fi
                 done
                 if [ "${'$'}active" -eq 0 ] && [ -n "${'$'}pids" ]; then
-                    wl=${'$'}(dumpsys power 2>/dev/null | grep -E "PARTIAL_WAKE_LOCK.*$packageName" | head -n 1)
+                    wl=${'$'}(dumpsys power 2>/dev/null | grep -E "PARTIAL_WAKE_LOCK.*$pkg" | head -n 1)
                     if [ -n "${'$'}wl" ]; then
                         active=1
                     fi
