@@ -1331,7 +1331,7 @@ object TweakManager {
 
         if (tcpEnabled) {
             val cmds = listOf(
-                "sysctl -w net.ipv4.tcp_timestamps=0",
+                "sysctl -w net.ipv4.tcp_timestamps=1",
                 "sysctl -w net.ipv4.tcp_sack=1",
                 "sysctl -w net.ipv4.tcp_window_scaling=1",
                 "sysctl -w net.core.rmem_max=16777216",
@@ -1340,7 +1340,9 @@ object TweakManager {
                 "sysctl -w net.ipv4.tcp_wmem='4096 65536 16777216'",
                 "sysctl -w net.ipv4.tcp_fastopen=3",
                 "sysctl -w net.core.default_qdisc=fq_codel",
-                "sysctl -w net.ipv4.tcp_congestion_control=bbr"
+                "sysctl -w net.ipv4.tcp_congestion_control=bbr",
+                "sysctl -w net.ipv6.conf.all.disable_ipv6=0",
+                "sysctl -w net.ipv6.conf.default.disable_ipv6=0"
             )
             for (cmd in cmds) ShellUtils.fastCmd(cmd)
         }
@@ -1348,9 +1350,10 @@ object TweakManager {
         if (lowLatencyEnabled) {
             ShellUtils.fastCmd("settings put global wifi_scan_throttle_enabled 1")
             ShellUtils.fastCmd("cmd wifi set-scan-throttle enabled")
-            ShellUtils.fastCmd("sysctl -w net.ipv6.conf.all.disable_ipv6=1")
+            // Crucial: Keep IPv6 fully active on 4G/5G (Jio/Airtel) so push sockets (FCM & WhatsApp) are never broken
+            ShellUtils.fastCmd("sysctl -w net.ipv6.conf.all.disable_ipv6=0; sysctl -w net.ipv6.conf.default.disable_ipv6=0")
         } else {
-            ShellUtils.fastCmd("sysctl -w net.ipv6.conf.all.disable_ipv6=0")
+            ShellUtils.fastCmd("sysctl -w net.ipv6.conf.all.disable_ipv6=0; sysctl -w net.ipv6.conf.default.disable_ipv6=0")
         }
     }
 
@@ -1420,11 +1423,68 @@ object TweakManager {
 
     /**
      * 10. Smart Network Firewall (Data Guard)
+     * Supports granular interface-specific blocking:
+     * - Wi-Fi: wlan+
+     * - Mobile Data: rmnet+, ccmni+, pdp+, wwan+
      */
+    fun setFirewallRule(uid: Int, blockWifi: Boolean, blockData: Boolean) {
+        val cmds = mutableListOf<String>()
+
+        // 1. Purge any legacy global REJECT rule for this UID
+        cmds.add("iptables -w 2 -D OUTPUT -m owner --uid-owner $uid -j REJECT 2>/dev/null; ip6tables -w 2 -D OUTPUT -m owner --uid-owner $uid -j REJECT 2>/dev/null")
+
+        // 2. Wi-Fi (wlan+)
+        if (blockWifi) {
+            cmds.add("iptables -w 2 -C OUTPUT -o wlan+ -m owner --uid-owner $uid -j REJECT 2>/dev/null || iptables -w 2 -A OUTPUT -o wlan+ -m owner --uid-owner $uid -j REJECT 2>/dev/null")
+            cmds.add("ip6tables -w 2 -C OUTPUT -o wlan+ -m owner --uid-owner $uid -j REJECT 2>/dev/null || ip6tables -w 2 -A OUTPUT -o wlan+ -m owner --uid-owner $uid -j REJECT 2>/dev/null")
+        } else {
+            cmds.add("iptables -w 2 -D OUTPUT -o wlan+ -m owner --uid-owner $uid -j REJECT 2>/dev/null; ip6tables -w 2 -D OUTPUT -o wlan+ -m owner --uid-owner $uid -j REJECT 2>/dev/null")
+        }
+
+        // 3. Mobile Data (rmnet+, ccmni+, pdp+, wwan+)
+        val cellIfaces = listOf("rmnet+", "ccmni+", "pdp+", "wwan+")
+        for (iface in cellIfaces) {
+            if (blockData) {
+                cmds.add("iptables -w 2 -C OUTPUT -o $iface -m owner --uid-owner $uid -j REJECT 2>/dev/null || iptables -w 2 -A OUTPUT -o $iface -m owner --uid-owner $uid -j REJECT 2>/dev/null")
+                cmds.add("ip6tables -w 2 -C OUTPUT -o $iface -m owner --uid-owner $uid -j REJECT 2>/dev/null || ip6tables -w 2 -A OUTPUT -o $iface -m owner --uid-owner $uid -j REJECT 2>/dev/null")
+            } else {
+                cmds.add("iptables -w 2 -D OUTPUT -o $iface -m owner --uid-owner $uid -j REJECT 2>/dev/null; ip6tables -w 2 -D OUTPUT -o $iface -m owner --uid-owner $uid -j REJECT 2>/dev/null")
+            }
+        }
+
+        ShellUtils.fastBatchCmd(cmds)
+    }
+
     fun setFirewallRule(uid: Int, blocked: Boolean) {
-        val action = if (blocked) "-A" else "-D"
-        ShellUtils.runAsRoot("iptables $action OUTPUT -m owner --uid-owner $uid -j REJECT 2>/dev/null")
-        ShellUtils.runAsRoot("ip6tables $action OUTPUT -m owner --uid-owner $uid -j REJECT 2>/dev/null")
+        setFirewallRule(uid, blockWifi = blocked, blockData = blocked)
+    }
+
+    /**
+     * 10b. Per-App Bandwidth Rate Limiter (Network QoS via iptables limit)
+     * Throttles network bandwidth per UID (e.g. 512 Kbps, 1024 Kbps, 2048 Kbps).
+     * limitKbps = 0 removes the limit (unlimited).
+     */
+    fun setAppBandwidthLimit(uid: Int, limitKbps: Int) {
+        val chain = "PC_QOS_$uid"
+        val cmds = mutableListOf<String>()
+
+        cmds.add("iptables -w 2 -D OUTPUT -m owner --uid-owner $uid -j $chain 2>/dev/null; ip6tables -w 2 -D OUTPUT -m owner --uid-owner $uid -j $chain 2>/dev/null")
+        cmds.add("iptables -w 2 -F $chain 2>/dev/null; ip6tables -w 2 -F $chain 2>/dev/null")
+        cmds.add("iptables -w 2 -X $chain 2>/dev/null; ip6tables -w 2 -X $chain 2>/dev/null")
+
+        if (limitKbps > 0) {
+            val pps = ((limitKbps * 128) / 1460).coerceAtLeast(10)
+            val burst = (pps * 1.5).toInt().coerceAtLeast(20)
+
+            cmds.add("iptables -w 2 -N $chain 2>/dev/null; ip6tables -w 2 -N $chain 2>/dev/null")
+            cmds.add("iptables -w 2 -A $chain -m limit --limit $pps/sec --limit-burst $burst -j ACCEPT")
+            cmds.add("ip6tables -w 2 -A $chain -m limit --limit $pps/sec --limit-burst $burst -j ACCEPT")
+            cmds.add("iptables -w 2 -A $chain -j DROP; ip6tables -w 2 -A $chain -j DROP")
+            cmds.add("iptables -w 2 -I OUTPUT 1 -m owner --uid-owner $uid -j $chain")
+            cmds.add("ip6tables -w 2 -I OUTPUT 1 -m owner --uid-owner $uid -j $chain")
+        }
+
+        ShellUtils.fastBatchCmd(cmds)
     }
 
     /**

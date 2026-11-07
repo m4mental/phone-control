@@ -316,12 +316,18 @@ object ShellUtils {
         fastCmd(joined)
     }
 
+    @Volatile private var suSupportsMm: Boolean? = null
+
     /**
      * Executes command directly with su -mm (Mount Master / Global Namespace).
      * Drains stdout and stderr concurrently, enforces timeout, destroys timed-out processes,
-     * and returns explicit failure instead of silently falling back to runAsRoot.
+     * and seamlessly falls back to standard su on KernelSU / APatch / forks where -mm is unsupported.
      */
     fun runAsRootMm(command: String, timeoutMs: Long = 5000): ShellResult {
+        if (suSupportsMm == false) {
+            return runAsRoot(command, timeoutMs)
+        }
+
         var proc: Process? = null
         var inReader: BufferedReader? = null
         var errReader: BufferedReader? = null
@@ -368,10 +374,19 @@ object ShellUtils {
 
             val code = p.exitValue()
             val combined = (stdoutBuilder.toString() + stderrBuilder.toString()).trim()
+
+            // If su rejected -mm (KernelSU, KernelSU-Next, APatch), fallback to standard root execution
+            val lower = combined.lowercase()
+            if (code != 0 && (lower.contains("option") || lower.contains("usage") || lower.contains("not supported") || lower.contains("illegal"))) {
+                suSupportsMm = false
+                return runAsRoot(command, timeoutMs)
+            }
+
             ShellResult(code, combined)
         } catch (e: Exception) {
             Log.e("ShellUtils", "runAsRootMm execution failed: ${e.message}", e)
-            ShellResult(-1, "su -mm failed: ${e.message ?: "Execution error"}")
+            suSupportsMm = false
+            runAsRoot(command, timeoutMs)
         } finally {
             try { inReader?.close() } catch (_: Exception) {}
             try { errReader?.close() } catch (_: Exception) {}
@@ -389,10 +404,25 @@ object ShellUtils {
             synchronized(shellLock) {
                 closePersistentShell()
             }
-            val proc = try {
-                Runtime.getRuntime().exec(arrayOf("su", "-mm"))
-            } catch (e: Exception) {
-                Runtime.getRuntime().exec("su")
+            var proc: Process? = null
+            if (suSupportsMm != false) {
+                try {
+                    val p = Runtime.getRuntime().exec(arrayOf("su", "-mm"))
+                    // Verify if su -mm immediately died from invalid flag (KernelSU-Next / APatch / forks)
+                    Thread.sleep(25)
+                    if (isProcessAlive(p)) {
+                        proc = p
+                        suSupportsMm = true
+                    } else {
+                        destroyProcess(p)
+                        suSupportsMm = false
+                    }
+                } catch (_: Exception) {
+                    suSupportsMm = false
+                }
+            }
+            if (proc == null || !isProcessAlive(proc)) {
+                proc = Runtime.getRuntime().exec("su")
             }
             persistentProcess = proc
             os = DataOutputStream(proc.outputStream)

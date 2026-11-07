@@ -211,7 +211,14 @@ class AppInspectorActivity : AppCompatActivity() {
         val toggleAction = if (item.isDisabledOrFrozen) "✅ Enable & Unhide App" else "🛑 Disable & Hide App"
         val isShielded = UpdateShieldManager.isShielded(this, item.packageName)
         val shieldAction = if (isShielded) "🔄 Re-attach to Play Store (Allow Updates)" else "🛡️ Detach from Play Store (Shield)"
-        val options = arrayOf("Select for Terminal", toggleAction, shieldAction, "⚡ Force Stop App", "📋 Copy Package Name")
+        val options = arrayOf(
+            "Select for Terminal",
+            "⚙️ Manage Components (Services/Receivers)",
+            toggleAction,
+            shieldAction,
+            "⚡ Force Stop App",
+            "📋 Copy Package Name"
+        )
 
         AlertDialog.Builder(this)
             .setTitle(item.name)
@@ -224,9 +231,15 @@ class AppInspectorActivity : AppCompatActivity() {
                         finish()
                     }
                     1 -> {
-                        toggleAppStatus(item)
+                        val intent = Intent(this, ComponentManagerActivity::class.java).apply {
+                            putExtra("package_name", item.packageName)
+                        }
+                        startActivity(intent)
                     }
                     2 -> {
+                        toggleAppStatus(item)
+                    }
+                    3 -> {
                         thread {
                             val currentlyShielded = UpdateShieldManager.isShielded(this, item.packageName)
                             val success = UpdateShieldManager.setShielded(this, item.packageName, !currentlyShielded)
@@ -245,7 +258,7 @@ class AppInspectorActivity : AppCompatActivity() {
                             }
                         }
                     }
-                    3 -> {
+                    4 -> {
                         thread {
                             ShellUtils.runAsRoot("am force-stop ${item.packageName}")
                             runOnUiThread {
@@ -254,7 +267,7 @@ class AppInspectorActivity : AppCompatActivity() {
                             }
                         }
                     }
-                    4 -> {
+                    5 -> {
                         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         val clip = ClipData.newPlainText("Package Name", item.packageName)
                         clipboard.setPrimaryClip(clip)

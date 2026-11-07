@@ -1,6 +1,7 @@
 package com.example.phonecontrol
 
 import android.content.Context
+import android.os.StatFs
 import android.util.Log
 
 object StorageManager {
@@ -18,9 +19,52 @@ object StorageManager {
     }
 
     /**
+     * SD Maid Cache Trimmer: Invokes Android framework's built-in `pm trim-caches`
+     * to safely clear caches across all installed applications up to 128GB, sweeps
+     * /data/local/tmp, removes photo thumbnail caches, and drops RAM pagecaches.
+     */
+    data class TrimResult(
+        val freedBytes: Long,
+        val freedReadable: String,
+        val log: String
+    )
+
+    fun runPmTrimCaches(onProgress: (String) -> Unit): TrimResult {
+        onProgress("Checking storage state before cache trim...")
+        val statBefore = try { StatFs("/data").availableBytes } catch (e: Exception) { 0L }
+
+        onProgress("Invoking SD Maid cache trimmer (pm trim-caches 128G)...")
+        val trimOut = ShellUtils.runAsRoot("pm trim-caches 128G", 30000).output
+
+        onProgress("Sweeping orphaned temp files in /data/local/tmp...")
+        ShellUtils.runAsRoot("rm -rf /data/local/tmp/* 2>/dev/null", 10000)
+
+        onProgress("Purging gallery thumbnail cache (.thumbnails)...")
+        ShellUtils.runAsRoot("rm -rf /sdcard/DCIM/.thumbnails/* /sdcard/Pictures/.thumbnails/* 2>/dev/null", 10000)
+
+        onProgress("Dropping kernel pagecache...")
+        ShellUtils.runAsRoot("echo 3 > /proc/sys/vm/drop_caches 2>/dev/null", 5000)
+        ShellUtils.runAsRoot("sync", 10000)
+
+        val statAfter = try { StatFs("/data").availableBytes } catch (e: Exception) { 0L }
+        val freed = (statAfter - statBefore).coerceAtLeast(0L)
+
+        val logMsg = "SD Maid Cache Trim Complete!\n" +
+                "Trim Output: ${trimOut.ifBlank { "All application caches purged successfully." }}\n" +
+                "Space Reclaimed: ${formatSize(freed)}"
+
+        return TrimResult(freed, formatSize(freed), logMsg)
+    }
+
+    /**
      * Optimizes SQLite databases for key system and user apps.
      */
     fun vacuumDatabases(onProgress: (String) -> Unit): Int {
+        val check = ShellUtils.fastCmdResult("which sqlite3", 1000).trim()
+        if (check.isBlank() || check.contains("not found")) {
+            onProgress("sqlite3 CLI not present on device. Skipping safely.")
+            return 0
+        }
         var optimizedCount = 0
         val dbPaths = listOf(
             "/data/user/0/com.android.providers.settings/databases/settings.db",
@@ -43,7 +87,7 @@ object StorageManager {
      */
     fun applyStorageBoost(enabled: Boolean) {
         val readAhead = if (enabled) "2048" else "512"
-        val scheduler = if (enabled) "mq-deadline" else "none" // 'none' or 'cfq' usually default
+        val scheduler = if (enabled) "mq-deadline" else "none"
         
         val storageBlocks = listOf("sda", "sdb", "sdc", "mmcblk0", "dm-0")
         for (block in storageBlocks) {
@@ -60,6 +104,7 @@ object StorageManager {
     data class OrphanedItem(
         val packageName: String,
         val path: String,
+        val partition: String,
         val sizeBytes: Long,
         val sizeReadable: String
     )
@@ -71,33 +116,61 @@ object StorageManager {
     )
 
     /**
-     * Scans /sdcard/Android/obb/ and /sdcard/Android/data/ for residual directories
-     * belonging to uninstalled packages.
+     * SD Maid CorpseFinder:
+     * Scans internal partitions (/data/data, /data/user/0, /data/user_de/0) and
+     * external storage (/sdcard/Android/obb, /sdcard/Android/data, /sdcard/Android/media)
+     * for residual folders left behind by uninstalled packages.
      */
     fun scanOrphanedResidue(context: Context, onProgress: (String) -> Unit): OrphanScanResult {
-        onProgress("Reading installed package registry...")
-        val installed = try {
-            context.packageManager.getInstalledPackages(0).map { it.packageName }.toSet()
-        } catch (e: Exception) {
-            emptySet()
+        onProgress("Reading complete installed package registry across all users...")
+        
+        // Fetch full list of packages including uninstalled-for-user-0 and disabled apps
+        val pmListCmd = ShellUtils.runAsRoot("pm list packages -u -a 2>/dev/null", 15000)
+        val installed = if (pmListCmd.exitCode == 0 && pmListCmd.output.isNotBlank()) {
+            pmListCmd.output.lines()
+                .map { it.trim().removePrefix("package:").trim() }
+                .filter { it.isNotBlank() }
+                .toSet()
+        } else {
+            try {
+                context.packageManager.getInstalledPackages(0).map { it.packageName }.toSet()
+            } catch (e: Exception) {
+                emptySet()
+            }
         }
 
-        val scanPaths = listOf("/sdcard/Android/obb", "/sdcard/Android/data")
+        val scanTargets = listOf(
+            Pair("/data/data", "Internal (/data/data)"),
+            Pair("/data/user_de/0", "Device-Encrypted (/data/user_de/0)"),
+            Pair("/sdcard/Android/obb", "External OBB (/sdcard/Android/obb)"),
+            Pair("/sdcard/Android/data", "External Data (/sdcard/Android/data)"),
+            Pair("/sdcard/Android/media", "External Media (/sdcard/Android/media)")
+        )
+
         val orphanedList = mutableListOf<OrphanedItem>()
         var grandTotalBytes = 0L
 
-        for (basePath in scanPaths) {
-            onProgress("Scanning $basePath for uninstalled ghosts...")
-            val listOutput = ShellUtils.runAsRoot("ls -1 '$basePath' 2>/dev/null").output
+        // Common system non-package folders to ignore
+        val systemDirsToIgnore = setOf(
+            "cache", "code_cache", "files", "databases", "shared_prefs", "lib", "system",
+            "media", "obb", "data", "app_webview", "no_backup"
+        )
+
+        for ((basePath, partitionName) in scanTargets) {
+            onProgress("Scanning $partitionName for corpse folders...")
+            val listOutput = ShellUtils.runAsRoot("ls -1 '$basePath' 2>/dev/null", 10000).output
             val dirNames = listOutput.split("\n").map { it.trim() }.filter { it.isNotBlank() }
 
             for (dir in dirNames) {
-                if (dir.startsWith(".") || !dir.contains(".")) continue
+                if (dir.startsWith(".") || systemDirsToIgnore.contains(dir)) continue
+                // Valid android package names must contain at least one dot (e.g. com.something)
+                if (!dir.contains(".")) continue
 
                 if (!installed.contains(dir)) {
                     val fullPath = "$basePath/$dir"
-                    onProgress("Inspecting leftover: $dir...")
-                    val sizeOut = ShellUtils.runAsRoot("du -sb '$fullPath' 2>/dev/null | cut -f1").output.trim()
+                    onProgress("Found corpse: $dir ($partitionName)...")
+                    val qFullPath = ShellUtils.shellQuote(fullPath)
+                    val sizeOut = ShellUtils.runAsRoot("du -sb $qFullPath 2>/dev/null | cut -f1", 10000).output.trim()
                     val bytes = sizeOut.toLongOrNull() ?: 0L
                     if (bytes > 0) {
                         grandTotalBytes += bytes
@@ -105,6 +178,7 @@ object StorageManager {
                             OrphanedItem(
                                 packageName = dir,
                                 path = fullPath,
+                                partition = partitionName,
                                 sizeBytes = bytes,
                                 sizeReadable = formatSize(bytes)
                             )
@@ -122,17 +196,20 @@ object StorageManager {
     }
 
     /**
-     * Deletes orphaned ghost residue folders and reclaims disk space.
+     * Deletes orphaned corpse folders and reclaims disk space.
      */
     fun cleanOrphanedResidue(items: List<OrphanedItem>, onProgress: (String) -> Unit): Long {
         var freedBytes = 0L
         for (item in items) {
-            onProgress("Deleting ghost residue: ${item.packageName} (${item.sizeReadable})...")
-            val res = ShellUtils.runAsRoot("rm -rf '${item.path}'", 15000)
+            onProgress("Purging corpse: ${item.packageName} (${item.sizeReadable})...")
+            val qPath = ShellUtils.shellQuote(item.path)
+            val res = ShellUtils.runAsRoot("rm -rf $qPath", 15000)
             if (res.exitCode == 0) {
                 freedBytes += item.sizeBytes
             }
-            ShellUtils.runAsRoot("pm uninstall --all-users ${item.packageName} 2>/dev/null", 10000)
+            if (ShellUtils.isValidPackageName(item.packageName)) {
+                ShellUtils.runAsRoot("pm uninstall --all-users ${item.packageName} 2>/dev/null", 10000)
+            }
         }
         ShellUtils.runAsRoot("sync", 10000)
         return freedBytes

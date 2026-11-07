@@ -42,6 +42,22 @@ class StorageActivity : AppCompatActivity() {
             }
         }
 
+        val btnTrimAll = findViewById<Button>(R.id.btnTrimAllCaches)
+        btnTrimAll.setOnClickListener {
+            tvLog.text = "⚡ Starting SD Maid Cache Trim (pm trim-caches 128G)...\n"
+            btnTrimAll.isEnabled = false
+            thread {
+                val trimResult = StorageManager.runPmTrimCaches { progress ->
+                    runOnUiThread { tvLog.append("\n$progress") }
+                }
+                runOnUiThread {
+                    btnTrimAll.isEnabled = true
+                    tvLog.append("\n\n🎉 ${trimResult.log}")
+                    AppToast.show(this, "Cleaned ${trimResult.freedReadable} app caches!")
+                }
+            }
+        }
+
         btnTrim.setOnClickListener {
             tvLog.text = "Running FSTRIM... Please wait."
             thread {
@@ -75,7 +91,7 @@ class StorageActivity : AppCompatActivity() {
 
         val btnCleanOrphaned = findViewById<Button>(R.id.btnCleanOrphanedResidue)
         btnCleanOrphaned.setOnClickListener {
-            tvLog.text = "🔍 Scanning for uninstalled app residue in /sdcard/Android/obb and /sdcard/Android/data..."
+            tvLog.text = "🔍 SD Maid CorpseFinder: Scanning /data/data, /data/user_de/0, and /sdcard/Android for uninstalled app residue..."
             btnCleanOrphaned.isEnabled = false
             thread {
                 val scanResult = StorageManager.scanOrphanedResidue(this) { progress ->
@@ -85,34 +101,34 @@ class StorageActivity : AppCompatActivity() {
                 runOnUiThread {
                     btnCleanOrphaned.isEnabled = true
                     if (scanResult.items.isEmpty()) {
-                        tvLog.append("\n\n✅ Storage Clean! No ghost residue from uninstalled apps found.")
-                        AppToast.show(this, "No ghost residue found!")
+                        tvLog.append("\n\n✅ Storage Clean! No corpse residue from uninstalled apps found.")
+                        AppToast.show(this, "No corpse residue found!")
                     } else {
-                        tvLog.append("\n\n⚠️ Found ${scanResult.items.size} ghost folder(s) taking ${scanResult.totalReadable}!")
-                        val itemLabels = scanResult.items.map { "${it.packageName} (${it.sizeReadable})" }.toTypedArray()
+                        tvLog.append("\n\n⚠️ Found ${scanResult.items.size} corpse folder(s) taking ${scanResult.totalReadable}!")
+                        val itemLabels = scanResult.items.map { "[${it.partition}] ${it.packageName} (${it.sizeReadable})" }.toTypedArray()
                         val checkedItems = BooleanArray(scanResult.items.size) { true }
 
                         androidx.appcompat.app.AlertDialog.Builder(this)
-                            .setTitle("Found ${scanResult.items.size} Ghost Folders (${scanResult.totalReadable})")
+                            .setTitle("Found ${scanResult.items.size} Corpse Folders (${scanResult.totalReadable})")
                             .setMultiChoiceItems(itemLabels, checkedItems) { _, which, isChecked ->
                                 checkedItems[which] = isChecked
                             }
-                            .setPositiveButton("Clean Selected") { _, _ ->
+                            .setPositiveButton("Purge Selected") { _, _ ->
                                 val selectedItems = scanResult.items.filterIndexed { index, _ -> checkedItems[index] }
                                 if (selectedItems.isEmpty()) {
                                     tvLog.append("\nOperation cancelled: No folders selected.")
                                     return@setPositiveButton
                                 }
                                 btnCleanOrphaned.isEnabled = false
-                                tvLog.append("\n🧹 Deleting ${selectedItems.size} selected ghost folder(s)...")
+                                tvLog.append("\n🧹 Purging ${selectedItems.size} selected corpse folder(s)...")
                                 thread {
                                     val freed = StorageManager.cleanOrphanedResidue(selectedItems) { progress ->
                                         runOnUiThread { tvLog.append("\n$progress") }
                                     }
                                     runOnUiThread {
                                         btnCleanOrphaned.isEnabled = true
-                                        tvLog.append("\n\n🎉 Successfully deleted ${selectedItems.size} ghost folders! Recovered ${StorageManager.formatSize(freed)} of storage.")
-                                        AppToast.show(this, "Cleaned ${StorageManager.formatSize(freed)} of ghost data!")
+                                        tvLog.append("\n\n🎉 Successfully purged ${selectedItems.size} corpse folders! Recovered ${StorageManager.formatSize(freed)} of storage.")
+                                        AppToast.show(this, "Purged ${StorageManager.formatSize(freed)} of corpse data!")
                                     }
                                 }
                             }

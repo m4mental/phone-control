@@ -113,7 +113,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Carrier Bloatware Remover"
+                            android:text="UAD-NG Safe Bloatware Debloater"
                             android:textColor="@android:color/white"
                             android:textStyle="bold"
                             android:textSize="15sp" />
@@ -121,7 +121,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="2dp"
-                            android:text="Safely disable or uninstall system carrier bloatware and background telemetry."
+                            android:text="Brand-wise curated bloatware cleaner with 1-tap Undo safety."
                             android:textColor="#FFCDD2"
                             android:textSize="11sp" />
                     </LinearLayout>
@@ -292,6 +292,60 @@
                         android:layout_height="wrap_content"
                         android:text="OPEN →"
                         android:textColor="#00E5FF"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Card: App Component Manager -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardComponentManager"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="14dp"
+                app:cardCornerRadius="16dp"
+                app:cardBackgroundColor="#1A0D2E"
+                app:strokeWidth="1dp"
+                app:strokeColor="#E040FB"
+                android:clickable="true"
+                android:focusable="true">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:padding="16dp"
+                    android:gravity="center_vertical">
+                    <ImageView
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:src="@android:drawable/ic_menu_preferences"
+                        app:tint="#E040FB" />
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="16dp"
+                        android:orientation="vertical">
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="App Component Manager"
+                            android:textColor="@android:color/white"
+                            android:textStyle="bold"
+                            android:textSize="15sp" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="Inspect &amp; disable tracking services, boot receivers, and background components."
+                            android:textColor="#E1BEE7"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="OPEN →"
+                        android:textColor="#E040FB"
                         android:textSize="12sp"
                         android:textStyle="bold" />
                 </LinearLayout>

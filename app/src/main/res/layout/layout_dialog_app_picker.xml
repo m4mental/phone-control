@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="#141418">
+
+    <EditText
+        android:id="@+id/etFilterAppPicker"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Search apps or package name..."
+        android:textColor="@android:color/white"
+        android:textColorHint="#666666"
+        android:background="#1E1E26"
+        android:padding="10dp"
+        android:textSize="13sp"
+        android:layout_marginBottom="12dp" />
+
+    <ListView
+        android:id="@+id/lvAppPicker"
+        android:layout_width="match_parent"
+        android:layout_height="320dp"
+        android:divider="#262632"
+        android:dividerHeight="1dp" />
+
+</LinearLayout>

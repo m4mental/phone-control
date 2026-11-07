@@ -140,6 +140,18 @@
                 android:layout_marginStart="4dp"/>
 
             <Button
+                android:id="@+id/btnTrimAllCaches"
+                android:layout_width="match_parent"
+                android:layout_height="60dp"
+                android:text="⚡ SD MAID CACHE TRIM (PM TRIM-CACHES 128G)"
+                android:layout_marginBottom="12dp"
+                app:cornerRadius="12dp"
+                android:backgroundTint="#331400"
+                android:textColor="#FF9100"
+                app:strokeWidth="1.5dp"
+                app:strokeColor="#FF9100" />
+
+            <Button
                 android:id="@+id/btnRunFsTrim"
                 android:layout_width="match_parent"
                 android:layout_height="60dp"

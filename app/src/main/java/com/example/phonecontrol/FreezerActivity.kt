@@ -40,6 +40,11 @@ class FreezerActivity : AppCompatActivity() {
             startActivity(Intent(this, UpdateShieldActivity::class.java))
         }
 
+        // Card: App Component Manager
+        findViewById<View>(R.id.cardComponentManager).setOnClickListener {
+            startActivity(Intent(this, ComponentManagerActivity::class.java))
+        }
+
         // Card 4: Root Shell Terminal
         findViewById<View>(R.id.cardTerminal).setOnClickListener {
             startActivity(Intent(this, AdbShellActivity::class.java))

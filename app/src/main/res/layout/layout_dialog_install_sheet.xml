@@ -4,10 +4,18 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:background="#121214"
-    android:padding="20dp">
+    android:background="@drawable/bg_bottom_sheet_dialog"
+    android:padding="14dp">
 
-    <!-- Top Header: Icon, Name, Main Package, Shared UID -->
+    <!-- Top Drag Bar Indicator -->
+    <View
+        android:layout_width="32dp"
+        android:layout_height="4dp"
+        android:layout_gravity="center_horizontal"
+        android:background="#3A3A44"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Compact Header: Icon, Name, Pkg, Size & Package Type -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -16,8 +24,8 @@
 
         <ImageView
             android:id="@+id/ivInspectIcon"
-            android:layout_width="56dp"
-            android:layout_height="56dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:src="@mipmap/ic_launcher"
             android:contentDescription="App Icon" />
 
@@ -25,7 +33,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:layout_marginStart="16dp"
+            android:layout_marginStart="10dp"
             android:orientation="vertical">
 
             <TextView
@@ -34,447 +42,581 @@
                 android:layout_height="wrap_content"
                 android:text="Application Name"
                 android:textColor="#FFFFFF"
-                android:textSize="18sp"
-                android:textStyle="bold" />
+                android:textSize="15sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:ellipsize="end" />
 
-            <TextView
-                android:id="@+id/tvInspectPkgName"
+            <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="com.example.package"
-                android:textColor="#00E5FF"
-                android:textSize="12sp"
-                android:layout_marginTop="2dp" />
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="1dp">
 
-            <!-- Shared User ID (if app defines one) -->
-            <TextView
-                android:id="@+id/tvInspectSharedUid"
+                <TextView
+                    android:id="@+id/tvInspectPkgName"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="com.example.package"
+                    android:textColor="#00E5FF"
+                    android:textSize="11sp"
+                    android:maxLines="1"
+                    android:ellipsize="middle" />
+
+                <TextView
+                    android:id="@+id/tvInspectSharedUid"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text=" • Shared UID"
+                    android:textColor="#FFB74D"
+                    android:textSize="10sp"
+                    android:visibility="gone" />
+            </LinearLayout>
+
+            <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Shared UID: android.uid.system"
-                android:textColor="#FFB74D"
-                android:textSize="11sp"
-                android:layout_marginTop="2dp"
-                android:visibility="gone" />
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="2dp">
+
+                <TextView
+                    android:id="@+id/tvInspectSize"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="-- MB"
+                    android:textColor="#888888"
+                    android:textSize="10sp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text=" • "
+                    android:textColor="#444444"
+                    android:textSize="10sp" />
+
+                <TextView
+                    android:id="@+id/tvInspectPackageType"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Single APK"
+                    android:textColor="#80D8FF"
+                    android:textSize="10sp" />
+
+                <TextView
+                    android:id="@+id/tvBatchBadge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text=" • 📦 Batch (1/4)"
+                    android:textColor="#FFD54F"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    android:visibility="gone" />
+            </LinearLayout>
         </LinearLayout>
     </LinearLayout>
 
-
-
-    <!-- Version Comparison Card: Installed vs Incoming Update -->
-    <LinearLayout
+    <!-- Scrollable Body (Strictly hugs content, compact on screen) -->
+    <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="14dp"
-        android:background="#191920"
-        android:padding="12dp"
-        android:orientation="vertical">
-
-        <!-- Status Badge -->
-        <TextView
-            android:id="@+id/tvInspectInstallType"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="🆕 Fresh Installation"
-            android:textColor="#00E676"
-            android:textSize="13sp"
-            android:textStyle="bold" />
+        android:layout_marginTop="8dp"
+        android:overScrollMode="never">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:orientation="horizontal"
-            android:weightSum="2">
+            android:orientation="vertical">
 
-            <!-- Currently Installed -->
+            <!-- Compact Version Comparison Card -->
             <LinearLayout
-                android:layout_width="0dp"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical"
-                android:paddingEnd="8dp">
+                android:background="#181820"
+                android:padding="8dp"
+                android:orientation="vertical">
 
                 <TextView
+                    android:id="@+id/tvInspectInstallType"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="🆕 Fresh Installation"
+                    android:textColor="#00E676"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:id="@+id/tvInspectInstalledVersion"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Not Installed"
+                        android:textColor="#888888"
+                        android:textSize="11sp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text=" ➔ "
+                        android:textColor="#00E5FF"
+                        android:textSize="10sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvInspectIncomingVersion"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="v1.0.0 (Build 1)"
+                        android:textColor="#00E5FF"
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        android:gravity="end" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Sub-Packages / Split Modules (if bundle) -->
+            <LinearLayout
+                android:id="@+id/layoutInspectSplits"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:background="#161822"
+                android:padding="6dp"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/tvInspectSplitsHeader"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="INSTALLED VERSION"
-                    android:textColor="#777777"
+                    android:text="📦 Module Splits:"
+                    android:textColor="#81D4FA"
                     android:textSize="10sp"
                     android:textStyle="bold" />
 
                 <TextView
-                    android:id="@+id/tvInspectInstalledVersion"
-                    android:layout_width="wrap_content"
+                    android:id="@+id/tvInspectSplits"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Not Installed"
+                    android:text="base, config"
                     android:textColor="#AAAAAA"
-                    android:textSize="12sp"
-                    android:layout_marginTop="2dp" />
+                    android:textSize="10sp"
+                    android:visibility="gone" />
+
+                <HorizontalScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:scrollbars="none">
+
+                    <com.google.android.material.chip.ChipGroup
+                        android:id="@+id/cgInspectSplits"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        app:singleLine="true" />
+                </HorizontalScrollView>
             </LinearLayout>
 
-            <!-- Incoming Update -->
+            <!-- Compact SDK Compatibility Row (Single Line) -->
             <LinearLayout
-                android:layout_width="0dp"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
+                android:layout_marginTop="6dp"
+                android:background="#16161D"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="5dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="SDK: "
+                    android:textColor="#666666"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvInspectMinSdk"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="API 23"
+                    android:textColor="#CCCCCC"
+                    android:textSize="10sp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text=" ➔ Target: "
+                    android:textColor="#666666"
+                    android:textSize="10sp" />
+
+                <TextView
+                    android:id="@+id/tvInspectTargetSdk"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="API 35"
+                    android:textColor="#00E676"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvInspectMaxSdk"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text=" (No Max Limit)"
+                    android:textColor="#777777"
+                    android:textSize="10sp"
+                    android:gravity="end" />
+            </LinearLayout>
+
+            <!-- Compact Privacy & Permissions Summary -->
+            <LinearLayout
+                android:id="@+id/layoutInspectPrivacy"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:background="#16161C"
+                android:padding="6dp"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tvInspectTrackers"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="🛡️ Privacy: Clean (No trackers)"
+                    android:textColor="#00E676"
+                    android:textSize="10sp" />
+
+                <TextView
+                    android:id="@+id/tvInspectPermissions"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="🔐 Permissions: Standard"
+                    android:textColor="#AAAAAA"
+                    android:textSize="10sp"
+                    android:maxLines="2"
+                    android:ellipsize="end" />
+
+                <!-- Dangerous / Sensitive Permissions Live Preview Banner -->
+                <LinearLayout
+                    android:id="@+id/layoutSensitiveAlert"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:background="#261414"
+                    android:paddingHorizontal="7dp"
+                    android:paddingVertical="3dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/tvSensitiveAlertBadge"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="🚨 3 High-Risk Permissions Detected"
+                        android:textColor="#FF5252"
+                        android:textSize="9.5sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvViewPermissionsDetails"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="View Details ➔"
+                        android:textColor="#80D8FF"
+                        android:textSize="9.5sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Root Module Details (Magisk / KernelSU / APatch) -->
+            <LinearLayout
+                android:id="@+id/layoutRootModuleInfo"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:background="#1B1528"
+                android:padding="8dp"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🔥 ROOT MODULE (Magisk / KSU / APatch)"
+                    android:textColor="#E040FB"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvModuleAuthor"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="Author: Unknown"
+                    android:textColor="#80D8FF"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvModuleDescription"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="Description"
+                    android:textColor="#CCCCCC"
+                    android:textSize="10sp" />
+            </LinearLayout>
+
+            <!-- Pro Root Installation Options: Compact 2x2 Grid -->
+            <LinearLayout
+                android:id="@+id/layoutInstallOptions"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:background="#161822"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="5dp"
                 android:orientation="vertical">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="INCOMING VERSION"
-                    android:textColor="#777777"
+                    android:text="⚡ ROOT OPTIONS"
+                    android:textColor="#00E5FF"
+                    android:textSize="9sp"
+                    android:textStyle="bold" />
+
+                <GridLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:columnCount="2">
+
+                    <CheckBox
+                        android:id="@+id/cbAutoGrantPermissions"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_columnWeight="1"
+                        android:checked="false"
+                        android:text="Grant All (-g)"
+                        android:textColor="#CCCCCC"
+                        android:textSize="11sp"
+                        android:buttonTint="#00E5FF"
+                        android:minHeight="28dp" />
+
+                    <CheckBox
+                        android:id="@+id/cbBypassRestrictedSettings"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_columnWeight="1"
+                        android:checked="true"
+                        android:text="Bypass Restricted"
+                        android:textColor="#CCCCCC"
+                        android:textSize="11sp"
+                        android:buttonTint="#00E5FF"
+                        android:minHeight="28dp" />
+
+                    <CheckBox
+                        android:id="@+id/cbDexOpt"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_columnWeight="1"
+                        android:checked="true"
+                        android:text="DexOpt (Speed)"
+                        android:textColor="#CCCCCC"
+                        android:textSize="11sp"
+                        android:buttonTint="#00E5FF"
+                        android:minHeight="28dp" />
+
+                    <CheckBox
+                        android:id="@+id/cbDontKillApp"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_columnWeight="1"
+                        android:checked="false"
+                        android:text="Don't Kill App"
+                        android:textColor="#CCCCCC"
+                        android:textSize="11sp"
+                        android:buttonTint="#00E5FF"
+                        android:minHeight="28dp" />
+                </GridLayout>
+
+                <!-- Installer Source Profile (-i) -->
+                <LinearLayout
+                    android:id="@+id/layoutInstallerProfile"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginTop="5dp"
+                    android:background="#161822"
+                    android:paddingHorizontal="8dp"
+                    android:paddingVertical="4dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="🏷️ Source (-i): "
+                        android:textColor="#888888"
+                        android:textSize="10sp"
+                        android:textStyle="bold" />
+
+                    <HorizontalScrollView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:scrollbars="none">
+
+                        <com.google.android.material.chip.ChipGroup
+                            android:id="@+id/cgInstallerProfile"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            app:singleSelection="true"
+                            app:selectionRequired="true"
+                            app:singleLine="true" />
+                    </HorizontalScrollView>
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Multi-User / Work Profile Selector (Visible when > 1 user) -->
+            <LinearLayout
+                android:id="@+id/layoutTargetUser"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="5dp"
+                android:background="#161822"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="4dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="👤 Target User: "
+                    android:textColor="#888888"
                     android:textSize="10sp"
                     android:textStyle="bold" />
 
-                <TextView
-                    android:id="@+id/tvInspectIncomingVersion"
-                    android:layout_width="wrap_content"
+                <HorizontalScrollView
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="v1.0.0 (Build 1)"
-                    android:textColor="#00E5FF"
-                    android:textSize="12sp"
-                    android:textStyle="bold"
-                    android:layout_marginTop="2dp" />
+                    android:scrollbars="none">
+
+                    <com.google.android.material.chip.ChipGroup
+                        android:id="@+id/cgTargetUsers"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        app:singleSelection="true"
+                        app:singleLine="true" />
+                </HorizontalScrollView>
             </LinearLayout>
+
+            <!-- Real-Time Installation Progress Bar & Status -->
+            <LinearLayout
+                android:id="@+id/layoutInstallProgress"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="6dp"
+                android:background="#161822"
+                android:padding="8dp"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/tvInstallProgressText"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="⚡ Staging..."
+                        android:textColor="#00E5FF"
+                        android:textSize="11sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvInstallProgressPercent"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0%"
+                        android:textColor="#00E676"
+                        android:textSize="11sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <ProgressBar
+                    android:id="@+id/pbInstallProgress"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="5dp"
+                    android:layout_marginTop="5dp"
+                    android:progress="0"
+                    android:max="100"
+                    android:progressTint="#00E5FF"
+                    android:progressBackgroundTint="#333333" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnRunInBackground"
+                    android:layout_width="match_parent"
+                    android:layout_height="32dp"
+                    android:layout_marginTop="5dp"
+                    android:text="📥 Run in Background"
+                    android:textColor="#80D8FF"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    app:backgroundTint="#202534"
+                    app:cornerRadius="6dp"
+                    app:strokeColor="#3A445C"
+                    app:strokeWidth="1dp" />
+            </LinearLayout>
+
         </LinearLayout>
-    </LinearLayout>
-
-    <!-- Sub-Packages / Split Modules (When APK is a bundle or has splits) -->
-    <LinearLayout
-        android:id="@+id/layoutInspectSplits"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
-        android:background="#16181F"
-        android:padding="10dp"
-        android:orientation="vertical"
-        android:visibility="gone">
-
-        <TextView
-            android:id="@+id/tvInspectSplitsHeader"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="📦 BUNDLED SUB-PACKAGES &amp; SPLITS"
-            android:textColor="#81D4FA"
-            android:textSize="11sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/tvInspectSplits"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="base, config.arm64_v8a, config.xxhdpi"
-            android:textColor="#CCCCCC"
-            android:textSize="11sp" />
-
-        <!-- Horizontal Scrollable Split Chips -->
-        <HorizontalScrollView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:scrollbars="none">
-
-            <com.google.android.material.chip.ChipGroup
-                android:id="@+id/cgInspectSplits"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                app:singleLine="true" />
-        </HorizontalScrollView>
-    </LinearLayout>
-
-    <!-- SDK Compatibility Row: Min SDK, Target SDK, Max SDK -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:layout_marginTop="12dp"
-        android:weightSum="3">
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:background="#1A1A20"
-            android:padding="8dp"
-            android:layout_marginEnd="6dp"
-            android:gravity="center"
-            android:orientation="vertical">
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="MIN SDK"
-                android:textColor="#777777"
-                android:textSize="10sp"
-                android:textStyle="bold" />
-            <TextView
-                android:id="@+id/tvInspectMinSdk"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="API 23\n(Android 6.0)"
-                android:textAlignment="center"
-                android:textColor="#FFFFFF"
-                android:textSize="11sp"
-                android:textStyle="bold"
-                android:layout_marginTop="2dp" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:background="#1A1A20"
-            android:padding="8dp"
-            android:layout_marginEnd="6dp"
-            android:gravity="center"
-            android:orientation="vertical">
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="TARGET SDK"
-                android:textColor="#777777"
-                android:textSize="10sp"
-                android:textStyle="bold" />
-            <TextView
-                android:id="@+id/tvInspectTargetSdk"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="API 35\n(Android 15)"
-                android:textAlignment="center"
-                android:textColor="#FFFFFF"
-                android:textSize="11sp"
-                android:textStyle="bold"
-                android:layout_marginTop="2dp" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:background="#1A1A20"
-            android:padding="8dp"
-            android:gravity="center"
-            android:orientation="vertical">
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="MAX SDK"
-                android:textColor="#777777"
-                android:textSize="10sp"
-                android:textStyle="bold" />
-            <TextView
-                android:id="@+id/tvInspectMaxSdk"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="No Limit\n(All Versions)"
-                android:textAlignment="center"
-                android:textColor="#00E676"
-                android:textSize="11sp"
-                android:textStyle="bold"
-                android:layout_marginTop="2dp" />
-        </LinearLayout>
-    </LinearLayout>
-
-    <!-- Secondary Specs Row: Size and Package Type -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:layout_marginTop="8dp"
-        android:weightSum="2">
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:background="#16161D"
-            android:padding="8dp"
-            android:layout_marginEnd="6dp"
-            android:gravity="center"
-            android:orientation="vertical">
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="FILE SIZE"
-                android:textColor="#777777"
-                android:textSize="10sp"
-                android:textStyle="bold" />
-            <TextView
-                android:id="@+id/tvInspectSize"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="-- MB"
-                android:textColor="#FFFFFF"
-                android:textSize="12sp"
-                android:textStyle="bold"
-                android:layout_marginTop="2dp" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:background="#16161D"
-            android:padding="8dp"
-            android:gravity="center"
-            android:orientation="vertical">
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="PACKAGE TYPE"
-                android:textColor="#777777"
-                android:textSize="10sp"
-                android:textStyle="bold" />
-            <TextView
-                android:id="@+id/tvInspectPackageType"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Single APK"
-                android:textColor="#00E5FF"
-                android:textSize="12sp"
-                android:textStyle="bold"
-                android:layout_marginTop="2dp" />
-        </LinearLayout>
-    </LinearLayout>
-
-    <!-- Privacy & Trackers Section -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:background="#16161C"
-        android:padding="12dp"
-        android:orientation="vertical">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="🛡️ PRIVACY &amp; TRACKER AUDIT"
-            android:textColor="#00E5FF"
-            android:textSize="11sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/tvInspectTrackers"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="Scanning for trackers..."
-            android:textColor="#DDDDDD"
-            android:textSize="12sp" />
-
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="#22222A"
-            android:layout_marginVertical="8dp" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="🔐 SENSITIVE PERMISSIONS"
-            android:textColor="#FFD600"
-            android:textSize="11sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/tvInspectPermissions"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="Checking permissions..."
-            android:textColor="#DDDDDD"
-            android:textSize="12sp" />
-    </LinearLayout>
-
-    <!-- Real-Time Installation Progress Bar & Status -->
-    <LinearLayout
-        android:id="@+id/layoutInstallProgress"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:layout_marginTop="14dp"
-        android:background="#161822"
-        android:padding="12dp"
-        android:visibility="gone">
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/tvInstallProgressText"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="⚡ Staging &amp; extracting package..."
-                android:textColor="#00E5FF"
-                android:textSize="12sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/tvInstallProgressPercent"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="0%"
-                android:textColor="#00E676"
-                android:textSize="12sp"
-                android:textStyle="bold" />
-        </LinearLayout>
-
-        <ProgressBar
-            android:id="@+id/pbInstallProgress"
-            style="?android:attr/progressBarStyleHorizontal"
-            android:layout_width="match_parent"
-            android:layout_height="8dp"
-            android:layout_marginTop="8dp"
-            android:progress="0"
-            android:max="100"
-            android:progressTint="#00E5FF"
-            android:progressBackgroundTint="#333333" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnRunInBackground"
-            android:layout_width="match_parent"
-            android:layout_height="40dp"
-            android:layout_marginTop="10dp"
-            android:text="📥 Run in Background"
-            android:textColor="#80D8FF"
-            android:textSize="12sp"
-            android:textStyle="bold"
-            app:backgroundTint="#202534"
-            app:cornerRadius="8dp"
-            app:strokeColor="#3A445C"
-            app:strokeWidth="1dp" />
-    </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
 
     <!-- Action Buttons -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:layout_marginTop="18dp">
+        android:layout_marginTop="10dp">
 
         <Button
             android:id="@+id/btnInspectCancel"
             android:layout_width="0dp"
-            android:layout_height="48dp"
+            android:layout_height="40dp"
             android:layout_weight="1"
             android:text="Cancel"
             android:textColor="#AAAAAA"
+            android:textSize="12sp"
             android:backgroundTint="#222228"
-            android:layout_marginEnd="10dp" />
+            android:layout_marginEnd="6dp" />
 
         <Button
             android:id="@+id/btnInspectInstall"
             android:layout_width="0dp"
-            android:layout_height="48dp"
+            android:layout_height="40dp"
             android:layout_weight="2"
             android:text="⚡ Install with Root"
             android:textColor="#000000"
+            android:textSize="12sp"
             android:textStyle="bold"
             android:backgroundTint="#00E676" />
     </LinearLayout>

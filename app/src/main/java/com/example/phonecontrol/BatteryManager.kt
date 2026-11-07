@@ -68,11 +68,19 @@ object BatteryManager {
 
     fun setChargingEnabled(enabled: Boolean) {
         val value = if (enabled) "1" else "0"
+        val inputSuspendVal = if (enabled) "0" else "1"
         val commands = listOf(
+            // CRITICAL: NEVER write 1 to battery/disable! On MediaTek/Qualcomm it disables the fuel gauge IC (mtk_gauge),
+            // which causes battery percentage to freeze at 50% and causes PMIC brownout reboots (power_loss).
             "echo 0 > ${BATT_PATH}disable 2>/dev/null",
             "echo $value > ${BATT_PATH}charging_enabled 2>/dev/null",
             "echo $value > ${BATT_PATH}battery_charging_enabled 2>/dev/null",
-            "echo ${if (enabled) "0" else "1"} > ${BATT_PATH}input_suspend 2>/dev/null"
+            "echo $inputSuspendVal > ${BATT_PATH}input_suspend 2>/dev/null",
+            if (enabled) {
+                "echo 3000 > /sys/class/power_supply/primary_chg/input_current_limit 2>/dev/null; echo 3000 > /sys/class/power_supply/primary_chg/constant_charge_current 2>/dev/null; echo 3000000 > /sys/class/power_supply/mtk-master-charger/input_current_limit 2>/dev/null; echo 3000000 > /sys/class/power_supply/mtk-master-charger/constant_charge_current_max 2>/dev/null; echo 3000 > /sys/devices/platform/charger/sc_ibat_limit 2>/dev/null"
+            } else {
+                "echo 0 > /sys/class/power_supply/primary_chg/input_current_limit 2>/dev/null; echo 0 > /sys/class/power_supply/primary_chg/constant_charge_current 2>/dev/null; echo 0 > /sys/class/power_supply/mtk-master-charger/input_current_limit 2>/dev/null; echo 0 > /sys/class/power_supply/mtk-master-charger/constant_charge_current_max 2>/dev/null; echo 0 > /sys/devices/platform/charger/sc_ibat_limit 2>/dev/null"
+            }
         )
         ShellUtils.runCommandsAsRoot(commands)
     }
@@ -94,21 +102,24 @@ object BatteryManager {
         val cmds = if (enabled) {
             """
             echo 0 > ${BATT_PATH}disable 2>/dev/null
-            echo 0 > /sys/class/power_supply/primary_chg/input_current_limit 2>/dev/null
-            echo 0 > /sys/class/power_supply/mtk-master-charger/input_current_limit 2>/dev/null
-            echo 1 > ${BATT_PATH}bypass_charging 2>/dev/null
+            echo 0 > /sys/class/power_supply/primary_chg/constant_charge_current 2>/dev/null
+            echo 0 > /sys/class/power_supply/mtk-master-charger/constant_charge_current_max 2>/dev/null
+            echo 0 > /sys/devices/platform/charger/sc_ibat_limit 2>/dev/null
             echo 0 > ${BATT_PATH}charging_enabled 2>/dev/null
             echo 0 > ${BATT_PATH}battery_charging_enabled 2>/dev/null
-            echo 1 > ${BATT_PATH}input_suspend 2>/dev/null
+            echo 1 > ${BATT_PATH}bypass_charging 2>/dev/null
             """.trimIndent()
         } else {
             """
             echo 0 > ${BATT_PATH}disable 2>/dev/null
-            echo 3000000 > /sys/class/power_supply/primary_chg/input_current_limit 2>/dev/null
+            echo 3000 > /sys/class/power_supply/primary_chg/constant_charge_current 2>/dev/null
+            echo 3000 > /sys/class/power_supply/primary_chg/input_current_limit 2>/dev/null
+            echo 3000000 > /sys/class/power_supply/mtk-master-charger/constant_charge_current_max 2>/dev/null
             echo 3000000 > /sys/class/power_supply/mtk-master-charger/input_current_limit 2>/dev/null
-            echo 0 > ${BATT_PATH}bypass_charging 2>/dev/null
+            echo 3000 > /sys/devices/platform/charger/sc_ibat_limit 2>/dev/null
             echo 1 > ${BATT_PATH}charging_enabled 2>/dev/null
             echo 1 > ${BATT_PATH}battery_charging_enabled 2>/dev/null
+            echo 0 > ${BATT_PATH}bypass_charging 2>/dev/null
             echo 0 > ${BATT_PATH}input_suspend 2>/dev/null
             """.trimIndent()
         }
@@ -197,14 +208,29 @@ object BatteryManager {
 
     fun setChargeCurrent(mA: Int) {
         val uA = mA * 1000
-        val paths = listOf(
-            "/sys/class/power_supply/battery/constant_charge_current_max",
-            "/sys/class/power_supply/battery/input_current_limit",
-            "/sys/class/power_supply/battery/charge_control_limit",
-            "/sys/class/power_supply/main/constant_charge_current_max"
+        val cmds = listOf(
+            "echo $mA > /sys/class/power_supply/primary_chg/input_current_limit 2>/dev/null",
+            "echo $mA > /sys/class/power_supply/primary_chg/constant_charge_current 2>/dev/null",
+            "echo $mA > /sys/devices/platform/charger/sc_ibat_limit 2>/dev/null",
+            "echo $uA > /sys/class/power_supply/mtk-master-charger/input_current_limit 2>/dev/null",
+            "echo $uA > /sys/class/power_supply/mtk-master-charger/constant_charge_current_max 2>/dev/null",
+            "echo $uA > /sys/class/power_supply/battery/constant_charge_current_max 2>/dev/null",
+            "echo $uA > /sys/class/power_supply/battery/input_current_limit 2>/dev/null",
+            "echo $uA > /sys/class/power_supply/battery/charge_control_limit 2>/dev/null",
+            "echo $uA > /sys/class/power_supply/main/constant_charge_current_max 2>/dev/null"
         )
-        for (path in paths) {
-            ShellUtils.fastCmd("echo $uA > $path 2>/dev/null")
-        }
+        ShellUtils.fastCmd(cmds.joinToString("; "))
+    }
+
+    fun restoreChargeCurrent() {
+        val cmds = listOf(
+            "echo 3000 > /sys/class/power_supply/primary_chg/input_current_limit 2>/dev/null",
+            "echo 3000 > /sys/class/power_supply/primary_chg/constant_charge_current 2>/dev/null",
+            "echo 3000 > /sys/devices/platform/charger/sc_ibat_limit 2>/dev/null",
+            "echo 3000000 > /sys/class/power_supply/mtk-master-charger/input_current_limit 2>/dev/null",
+            "echo 3000000 > /sys/class/power_supply/mtk-master-charger/constant_charge_current_max 2>/dev/null",
+            "echo 3000000 > /sys/class/power_supply/battery/constant_charge_current_max 2>/dev/null"
+        )
+        ShellUtils.fastCmd(cmds.joinToString("; "))
     }
 }

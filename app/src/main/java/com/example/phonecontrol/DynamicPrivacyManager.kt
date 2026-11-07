@@ -144,6 +144,7 @@ object DynamicPrivacyManager {
 
     fun lockApp(context: Context, pkg: String) {
         if (!ShellUtils.isValidPackageName(pkg) || pkg == context.packageName) return
+        if (MultitaskingManager.isProtected(pkg, context)) return
         val ops = getActiveOps(context)
         if (ops.isEmpty()) return
 
@@ -180,6 +181,7 @@ object DynamicPrivacyManager {
         val sb = StringBuilder()
         for (pkg in guarded) {
             if (pkg == context.packageName || !ShellUtils.isValidPackageName(pkg)) continue
+            if (MultitaskingManager.isProtected(pkg, context)) continue
             for (op in ops) {
                 sb.append("cmd appops set $pkg $op ignore; cmd appops set --uid $pkg $op ignore; ")
             }
@@ -210,13 +212,13 @@ object DynamicPrivacyManager {
         if (!isMasterEnabled(context)) return
         val guarded = getGuardedPackages(context)
 
-        // If previous app left foreground and is guarded -> lock immediately
-        if (previousPkg.isNotBlank() && previousPkg != newPkg && guarded.contains(previousPkg)) {
+        // If previous app left foreground and is guarded -> lock immediately (unless protected in universal whitelist)
+        if (previousPkg.isNotBlank() && previousPkg != newPkg && guarded.contains(previousPkg) && !MultitaskingManager.isProtected(previousPkg, context)) {
             lockApp(context, previousPkg)
         }
 
         // If new foreground app is guarded -> unlock immediately for seamless user experience
-        if (newPkg.isNotBlank() && guarded.contains(newPkg)) {
+        if (newPkg.isNotBlank() && (guarded.contains(newPkg) || currentlyLockedApps.contains(newPkg))) {
             unlockApp(context, newPkg)
         }
     }

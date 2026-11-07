@@ -600,7 +600,22 @@ class MainActivity : AppCompatActivity() {
             applyDisplayStatus(text)
         } else if (!activePerAppMode.isNullOrBlank()) {
             val first = activePerAppPkg?.split(",")?.firstOrNull()?.trim()
-            if (first.isNullOrBlank()) {
+            val liveRecents = RecentTasksManager.getLiveRecentPackages(forceRefresh = false)
+            val isStillInRecents = first != null && liveRecents.contains(first)
+
+            if (!first.isNullOrBlank() && !isStillInRecents) {
+                // Ghost app cleanup: app is closed / not in Recents
+                prefs.edit().remove("active_per_app_mode").remove("active_per_app_pkg").apply()
+                val text = when (savedMode) {
+                    "rbPowerSaver" -> "MANUAL // POWER SAVER"
+                    "rbBalance" -> "MANUAL // BALANCED EAS"
+                    "rbPerformance" -> "MANUAL // TURBO PERFORMANCE"
+                    "rbStreaming" -> "MANUAL // STREAMING ECO"
+                    "rbAutomatic" -> (activeAiLabel ?: "AUTOMATIC (AI)").uppercase()
+                    else -> "STANDBY"
+                }
+                applyDisplayStatus(text)
+            } else if (first.isNullOrBlank()) {
                 applyDisplayStatus("PER-APP // $activePerAppMode (RECENTS)")
             } else {
                 if (isFinishing || isDestroyed || statsExecutor.isShutdown) return

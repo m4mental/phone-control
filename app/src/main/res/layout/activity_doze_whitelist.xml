@@ -64,7 +64,54 @@
             android:textColor="@android:color/black"
             android:textStyle="bold"
             app:backgroundTint="#00E676"
-            app:cornerRadius="12dp" />
+            app:cornerRadius="12dp"
+            android:layout_marginBottom="12dp" />
+
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none">
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/chipGroupWhitelistFilter"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                app:singleSelection="true"
+                app:selectionRequired="true">
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipWhitelistAll"
+                    style="@style/Widget.MaterialComponents.Chip.Choice"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="ALL"
+                    android:checked="true"
+                    app:chipBackgroundColor="#24242E"
+                    android:textColor="@android:color/white" />
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipWhitelistMain"
+                    style="@style/Widget.MaterialComponents.Chip.Choice"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="📱 MAIN"
+                    app:chipBackgroundColor="#24242E"
+                    android:textColor="@android:color/white" />
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipWhitelistDual"
+                    style="@style/Widget.MaterialComponents.Chip.Choice"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="👥 DUAL / CLONE"
+                    app:chipBackgroundColor="#24242E"
+                    android:textColor="@android:color/white" />
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipWhitelistPrivate"
+                    style="@style/Widget.MaterialComponents.Chip.Choice"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🔒 PRIVATE SPACE"
+                    app:chipBackgroundColor="#24242E"
+                    android:textColor="@android:color/white" />
+            </com.google.android.material.chip.ChipGroup>
+        </HorizontalScrollView>
     </LinearLayout>
 
     <androidx.core.widget.NestedScrollView

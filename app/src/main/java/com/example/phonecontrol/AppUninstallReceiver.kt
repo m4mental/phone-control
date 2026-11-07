@@ -39,6 +39,7 @@ class AppUninstallReceiver : BroadcastReceiver() {
             SpecialFreezerWidgetProvider.updateAllWidgets(context)
             PerAppManager.removeConfig(context, pkgName)
             GameTurboManager.removeGame(context, pkgName)
+            FirewallManager.pruneUninstalledPackage(context, pkgName)
         } catch (e: Exception) {
             Log.e(TAG, "Error pruning uninstalled package $pkgName: ${e.message}")
         }

@@ -8,25 +8,18 @@ object MultitaskingManager {
      * Default core apps that must NEVER be killed or restricted during sleep/standby.
      */
     val protectedApps = listOf(
-        "io.github.sds100.keymapper",
-        "io.github.sds100.keymapper.debug",
-        "com.keymapper",
         "com.example.phonecontrol",
-        "com.google.android.gms",
-        "com.whatsapp",
-        "com.whatsapp.w4b",
-        "org.telegram.messenger",
-        "org.thunderdog.challegram",
-        "org.thoughtcrime.securesms"
+        "com.google.android.gms"
     )
 
     private const val PREF_KEY_UNIVERSAL_WHITELIST = "universal_protected_whitelist"
 
     fun isProtected(packageName: String, context: Context? = null): Boolean {
-        if (protectedApps.contains(packageName)) return true
+        val (pkg, userId) = FreezerManager.parsePackageKey(packageName)
+        if (protectedApps.contains(packageName) || protectedApps.contains(pkg)) return true
         if (context != null) {
             val userWhitelist = getUserWhitelist(context)
-            if (userWhitelist.contains(packageName)) return true
+            if (userWhitelist.contains(packageName) || userWhitelist.contains(pkg)) return true
         }
         return false
     }
@@ -78,7 +71,8 @@ object MultitaskingManager {
             .edit().putStringSet("user_whitelist", current).apply()
 
         thread {
-            ShellUtils.fastCmd("dumpsys deviceidle whitelist -$packageName 2>/dev/null; dumpsys deviceidle except-idle-whitelist -$packageName 2>/dev/null")
+            val (pkg, userId) = FreezerManager.parsePackageKey(packageName)
+            ShellUtils.fastCmd("dumpsys deviceidle whitelist -$pkg 2>/dev/null; dumpsys deviceidle except-idle-whitelist -$pkg 2>/dev/null")
         }
     }
 
@@ -88,26 +82,31 @@ object MultitaskingManager {
      */
     fun grantFullExemption(packageName: String, context: Context? = null) {
         thread {
+            val (pkg, userId) = FreezerManager.parsePackageKey(packageName)
             val uid = try {
-                context?.packageManager?.getApplicationInfo(packageName, 0)?.uid
+                if (userId != 0 && context != null) {
+                    ProfileAppUtils.getInstalledAppsAcrossProfiles(context).find { it.packageName == pkg && it.userId == userId }?.uid
+                } else {
+                    context?.packageManager?.getApplicationInfo(pkg, 0)?.uid
+                }
             } catch (e: Exception) { null }
 
             val batchCommands = mutableListOf(
-                "dumpsys deviceidle whitelist +$packageName 2>/dev/null",
-                "cmd deviceidle whitelist +$packageName 2>/dev/null",
-                "dumpsys deviceidle except-idle-whitelist +$packageName 2>/dev/null",
-                "cmd appops set $packageName RUN_IN_BACKGROUND allow 2>/dev/null",
-                "cmd appops set $packageName RUN_ANY_IN_BACKGROUND allow 2>/dev/null",
-                "cmd appops set $packageName WAKE_LOCK allow 2>/dev/null",
-                "cmd appops set $packageName SYSTEM_ALERT_WINDOW allow 2>/dev/null",
-                "am set-standby-bucket $packageName active 2>/dev/null",
-                "cmd activity set-inactive $packageName false 2>/dev/null"
+                "dumpsys deviceidle whitelist +$pkg 2>/dev/null",
+                "cmd deviceidle whitelist +$pkg 2>/dev/null",
+                "dumpsys deviceidle except-idle-whitelist +$pkg 2>/dev/null",
+                "cmd appops set --user $userId $pkg RUN_IN_BACKGROUND allow 2>/dev/null || cmd appops set $pkg RUN_IN_BACKGROUND allow 2>/dev/null",
+                "cmd appops set --user $userId $pkg RUN_ANY_IN_BACKGROUND allow 2>/dev/null || cmd appops set $pkg RUN_ANY_IN_BACKGROUND allow 2>/dev/null",
+                "cmd appops set --user $userId $pkg WAKE_LOCK allow 2>/dev/null || cmd appops set $pkg WAKE_LOCK allow 2>/dev/null",
+                "cmd appops set --user $userId $pkg SYSTEM_ALERT_WINDOW allow 2>/dev/null || cmd appops set $pkg SYSTEM_ALERT_WINDOW allow 2>/dev/null",
+                "am set-standby-bucket --user $userId $pkg active 2>/dev/null || am set-standby-bucket $pkg active 2>/dev/null",
+                "cmd activity set-inactive --user $userId $pkg false 2>/dev/null || cmd activity set-inactive $pkg false 2>/dev/null"
             )
             if (uid != null && uid > 0) {
                 batchCommands.add("cmd netpolicy add restrict-background-whitelist $uid 2>/dev/null")
                 batchCommands.add("cmd netpolicy add app-idle-whitelist $uid 2>/dev/null")
             } else {
-                batchCommands.add("pkg_uid=\$(pm list packages -U 2>/dev/null | grep \"package:$packageName \" | sed -n 's/.*uid://p'); if [ -n \"\$pkg_uid\" ]; then cmd netpolicy add restrict-background-whitelist \$pkg_uid 2>/dev/null; cmd netpolicy add app-idle-whitelist \$pkg_uid 2>/dev/null; fi")
+                batchCommands.add("pkg_uid=\$(pm list packages --user $userId -U 2>/dev/null | grep \"package:$pkg \" | sed -n 's/.*uid://p'); if [ -n \"\$pkg_uid\" ]; then cmd netpolicy add restrict-background-whitelist \$pkg_uid 2>/dev/null; cmd netpolicy add app-idle-whitelist \$pkg_uid 2>/dev/null; fi")
             }
             ShellUtils.fastBatchCmd(batchCommands)
         }

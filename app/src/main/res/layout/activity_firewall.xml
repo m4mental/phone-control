@@ -145,17 +145,90 @@
                     android:textSize="11sp"
                     android:layout_marginBottom="12dp" />
 
-                <Button
-                    android:id="@+id/btnAddFirewallApp"
+                <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="50dp"
-                    android:text="+ ADD APP TO FIREWALL"
-                    android:layout_marginBottom="16dp"
-                    app:cornerRadius="12dp"
-                    android:backgroundTint="#1A1A1A"
-                    android:textColor="@color/color_network"
-                    app:strokeWidth="1dp"
-                    app:strokeColor="@color/color_network" />
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="12dp">
+
+                    <Button
+                        android:id="@+id/btnAddFirewallApp"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_weight="1"
+                        android:layout_marginEnd="6dp"
+                        android:text="+ ADD APP"
+                        app:cornerRadius="12dp"
+                        android:backgroundTint="#1A1A1A"
+                        android:textColor="@color/color_network"
+                        app:strokeWidth="1dp"
+                        app:strokeColor="@color/color_network"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+
+                    <Button
+                        android:id="@+id/btnMasterQuickTile"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="6dp"
+                        android:text="⚡ MASTER TILE"
+                        app:cornerRadius="12dp"
+                        android:backgroundTint="#152422"
+                        android:textColor="#00BFA5"
+                        app:strokeWidth="1dp"
+                        app:strokeColor="#00BFA5"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <!-- Category Filter Chips (Main, Dual/Clone, Private Space) -->
+                <HorizontalScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:scrollbars="none"
+                    android:layout_marginBottom="12dp">
+                    <com.google.android.material.chip.ChipGroup
+                        android:id="@+id/chipGroupFirewallFilter"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        app:singleSelection="true"
+                        app:selectionRequired="true">
+                        <com.google.android.material.chip.Chip
+                            android:id="@+id/chipFirewallAll"
+                            style="@style/Widget.MaterialComponents.Chip.Choice"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="ALL"
+                            android:checked="true"
+                            app:chipBackgroundColor="#24242E"
+                            android:textColor="@android:color/white" />
+                        <com.google.android.material.chip.Chip
+                            android:id="@+id/chipFirewallMain"
+                            style="@style/Widget.MaterialComponents.Chip.Choice"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="📱 MAIN"
+                            app:chipBackgroundColor="#24242E"
+                            android:textColor="@android:color/white" />
+                        <com.google.android.material.chip.Chip
+                            android:id="@+id/chipFirewallDual"
+                            style="@style/Widget.MaterialComponents.Chip.Choice"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="👥 DUAL / CLONE"
+                            app:chipBackgroundColor="#24242E"
+                            android:textColor="@android:color/white" />
+                        <com.google.android.material.chip.Chip
+                            android:id="@+id/chipFirewallPrivate"
+                            style="@style/Widget.MaterialComponents.Chip.Choice"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="🔒 PRIVATE SPACE"
+                            app:chipBackgroundColor="#24242E"
+                            android:textColor="@android:color/white" />
+                    </com.google.android.material.chip.ChipGroup>
+                </HorizontalScrollView>
 
                 <LinearLayout
                     android:id="@+id/layoutFirewallContainer"
