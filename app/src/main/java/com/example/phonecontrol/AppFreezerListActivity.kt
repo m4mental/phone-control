@@ -312,8 +312,8 @@ class AppFreezerListActivity : AppCompatActivity() {
                     null
                 }
 
-                val isActive = activeSet.contains(entry) || activeSet.contains(pkg)
-                val isCustomWidget = customWidgetSet.contains(entry) || customWidgetSet.contains(pkg)
+                val isActive = if (userId != 0) activeSet.contains(entry) else (activeSet.contains(entry) || activeSet.contains(pkg))
+                val isCustomWidget = if (userId != 0) customWidgetSet.contains(entry) else (customWidgetSet.contains(entry) || customWidgetSet.contains(pkg))
                 val isSystem = matchedApp?.isSystem ?: false
 
                 FrozenDisplayItem(
@@ -349,8 +349,8 @@ class AppFreezerListActivity : AppCompatActivity() {
                     null
                 }
 
-                val isActive = activeSet.contains(entry) || activeSet.contains(pkg)
-                val isCustomWidget = customWidgetSet.contains(entry) || customWidgetSet.contains(pkg)
+                val isActive = if (userId != 0) activeSet.contains(entry) else (activeSet.contains(entry) || activeSet.contains(pkg))
+                val isCustomWidget = if (userId != 0) customWidgetSet.contains(entry) else (customWidgetSet.contains(entry) || customWidgetSet.contains(pkg))
                 val isSystem = matchedApp?.isSystem ?: false
 
                 FrozenDisplayItem(
@@ -399,8 +399,9 @@ class AppFreezerListActivity : AppCompatActivity() {
 
             // 2. Defer task-status checks in background and update immunity statuses afterward
             val updatedImmunityItems = freshNormalItems.map { normalItem ->
-                val isImmune = fgsImmuneSet.contains(normalItem.key) || fgsImmuneSet.contains(normalItem.pkg)
-                val hasTask = if (activeSet.contains(normalItem.key) || activeSet.contains(normalItem.pkg)) {
+                val isImmune = if (normalItem.userId != 0) fgsImmuneSet.contains(normalItem.key) else (fgsImmuneSet.contains(normalItem.key) || fgsImmuneSet.contains(normalItem.pkg))
+                val isItemActive = if (normalItem.userId != 0) activeSet.contains(normalItem.key) else (activeSet.contains(normalItem.key) || activeSet.contains(normalItem.pkg))
+                val hasTask = if (isItemActive) {
                     RecentTasksManager.hasActiveForegroundTask(normalItem.pkg)
                 } else {
                     false

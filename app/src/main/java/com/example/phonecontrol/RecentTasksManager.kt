@@ -70,21 +70,47 @@ object RecentTasksManager {
             }
 
             val pkgs = mutableSetOf<String>()
-            val regexes = listOf(
-                Regex("Task\\{[^}]*(?:A=[0-9]+:|I=)([a-zA-Z0-9_.]+)"),
-                Regex("(?:realActivity=|baseActivity=|topActivity=|cmp=|pkg=)\\{?([a-zA-Z0-9_.]+)[/}\\s]"),
-                Regex("A=[0-9]+:([a-zA-Z0-9_.]+)")
-            )
+            val taskRegex = Regex("""Task\{[^}]*(?:A=(\d+):|I=)([a-zA-Z0-9_.]+)""")
+            val affinityRegex = Regex("""A=(\d+):([a-zA-Z0-9_.]+)""")
+            val activityRegex = Regex("""(?:realActivity=|baseActivity=|topActivity=|cmp=|pkg=)\{?([a-zA-Z0-9_.]+)[/}\s]""")
 
             for (line in output.lineSequence()) {
                 if (line.contains("mHiddenTasks")) continue
-                for (r in regexes) {
-                    val m = r.find(line)
-                    if (m != null) {
-                        val p = m.groupValues[1].trim()
-                        if (p.isNotBlank() && !isIgnoredSystemPackage(p)) {
+                val mAffinity = affinityRegex.find(line)
+                if (mAffinity != null) {
+                    val uid = mAffinity.groupValues[1].toIntOrNull()
+                    val p = mAffinity.groupValues[2].trim()
+                    if (p.isNotBlank() && !isIgnoredSystemPackage(p)) {
+                        val uId = if (uid != null) uid / 100000 else 0
+                        if (uId != 0) {
+                            pkgs.add("$p:$uId")
+                        } else {
                             pkgs.add(p)
                         }
+                    }
+                    continue
+                }
+
+                val mTask = taskRegex.find(line)
+                if (mTask != null) {
+                    val uid = mTask.groupValues[1].toIntOrNull()
+                    val p = mTask.groupValues[2].trim()
+                    if (p.isNotBlank() && !isIgnoredSystemPackage(p)) {
+                        val uId = if (uid != null) uid / 100000 else 0
+                        if (uId != 0) {
+                            pkgs.add("$p:$uId")
+                        } else {
+                            pkgs.add(p)
+                        }
+                    }
+                    continue
+                }
+
+                val mAct = activityRegex.find(line)
+                if (mAct != null) {
+                    val p = mAct.groupValues[1].trim()
+                    if (p.isNotBlank() && !isIgnoredSystemPackage(p)) {
+                        pkgs.add(p)
                     }
                 }
             }

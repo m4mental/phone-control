@@ -102,14 +102,14 @@ object FreezerManager {
         if (pkg.isBlank() || (userId == 0 && pkg == context.packageName)) return
 
         // 🛡️ CRITICAL LAUNCH GRACE IMMUNITY:
-        if (!isManualUserAction && (isRecentlyLaunched(packageName, 30000L) || isRecentlyLaunched(pkg, 30000L))) {
+        if (!isManualUserAction && (isRecentlyLaunched(packageName, 30000L) || (userId == 0 && isRecentlyLaunched(pkg, 30000L)))) {
             Log.d(TAG, "🛡️ Launch Grace Guard: $packageName was launched recently -> Freeze BLOCKED!")
             return
         }
 
         // 🛡️ VISIBILITY & FOREGROUND GUARD:
-        if (!isManualUserAction && isAppCurrentlyVisible(pkg)) {
-            Log.d(TAG, "🛡️ Visibility Guard: $pkg is visible -> Freeze BLOCKED!")
+        if (!isManualUserAction && isAppCurrentlyVisible(packageName)) {
+            Log.d(TAG, "🛡️ Visibility Guard: $packageName is visible -> Freeze BLOCKED!")
             return
         }
 
@@ -117,8 +117,9 @@ object FreezerManager {
         val isFgsImmune = isFgsImmunityEnabled(context, packageName) || (userId == 0 && isFgsImmunityEnabled(context, pkg))
 
         // 🛡️ RECENT TASKS IMMUNITY GUARD:
-        if (!isManualUserAction && !isExplicitDismiss && !force && RecentTasksManager.isAppInRecents(pkg)) {
-            Log.d(TAG, "🛡️ Recents Guard: $pkg is active in Recents -> Freeze BLOCKED!")
+        val isInRecents = if (userId == 0) RecentTasksManager.isAppInRecents(pkg) else RecentTasksManager.isAppInRecents(packageName)
+        if (!isManualUserAction && !isExplicitDismiss && !force && isInRecents) {
+            Log.d(TAG, "🛡️ Recents Guard: $packageName is active in Recents -> Freeze BLOCKED!")
             return
         }
 
@@ -129,11 +130,16 @@ object FreezerManager {
         }
 
         if (!isManualUserAction && !force) {
-            if (isAppActiveSession(packageName) || isAppActiveSession(pkg)) return
+            val isActiveSession = if (userId == 0) (isAppActiveSession(packageName) || isAppActiveSession(pkg)) else isAppActiveSession(packageName)
+            if (isActiveSession) return
         }
 
         val allSafeApps = MultitaskingManager.getUserWhitelist(context) + MultitaskingManager.protectedApps
-        if (allSafeApps.contains(pkg)) return
+        val isWhitelisted = if (userId == 0) (allSafeApps.contains(packageName) || allSafeApps.contains(pkg)) else allSafeApps.contains(packageName)
+        if (!isManualUserAction && !force && isWhitelisted) {
+            Log.d(TAG, "🛡️ Whitelist Guard: $packageName is whitelisted -> Freeze BLOCKED!")
+            return
+        }
 
         val activeAudio = getActivePlayingAudioPackages(context)
         if (activeAudio.contains(pkg)) return
@@ -195,12 +201,14 @@ object FreezerManager {
             val (pkg, userId) = parsePackageKey(entry)
             val isSpecial = isSpecialFreeze(context, entry) || (userId == 0 && isSpecialFreeze(context, pkg))
             val isFgsImmune = isFgsImmunityEnabled(context, entry) || (userId == 0 && isFgsImmunityEnabled(context, pkg))
-            !allSafeApps.contains(entry) &&
-            !allSafeApps.contains(pkg) &&
-            !activeAudio.contains(pkg) &&
-            (isSpecial || !isFgsImmune || !RecentTasksManager.hasActiveForegroundTask(pkg)) &&
-            (currentFocus.isBlank() || !currentFocus.contains(pkg)) &&
-            (isManualUserAction || (!isRecentlyLaunched(entry, 30000L) && !isRecentlyLaunched(pkg, 30000L) && (force || !isAppActiveSession(pkg))))
+            val isWhitelisted = if (userId == 0) (allSafeApps.contains(entry) || allSafeApps.contains(pkg)) else allSafeApps.contains(entry)
+            if (!isManualUserAction && !force && isWhitelisted) return@filter false
+            if (activeAudio.contains(pkg)) return@filter false
+            if (!isSpecial && isFgsImmune && RecentTasksManager.hasActiveForegroundTask(pkg)) return@filter false
+            if (currentFocus.isNotBlank() && isAppCurrentlyVisible(entry)) return@filter false
+            if (!isManualUserAction && (isRecentlyLaunched(entry, 30000L) || (userId == 0 && isRecentlyLaunched(pkg, 30000L)))) return@filter false
+            if (!isManualUserAction && !force && isAppActiveSession(entry)) return@filter false
+            true
         }
         if (pkgList.isEmpty()) return
 
@@ -257,12 +265,16 @@ object FreezerManager {
         // 1. Apps tracked in activeSessionApps that have been dismissed from Recents and left foreground
         val sessionCopy = HashSet(activeSessionApps)
         for (pkg in sessionCopy) {
+            val (realPkg, userId) = parsePackageKey(pkg)
+            val isWhitelisted = if (userId == 0) (allSafeApps.contains(pkg) || allSafeApps.contains(realPkg)) else allSafeApps.contains(pkg)
+            if (isWhitelisted) continue
+
             // 🛡️ CRITICAL GUARD: Never freeze apps launched within the last 30s!
             if (isRecentlyLaunched(pkg, 30000L)) continue
 
             val isSpecial = specialApps.contains(pkg)
             val isFgsImmune = isFgsImmunityEnabled(context, pkg)
-            val isDownloading = if (!isSpecial && isFgsImmune) RecentTasksManager.hasActiveForegroundTask(pkg) else false
+            val isDownloading = if (!isSpecial && isFgsImmune) RecentTasksManager.hasActiveForegroundTask(realPkg) else false
             if (!currentRecents.contains(pkg) && pkg != currentForeground && !isAppCurrentlyVisible(pkg) && (!isDownloading)) {
                 toFreeze.add(pkg)
             }
@@ -272,12 +284,17 @@ object FreezerManager {
         // but has active running background processes (e.g. after background wakeup/broadcast)
         val runningConfigured = getRunningConfiguredApps(allConfigured)
         for (pkg in runningConfigured) {
+            val (realPkg, userId) = parsePackageKey(pkg)
+            val isWhitelisted = if (userId == 0) (allSafeApps.contains(pkg) || allSafeApps.contains(realPkg)) else allSafeApps.contains(pkg)
+            if (isWhitelisted) continue
+
             // 🛡️ CRITICAL GUARD: Never sweep apps recently launched, in active session, or in recents cache!
-            if (isRecentlyLaunched(pkg, 30000L) || isAppActiveSession(pkg) || RecentTasksManager.isAppInRecents(pkg)) continue
+            val inRecents = if (userId == 0) (RecentTasksManager.isAppInRecents(pkg) || RecentTasksManager.isAppInRecents(realPkg)) else RecentTasksManager.isAppInRecents(pkg)
+            if (isRecentlyLaunched(pkg, 30000L) || isAppActiveSession(pkg) || inRecents) continue
 
             val isSpecial = specialApps.contains(pkg)
             val isFgsImmune = isFgsImmunityEnabled(context, pkg)
-            val isDownloading = if (!isSpecial && isFgsImmune) RecentTasksManager.hasActiveForegroundTask(pkg) else false
+            val isDownloading = if (!isSpecial && isFgsImmune) RecentTasksManager.hasActiveForegroundTask(realPkg) else false
             if (pkg != currentForeground && !currentRecents.contains(pkg) && !isAppCurrentlyVisible(pkg) && (!isDownloading)) {
                 toFreeze.add(pkg)
             }
@@ -294,10 +311,12 @@ object FreezerManager {
                 lastLaunchedPackage = null
             }
 
+            val (realPkg, userId) = parsePackageKey(pkg)
+            val isWhitelisted = if (userId == 0) (allSafeApps.contains(pkg) || allSafeApps.contains(realPkg)) else allSafeApps.contains(pkg)
             val isSpecial = specialApps.contains(pkg)
             val isFgsImmune = isFgsImmunityEnabled(context, pkg)
-            val isDownloading = if (!isSpecial && isFgsImmune) RecentTasksManager.hasActiveForegroundTask(pkg) else false
-            if (allConfigured.contains(pkg) && !allSafeApps.contains(pkg) && !activeAudio.contains(pkg) && (!isDownloading)) {
+            val isDownloading = if (!isSpecial && isFgsImmune) RecentTasksManager.hasActiveForegroundTask(realPkg) else false
+            if (allConfigured.contains(pkg) && !isWhitelisted && !activeAudio.contains(realPkg) && (!isDownloading)) {
                 Log.d(TAG, "❄️ Recents Dismissed / Background Idle -> Freeze for $pkg (special=$isSpecial)")
                 freezeApp(context, pkg, force = true, isExplicitDismiss = true)
             }
@@ -449,16 +468,33 @@ object FreezerManager {
      */
     fun getRunningConfiguredApps(configured: Collection<String>): Set<String> {
         if (configured.isEmpty()) return emptySet()
-        val out = ShellUtils.fastCmdResult("ps -A -o NAME 2>/dev/null || ps -A 2>/dev/null", 1500)
+        val out = ShellUtils.fastCmdResult("ps -A -o UID,NAME 2>/dev/null || ps -A 2>/dev/null", 1500)
         if (out.isBlank()) return emptySet()
-        val running = out.lineSequence().map { line ->
-            val trimmed = line.trim()
-            val rawName = if (trimmed.contains(" ")) trimmed.substringAfterLast(" ") else trimmed
-            rawName.substringBefore(":")
-        }.toSet()
+        val runningKeys = mutableSetOf<String>()
+        for (line in out.lineSequence()) {
+            val parts = line.trim().split(Regex("\\s+"))
+            if (parts.size >= 2) {
+                val uid = parts[0].toIntOrNull()
+                val procName = parts[1]
+                if (uid != null) {
+                    val uId = uid / 100000
+                    if (uId == 0) {
+                        runningKeys.add(procName)
+                    } else {
+                        runningKeys.add("$procName:$uId")
+                    }
+                } else {
+                    runningKeys.add(procName)
+                }
+            }
+        }
         return configured.filter { entry ->
-            val (pkg, _) = parsePackageKey(entry)
-            running.contains(pkg) || running.contains(entry)
+            val (pkg, userId) = parsePackageKey(entry)
+            if (userId != 0) {
+                runningKeys.contains(entry)
+            } else {
+                runningKeys.contains(pkg) || runningKeys.contains(entry)
+            }
         }.toSet()
     }
 
@@ -612,13 +648,37 @@ object FreezerManager {
     fun isAppCurrentlyVisible(packageName: String): Boolean {
         if (packageName.isBlank()) return false
         val out = getCurrentlyFocusedWindowInfo()
-        return out.contains(packageName)
+        val (pkg, userId) = parsePackageKey(packageName)
+        return if (userId != 0) {
+            out.contains("u$userId") && out.contains(pkg)
+        } else {
+            out.contains(pkg) && !out.contains("u999") && !out.contains("u10")
+        }
     }
 
     fun getActivePackages(context: Context? = null, packages: Collection<String>): Set<String> {
         if (packages.isEmpty()) return emptySet()
-        val out = ShellUtils.runAsRoot("ps -A -o NAME").output
-        val running = out.split("\n").map { it.trim() }.toSet()
+        val out = ShellUtils.fastCmdResult("ps -A -o UID,NAME 2>/dev/null || ps -A 2>/dev/null", 1500)
+        val activeKeys = mutableSetOf<String>()
+        if (out.isNotBlank()) {
+            for (line in out.lineSequence()) {
+                val parts = line.trim().split(Regex("\\s+"))
+                if (parts.size >= 2) {
+                    val uid = parts[0].toIntOrNull()
+                    val procName = parts[1]
+                    if (uid != null) {
+                        val uId = uid / 100000
+                        if (uId == 0) {
+                            activeKeys.add(procName)
+                        } else {
+                            activeKeys.add("$procName:$uId")
+                        }
+                    } else {
+                        activeKeys.add(procName)
+                    }
+                }
+            }
+        }
         val pm = context?.packageManager
         return packages.filter { entry ->
             val (pkg, userId) = parsePackageKey(entry)
@@ -627,10 +687,14 @@ object FreezerManager {
                     if (pm.isPackageSuspended(pkg)) return@filter false
                 } catch (_: Exception) {}
             }
-            if ((kernelFrozenPackages.contains(entry) || (userId == 0 && kernelFrozenPackages.contains(pkg))) && !isAppCurrentlyVisible(pkg)) {
+            if ((kernelFrozenPackages.contains(entry) || (userId == 0 && kernelFrozenPackages.contains(pkg))) && !isAppCurrentlyVisible(entry)) {
                 return@filter false
             }
-            running.contains(pkg)
+            if (userId != 0) {
+                activeKeys.contains(entry)
+            } else {
+                activeKeys.contains(pkg) || activeKeys.contains(entry)
+            }
         }.toSet()
     }
 
