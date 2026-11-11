@@ -31,12 +31,11 @@ class AppEventService : AccessibilityService() {
     private val launcherPackages = java.util.Collections.synchronizedSet(mutableSetOf<String>())
     private var lastLauncherQueryTime = 0L
 
-    private fun getPackageForExactUniqueLabel(label: String): String? {
+    private fun ensureLabelMap() {
         val now = System.currentTimeMillis()
-        if (now - lastLabelCacheTime > 10000 || appLabelToPackageMap.isEmpty()) {
-            appLabelToPackageMap.clear()
+        if (now - lastLabelCacheTime > 15000 || appLabelToPackagesMap.isEmpty()) {
+            appLabelToPackagesMap.clear()
             val allFrozen = FreezerManager.getSpecialFreezeApps(this) + FreezerManager.getFrozenApps(this)
-            val counts = mutableMapOf<String, MutableList<String>>()
             val flags = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
                 android.content.pm.PackageManager.MATCH_DISABLED_COMPONENTS or android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES
             } else {
@@ -45,24 +44,52 @@ class AppEventService : AccessibilityService() {
             }
             for (pkg in allFrozen) {
                 try {
-                    val (realPkg, _) = FreezerManager.parsePackageKey(pkg)
+                    val (realPkg, userId) = FreezerManager.parsePackageKey(pkg)
                     val appInfo = packageManager.getApplicationInfo(realPkg, flags)
                     val l = packageManager.getApplicationLabel(appInfo).toString().trim().lowercase()
                     if (l.isNotEmpty()) {
-                        counts.getOrPut(l) { mutableListOf() }.add(pkg)
+                        val list = appLabelToPackagesMap.getOrPut(l) { mutableListOf() }
+                        if (!list.contains(pkg)) list.add(pkg)
+                        if (userId != 0) {
+                            // Primary user package shares label `l` with the clone
+                            if (!list.contains(realPkg)) list.add(realPkg)
+                            // Launcher clone titles: e.g. "WhatsApp (2)", "WhatsApp (clone)", etc.
+                            val cloneVariants = listOf("$l (2)", "$l (clone)", "$l (dual)", "$l:999")
+                            for (v in cloneVariants) {
+                                val cloneList = appLabelToPackagesMap.getOrPut(v) { mutableListOf() }
+                                if (!cloneList.contains(pkg)) cloneList.add(pkg)
+                            }
+                        }
                     }
                 } catch (_: Exception) {}
             }
-            // Retain ONLY exact, unique labels that map unambiguously to exactly one package
-            for ((l, pkgs) in counts) {
-                if (pkgs.size == 1) {
-                    appLabelToPackageMap[l] = pkgs[0]
-                }
-            }
             lastLabelCacheTime = now
         }
+    }
+
+    private fun resolveLauncherTarget(label: String, isSuspendedClick: Boolean): String? {
+        ensureLabelMap()
         val clean = label.lowercase().trim()
-        return appLabelToPackageMap[clean] // Exact, unique match only!
+        val pkgs = appLabelToPackagesMap[clean] ?: return null
+
+        if (pkgs.size == 1) {
+            val target = pkgs[0]
+            if (!isSuspendedClick && target.contains(":")) {
+                // Click is not suspended, so it cannot be a suspended secondary profile
+                val (realPkg, _) = FreezerManager.parsePackageKey(target)
+                return realPkg
+            }
+            return target
+        }
+
+        // Multiple packages/profiles share this exact label (e.g. Main WhatsApp and Clone WhatsApp)
+        return if (isSuspendedClick) {
+            // Suspended/disabled click: pick the package that is actually in Special Freeze
+            pkgs.firstOrNull { FreezerManager.isSpecialFreeze(this, it) }
+        } else {
+            // Normal click: pick the package that is NOT in Special Freeze (User 0)
+            pkgs.firstOrNull { !FreezerManager.isSpecialFreeze(this, it) }
+        }
     }
 
     private var cachedHomePackage: String? = null
@@ -142,6 +169,8 @@ class AppEventService : AccessibilityService() {
             val desc = event.contentDescription?.toString() ?: ""
             val text = event.text?.joinToString(" ") ?: ""
             val combined = if (desc.isNotBlank()) desc else text
+            val isSuspendedClick = combined.contains("Disabled ", ignoreCase = true) ||
+                                  combined.contains("Paused ", ignoreCase = true)
             var cleanLabel = combined.trim()
             if (cleanLabel.contains("Disabled ", ignoreCase = true)) {
                 cleanLabel = cleanLabel.substringAfter("Disabled ").trim()
@@ -150,15 +179,17 @@ class AppEventService : AccessibilityService() {
             }
 
             if (cleanLabel.isNotBlank()) {
-                val targetPkg = getPackageForExactUniqueLabel(cleanLabel)
+                val targetPkg = resolveLauncherTarget(cleanLabel, isSuspendedClick)
                 if (targetPkg != null) {
-                    FreezerManager.registerAppOpen(this, targetPkg)
-                    if (combined.contains("Disabled ", ignoreCase = true) ||
-                        combined.contains("Paused ", ignoreCase = true) ||
-                        FreezerManager.isSpecialFreeze(this, targetPkg)) {
+                    val isFrozen = FreezerManager.getFrozenApps(this).contains(targetPkg) ||
+                                   FreezerManager.getSpecialFreezeApps(this).contains(targetPkg)
+                    if (isFrozen) {
+                        FreezerManager.registerAppOpen(this, targetPkg)
+                    }
+                    if (isSuspendedClick) {
                         FreezerManager.launchApp(this, targetPkg)
                     }
-                    return // App launch triggered & protected! Do NOT fall through to recents check!
+                    return // App launch handled! Do NOT fall through to recents check!
                 }
             }
         }
@@ -235,10 +266,10 @@ class AppEventService : AccessibilityService() {
 
     companion object {
         private var lastLabelCacheTime = 0L
-        private val appLabelToPackageMap = java.util.concurrent.ConcurrentHashMap<String, String>()
+        private val appLabelToPackagesMap = java.util.concurrent.ConcurrentHashMap<String, MutableList<String>>()
 
         fun invalidateLabelCache() {
-            appLabelToPackageMap.clear()
+            appLabelToPackagesMap.clear()
             lastLabelCacheTime = 0L
         }
 

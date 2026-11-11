@@ -16,10 +16,12 @@ object MultitaskingManager {
 
     fun isProtected(packageName: String, context: Context? = null): Boolean {
         val (pkg, userId) = FreezerManager.parsePackageKey(packageName)
-        if (protectedApps.contains(packageName) || protectedApps.contains(pkg)) return true
+        if (userId == 0 && (protectedApps.contains(packageName) || protectedApps.contains(pkg))) return true
+        if (userId != 0 && protectedApps.contains(packageName)) return true
         if (context != null) {
             val userWhitelist = getUserWhitelist(context)
-            if (userWhitelist.contains(packageName) || userWhitelist.contains(pkg)) return true
+            if (userId == 0 && (userWhitelist.contains(packageName) || userWhitelist.contains(pkg))) return true
+            if (userId != 0 && userWhitelist.contains(packageName)) return true
         }
         return false
     }
